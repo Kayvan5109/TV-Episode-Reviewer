@@ -3,11 +3,12 @@
 **Read this file first** — before the other docs, before doing anything else. It's the single
 "what's actually going on right now" pointer, kept short and current on purpose.
 
-Last updated: 2026-07-15 (later same day). **Paused mid-Phase-0, awaiting review.** An implementer
-agent finished the ranking-algorithm prototype + website scaffold; nothing is committed or merged
-yet — it's sitting in a worktree pending the independent-review pass this correctness-critical work
-requires (see `ProcessAndRoles.md`). Paused here rather than reviewing/merging immediately due to
-session budget.
+Last updated: 2026-07-15 (later same day). **Clean deliberate stop, mid-Phase-0, for session
+budget.** An implementer agent finished the ranking-algorithm prototype + website scaffold (42/42
+tests passing); nothing is committed to `main` or merged yet — it's sitting in a worktree pending
+the independent-review pass this correctness-critical work requires (see `ProcessAndRoles.md`). No
+agent is currently running. Next session: start with the review (Bucket 1 below), then proceed to
+the rest of Phase 0.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -50,12 +51,11 @@ it through" is worth a deliberate re-check, not silent acceptance.
 
 - 2026-07-15: Implementer agent made 7 judgment calls while building the ranking-algorithm prototype
   (`website/src/lib/ranking/`), each marked `JUDGMENT CALL` in the source. Most-important-first:
-  1. **(Needs your input, not just review)** Cold-start episodes get permanently folded into the
-     comparative comparison pool the first time a show crosses the cold-start threshold
-     (`engine.ts`, `addComparativeEpisode`) — this wasn't specified anywhere and effectively answers
-     `AppSpec.md`'s open "do cold-start-only episodes ever join the comparison pool?" question by
-     assuming "yes, immediately." Worth an explicit decision rather than letting this stand by
-     default.
+  1. ~~Cold-start episodes get permanently folded into the comparative comparison pool the first
+     time a show crosses the cold-start threshold~~ (`engine.ts`, `addComparativeEpisode`) —
+     **confirmed 2026-07-15 by Kayvan**: yes, fold them in immediately, as built. This resolves
+     `AppSpec.md`'s open "do cold-start-only episodes ever join the comparison pool?" question in
+     the affirmative — update that doc's Open Design Questions accordingly next session.
   2. Cold-start bucket ordering (`coldStart.ts`): liked > neutral > disliked; most-recent-first
      within a bucket. Arbitrary, undiscussed.
   3. Common-reference-episode selection when several candidates exist (`comparativePlacement.ts`,
