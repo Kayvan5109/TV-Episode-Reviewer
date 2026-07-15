@@ -10,6 +10,10 @@ ruled out and why).
   per-show, shifts on insertion, compresses for small samples — see `DevelopmentPlan.md`), but the
   exact curve (e.g. "full range by 8 episodes") is a guess pending real usage. Explicitly expected to
   need tuning, not a one-and-done design.
+- **TMDB commercial licensing**: the free/personal TMDB API key explicitly forbids commercial use
+  (charging users, selling an app built on TMDB data). If monetization is ever revisited (currently
+  decided as "none" — see `AppSpec.md`), TMDB requires a separate written commercial agreement
+  (contact them directly), possibly with fees — not something that can be pre-arranged now.
 - **TMDB API dependency**: needs an API key (free tier) and network access to browse/add shows.
   Rate limits and API availability are outside this project's control; if TMDB is ever down or
   unreachable, browsing new shows breaks even though existing ranking data (stored in Supabase) is
