@@ -12,7 +12,22 @@ ruled out and why).
   need tuning, not a one-and-done design.
 - **TMDB API dependency**: needs an API key (free tier) and network access to browse/add shows.
   Rate limits and API availability are outside this project's control; if TMDB is ever down or
-  unreachable, browsing new shows breaks even though existing ranking data (on-device) is unaffected.
+  unreachable, browsing new shows breaks even though existing ranking data (stored in Supabase) is
+  unaffected.
+- **Third-party backend dependency (Supabase/Vercel)**: both the account system and the database
+  now live on Supabase, and the website is hosted on Vercel — outages, API changes, or policy
+  changes on either service are outside this project's control. Free tiers also have usage caps;
+  exceeding them would require a paid upgrade, which needs Kayvan's explicit go-ahead per
+  `CLAUDE.md`'s non-negotiables before it happens.
+- **Auth/account correctness and security**: real user accounts (email/password) now exist. Even
+  though Supabase handles the mechanics (password hashing, session tokens, email verification),
+  how the app *uses* that (e.g. making sure one user can never read/write another user's ranking
+  data) is still this project's responsibility and is correctness-critical — see
+  `ProcessAndRoles.md`'s Agent Workflow Rules.
+- **Ranking-algorithm drift between TypeScript (website) and Swift (iOS)**: the algorithm gets
+  implemented twice on two different platforms. Without a shared test-fixture check (see
+  `DevelopmentPlan.md`'s Discussion section), the two implementations could silently diverge and
+  produce different scores for the same input.
 
 ## Resolved
 

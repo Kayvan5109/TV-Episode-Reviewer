@@ -12,9 +12,16 @@ A TV episode ranking app. Pick a show, then rank its episodes against each other
 start with a coarse judgment (liked / disliked / neutral), then get placed precisely via
 comparisons against already-ranked episodes, converging on a 1-10 score over time. Modeled on
 Beli's ranking mechanic (the restaurant-ranking app) — see "Ranking Algorithm" below and
-`AppSpec.md` for full detail. Fully on-device for ranking data (SwiftData); TMDB API supplies show/
-episode metadata (titles, season/episode numbers, artwork). Personal use, no monetization, no
-deadline pressure.
+`AppSpec.md` for full detail. TMDB API supplies show/episode metadata (titles, season/episode
+numbers, artwork). Personal use, no monetization, no deadline pressure.
+
+**Two clients, one account, website first** (decided 2026-07-15): built as a **website first**,
+then a native **iOS app** second — a website iterates far faster than Xcode/Simulator, which matters
+because the ranking algorithm and score formula are both explicitly expected to need real-world
+tuning (see Discussion below and `Risks.md`). Unlike a typical "throwaway prototype," the website is
+meant to stay around long-term, not get retired once the iOS app exists. A user's rankings are tied
+to an account (email signup), shared between the website and the iOS app via one backend
+(Supabase) — see `TechArchitecture.md` for the full stack.
 
 ## Ranking Algorithm (current design)
 
@@ -97,8 +104,15 @@ feel off.
 - **Liked/disliked/neutral-only episodes**: once a show has moved into comparative ranking mode, do
   earlier cold-start-only episodes ever get folded into the comparison pool, or do they keep a
   cruder score?
-- **iCloud/CloudKit sync** across devices — currently out of scope (on-device only), revisit if
-  wanted later.
+- ~~iCloud/CloudKit sync across devices~~ — **superseded 2026-07-15**: cross-device sync now comes
+  for free from the shared Supabase account (website and iOS both read/write the same backend), so
+  a separate iCloud sync mechanism isn't needed.
+- **Keeping the TypeScript and Swift algorithm implementations in sync**: the ranking algorithm gets
+  built twice (TypeScript for the website first, Swift for iOS later, per `TechArchitecture.md`).
+  Worth a shared test-case format (e.g. a JSON fixture of "given this comparison history, expect
+  this score") that both implementations can be checked against, so drift between them gets caught
+  rather than silently diverging. Not blocking Phase 0-3 (website-only); becomes relevant once the
+  iOS phase starts porting the algorithm.
 
 ## Development Phases
 
@@ -106,56 +120,75 @@ If this and `STATUS.md`'s Punch List ever disagree on what's next, treat the mis
 worth fixing on sight — `STATUS.md` is the moment-to-moment pointer, this is the fuller plan behind
 it.
 
+Website comes first (Phases 0-3), iOS second (Phases 4-5) — see "The Idea" above for why.
+
 ### Phase 0 — De-risk (current phase)
 
-Goal: prove out the ranking algorithm before any real UI exists — this is the app's riskiest,
-least-proven idea, so it gets built and stress-tested in isolation first.
+Goal: prove out the ranking algorithm and stand up the shared backend, before any real UI exists —
+the algorithm is the app's riskiest, least-proven idea, so it gets built and stress-tested in
+isolation first.
 
 What "done" looks like:
 - The comparison/placement mechanic (cold-start bucket → binary-insertion comparative placement →
-  tie-break via common comparison episode) implemented and unit-tested against made-up episode
-  data, run from the command line or a minimal test harness — no SwiftUI screens needed yet.
+  tie-break via common comparison episode) implemented in TypeScript and unit-tested against
+  made-up episode data — no UI needed yet.
 - The v1 score-from-position formula (see Discussion above) implemented, with tests showing it
   produces sensible-looking scores across a range of show sizes (1 episode, a handful, 8+) — treated
   as a tunable starting point, not a final formula.
-- A basic TMDB API integration proven end-to-end: fetch a show, fetch its episode list, map it into
-  the app's data model.
-- XcodeGen or Tuist chosen and the project scaffolded from a plain-text config (see
-  `TechArchitecture.md`).
+- A Supabase project created: Auth enabled (email/password), and a database schema for
+  users/shows/episodes/comparison-history (see `AppSpec.md` data model).
+- A basic TMDB API integration proven end-to-end via a Next.js API route: fetch a show, fetch its
+  episode list, map it into the app's data model.
+- A minimal Next.js project scaffolded and deployed to Vercel (even just a placeholder page) to
+  prove the deployment path works before building real UI on top of it.
 
-Not in scope for Phase 0: any real screens/navigation, visual design, persistence polish beyond
-what's needed to test the algorithm.
+Not in scope for Phase 0: any real screens/navigation, visual design, the iOS app.
 
-### Phase 1 — Vertical slice / MVP
+### Phase 1 — Website vertical slice / MVP
 
-Goal: one complete core user flow, end to end, minimal polish.
+Goal: one complete core user flow, end to end, minimal polish, live on the website.
 
-What "done" looks like: pick a show (via TMDB search) → cold-start rank a handful of episodes
-(liked/disliked/neutral) → rank enough to trigger comparative placement → see a resulting 1-10
-score per episode in a simple list. Persisted via SwiftData so it survives an app relaunch. No
-onboarding, no settings, no visual polish beyond "functional and readable."
+What "done" looks like: sign up / log in (Supabase Auth) → pick a show (via TMDB search) →
+cold-start rank a handful of episodes (liked/disliked/neutral) → rank enough to trigger comparative
+placement → see a resulting 1-10 score per episode in a simple list. Data persists in Supabase
+Postgres, tied to the signed-in account. No onboarding, no settings, no visual polish beyond
+"functional and readable." Deployed on Vercel so it's usable from any browser, not just localhost.
 
-### Phase 2 — Feature completeness
+### Phase 2 — Website feature completeness
 
-Goal: the full intended feature set, exercised with real shows/episodes rather than test data.
-Likely includes resolving the "Other open ideas" list above (re-ranking, whether cold-start-only
-episodes join the comparison pool, etc.) as they become blocking rather than hypothetical.
+Goal: the full intended feature set, exercised with real shows/episodes rather than test data — and
+the primary vehicle for actually tuning the ranking algorithm and score formula against real usage,
+which was the whole point of building the website first. Likely includes resolving the "Other open
+ideas" list above (re-ranking, whether cold-start-only episodes join the comparison pool, etc.) as
+they become blocking rather than hypothetical, and revisiting the v1 score formula's constants once
+there's real data to react to.
 
-### Phase 3 — Polish
+### Phase 3 — Website polish
 
 Goal: performance, accessibility, edge cases (shows with 1 episode, shows with hundreds), and
-proper empty/error states (no network for TMDB, a show with no episodes yet, etc.).
+proper empty/error states (no network for TMDB, a show with no episodes yet, etc.) — on the website.
 
-### Phase 4 — Launch prep
+### Phase 4 — iOS app
 
-Goal: only relevant if this ever moves beyond personal use. TestFlight beta, App Store assets
-(screenshots, description, privacy nutrition label — note the TMDB dependency needs disclosing),
-submission.
+Goal: build the native SwiftUI app against the now-proven, tuned ranking algorithm and the same
+Supabase backend/account system the website already uses — the point of building the website first
+was to de-risk exactly this phase.
 
-### Phase 5 — Post-launch (stretch)
+What "done" looks like: XcodeGen or Tuist project scaffolded; SwiftUI screens covering the same core
+flows already proven on the website (sign up/log in, pick a show, cold-start rank, comparative
+rank, see scores); ranking algorithm ported from the TypeScript version to Swift, with a shared test
+fixture (see Discussion above) confirming the two implementations agree.
 
-Goal: iteration based on real usage; stretch features from the Discussion backlog above that never
-became blocking.
+### Phase 5 — iOS polish & launch prep
+
+Goal: only relevant if this ever moves beyond personal use. Performance/accessibility/edge-case
+polish, then TestFlight beta, App Store assets (screenshots, description, privacy nutrition label —
+note the TMDB and Supabase dependencies both need disclosing), submission.
+
+### Phase 6 — Post-launch (stretch)
+
+Goal: iteration based on real usage across both platforms; stretch features from the Discussion
+backlog above that never became blocking.
 
 ## Issues — Currently Unresolved
 
@@ -171,3 +204,6 @@ entries once there's code to have bugs in).
    Algorithm" above.
 3. **Cold-start → comparative-mode threshold is a placeholder** ("~3-5 episodes") — not yet tuned
    against real use; expect to revisit after using the app for a while.
+4. **Backend vendor choice (Supabase) is Claude's pick, not independently reviewed.** Kayvan said
+   "let me pick" for the stack, but choosing a specific third-party vendor for accounts/data is a
+   real dependency worth a second look — logged as a Deviation Awaiting Review in `STATUS.md`.

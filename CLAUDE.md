@@ -15,10 +15,11 @@ its own; if memory and the docs disagree, the docs win, and the mismatch should 
 ## What this project is
 
 A TV episode ranking app. A user picks a show, then ranks its episodes against each other: an
-episode is first marked liked/disliked, and once enough episodes exist, a new episode is placed by
-comparing it ("better/worse/same") against a handful of already-ranked episodes. Over time each
-episode settles on a 1-10 numeric score derived from these comparisons. Full design/plan/status
-lives in `Docs/`:
+episode is first marked liked/disliked/neutral, and once enough episodes exist, a new episode is
+placed by comparing it ("better/worse/neutral") against already-ranked episodes. Over time each
+episode settles on a 1-10 numeric score derived from these comparisons. Built as a **website
+first** (Next.js + Supabase), then a native **iOS app** second, sharing one account system — see
+`Docs/DevelopmentPlan.md` for why. Full design/plan/status lives in `Docs/`:
 
 - [Docs/STATUS.md](Docs/STATUS.md) — **read this one first, every time** — short, frequently
   updated "what's actually going on right now" pointer (current phase, what's in-flight, what's
@@ -51,22 +52,24 @@ silently assumed settled. Full reasoning in [Docs/ProcessAndRoles.md](Docs/Proce
 
 ## Non-negotiables
 
-- Kayvan knows no Swift/Xcode and wants to stay hands-off in the Xcode GUI. Prefer
-  command-line-drivable setups (SwiftUI over UIKit/Storyboards; XcodeGen or Tuist to generate the
-  `.xcodeproj` from a plain-text config instead of hand-wiring targets/files in Xcode; Swift
-  Package Manager for dependencies; `xcodebuild` for build/test automation; fastlane for
-  build/screenshot/TestFlight automation if it comes to that). Give exact click-by-click
-  instructions for the few things only a human in Xcode/Simulator/a physical device can actually
-  do (signing & provisioning profile setup, running on a real device, App Store Connect metadata
-  entry, TestFlight review submission).
+- Kayvan is a beginner developer overall (no prior Swift/Xcode experience, and the website is the
+  first real development surface for this project) who wants to stay hands-off from low-level
+  tooling/infra. Prefer command-line-drivable, low-ceremony setups: Next.js + Vercel for the website
+  (near-zero server config); for the later iOS phase, SwiftUI over UIKit/Storyboards, XcodeGen or
+  Tuist to generate the `.xcodeproj` from a plain-text config instead of hand-wiring targets/files in
+  Xcode, Swift Package Manager for dependencies, `xcodebuild` for build/test automation, fastlane for
+  build/screenshot/TestFlight automation if it comes to that. Give exact click-by-click instructions
+  for the few things only a human can actually do (Vercel/Supabase account setup and dashboard
+  actions; iOS signing & provisioning, running on a real device, App Store Connect metadata entry,
+  TestFlight review submission).
 - The docs in `Docs/` are living documents — update them as decisions change, with dated entries
   (don't just silently overwrite prior reasoning). Do an occasional consistency sweep across them
   when they've accumulated a lot of piecemeal edits.
 - Commit to git at meaningful *completed* milestones, not continuously mid-task — see
   [Docs/ProcessAndRoles.md](Docs/ProcessAndRoles.md) for why this matters here specifically.
-- Never spend real money (Apple Developer Program's $99/year, paid dependencies, paid backend
-  services) without an explicit go-ahead — see
-  [Docs/DevelopmentPlan.md](Docs/DevelopmentPlan.md).
+- Never spend real money (Apple Developer Program's $99/year, upgrading Supabase/Vercel past their
+  free tiers, any other paid dependency) without an explicit go-ahead — see
+  [Docs/DevelopmentPlan.md](Docs/DevelopmentPlan.md) and [Docs/TechArchitecture.md](Docs/TechArchitecture.md).
 - Before stopping/pausing a session (running out of usage, or just wrapping up for the day): make
   sure any in-flight background agent's work is actually pushed (if a remote exists) or at minimum
   committed to its own branch. Update `Docs/STATUS.md` so a cold-start session tomorrow — even from

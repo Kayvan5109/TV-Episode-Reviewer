@@ -28,9 +28,13 @@ Cross-link between these, don't duplicate content.
 
 | Kind of work | Pattern |
 |---|---|
-| Feel-based (UI layout, animation, visual polish, onboarding copy) | Implementer agent, self-verified → hands-on check on Simulator/device is the real test |
-| Correctness-critical (ranking algorithm, persistence/migrations, any networking/API integration, concurrency) | Implementer agent → independent reviewer agent (fresh eyes) → hands-on confirmation |
+| Feel-based (UI layout, animation, visual polish, onboarding copy) | Implementer agent, self-verified → hands-on check in-browser/Simulator is the real test |
+| Correctness-critical (ranking algorithm, auth/accounts, database schema/access rules, persistence/migrations, any networking/API integration, concurrency) | Implementer agent → independent reviewer agent (fresh eyes) → hands-on confirmation |
 | Research/open questions | One read-only research agent → PM Claude synthesizes into `Docs/` |
+
+This applies on both platforms — the website first, the iOS app once that phase starts. Auth/
+accounts and database access rules (making sure one user can never read/write another user's data)
+are explicitly correctness-critical now that real accounts exist — see `Risks.md`.
 
 Real code changes get `isolation: "worktree"` (a separate git worktree per agent, so parallel
 agents never collide on the same working tree); doc-only/read-only work doesn't need it.

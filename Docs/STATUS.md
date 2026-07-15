@@ -12,10 +12,11 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence:**
-1. Phase 0: prototype the ranking algorithm (Beli-style binary-insertion comparison with
-   common-episode tie-break, plus the v1 score-from-position formula — see `DevelopmentPlan.md`
-   Phase 0) — this is the riskiest, least-proven part of the app and should be settled before any
-   real UI work starts.
+1. Phase 0: prototype the ranking algorithm in TypeScript (Beli-style binary-insertion comparison
+   with common-episode tie-break, plus the v1 score-from-position formula), stand up the Supabase
+   project (Auth + schema), and prove the TMDB proxy + Next.js/Vercel deploy path — see
+   `DevelopmentPlan.md` Phase 0. This is the riskiest, least-proven part of the app and should be
+   settled before any real website UI work starts.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
 (empty for now)
@@ -25,8 +26,9 @@ unless it's small or genuinely blocking.
    exist, what to do when none exist yet. See `DevelopmentPlan.md`'s Ranking Algorithm section.
 
 **Bucket 4 — Backlog, logged, not being chased:**
-1. iCloud/CloudKit sync across devices — app is on-device-only for now (see `TechArchitecture.md`);
-   revisit if cross-device sync becomes wanted.
+1. Shared test-fixture format to keep the TypeScript (website) and Swift (iOS) ranking-algorithm
+   implementations from drifting apart — relevant once the iOS phase (Phase 4) starts porting the
+   algorithm, not before. See `DevelopmentPlan.md` Discussion.
 
 **Bucket 5 — Rework flagged for a later phase, not being worked now:**
 (empty for now)
@@ -37,8 +39,13 @@ Solo judgment calls made mid-session that weren't slept on get logged here and s
 start of the next session for a second look — even solo, "I decided this at 11pm without thinking
 it through" is worth a deliberate re-check, not silent acceptance.
 
-(empty — nothing pending; the SwiftData/on-device deviation logged at initial bootstrap was reviewed
-and resolved below now that data sourcing and the ranking model are confirmed)
+- 2026-07-15: Picked the specific backend/hosting vendors — **Supabase** (Postgres + Auth) and
+  **Vercel** (website hosting) — when Kayvan asked for a website-first, shared-account architecture
+  and said "let me pick" on tech stack specifics. This is a real third-party dependency (accounts,
+  data, hosting) chosen unilaterally rather than independently vetted, even though it was within the
+  scope of what was asked. Worth a second look next session, especially the choice to trust Supabase
+  with auth/account security rather than building that in-house — see `TechArchitecture.md`'s Why
+  section and `Risks.md` for the reasoning.
 
 ## History
 
@@ -46,6 +53,19 @@ and resolved below now that data sourcing and the ranking model are confirmed)
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-15: Major architecture pivot: **website first, then iOS**, sharing one account system.
+  Kayvan wants a website built first (not thrown away afterward) so the ranking algorithm and score
+  formula can be tuned through fast iteration and real usage before committing to native iOS work.
+  Rankings are tied to an email/password account (Supabase Auth), shared between the website and the
+  future iOS app via a shared Supabase Postgres backend — this replaces the earlier "fully on-device,
+  no backend" decision entirely. Stack: Next.js + Vercel for the website, Supabase for
+  accounts/database, a Next.js API route proxying TMDB for both clients; SwiftUI + `supabase-swift`
+  for the iOS app later. `DevelopmentPlan.md`'s phases renumbered/restructured: Phases 0-3 are now
+  website (de-risk → vertical slice → feature completeness → polish), Phases 4-5 are iOS (build →
+  polish/launch prep), Phase 6 is post-launch. Updated `TechArchitecture.md`, `AppSpec.md` (accounts
+  core flow, per-user data model), `Risks.md` (vendor/auth/algorithm-drift risks), `CLAUDE.md`, and
+  `ProcessAndRoles.md`. See Deviations above — the specific vendor choice (Supabase/Vercel) is
+  flagged for a second look.
 - 2026-07-15: Third follow-up round: worked out the score-from-position formula's direction
   together — **linear**, **per-show only** (a show's best episode is always a 10 regardless of the
   show's overall quality), **scores shift on every insertion** (so 1-10 is derived from current rank

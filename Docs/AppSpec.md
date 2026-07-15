@@ -26,11 +26,20 @@ mechanic and the main thing Phase 0 exists to prove out.
 
 ## Target platform
 
-- Minimum iOS version: iOS 17.0+ (adjust once real device/testing constraints are known)
-- UI framework: SwiftUI
-- Devices: iPhone (primary); iPad support not a target for now
+Built as a **website first**, then a native **iOS app** second, sharing one account system — see
+`DevelopmentPlan.md`'s "The Idea" and Development Phases for why and the sequencing.
+
+- **Website**: any modern desktop/mobile browser (Next.js, responsive layout assumed but not
+  deeply optimized for mobile web given the iOS app covers that use case later)
+- **iOS app** (Phase 4+): minimum iOS version iOS 17.0+ (adjust once real device/testing constraints
+  are known), SwiftUI, iPhone primary, iPad not a target for now
 
 ## Core flows
+
+### Account (sign up / log in)
+A user signs up with an email (and password) via Supabase Auth, or logs into an existing account.
+All ranking data is tied to this account, not to a device or browser — the same account works on
+the website and, later, the iOS app. See `TechArchitecture.md` for the backend.
 
 ### Show selection
 User picks the TV show whose episodes they want to rank. Show/episode metadata (titles, season and
@@ -59,18 +68,20 @@ A per-show list of ranked episodes, each showing its current 1-10 score, presuma
 
 ## Data model (at a glance)
 
-Rough shape, to be refined once the ranking algorithm (Phase 0) is settled:
+Rough shape, to be refined once the ranking algorithm (Phase 0) is settled. Lives in Supabase
+Postgres, shared by both clients — see `TechArchitecture.md`:
 
+- **User**: identifier, email (managed by Supabase Auth). All other data below is scoped to a user.
 - **Show**: identifier, TMDB show ID, title, poster/art (from TMDB)
 - **Episode**: identifier, show reference, season number, episode number, title
-- **Ranking state per episode**: current rank position within its show, and a **comparison
-  history** (which other episodes it's been directly compared against, and the result) — this is
-  the durable state. The **1-10 score is derived, not stored as source of truth**: since scores
-  shift whenever a new episode is inserted (see `DevelopmentPlan.md`), it gets (re)computed from an
-  episode's current rank position and the show's current episode count rather than persisted as an
-  independent value. The comparison history is required (not just a rank position) since the
-  tie-break mechanic needs to look up what a given episode has already been compared to in order to
-  find a common reference episode.
+- **Ranking state per episode** (scoped to a user + show): current rank position within its show,
+  and a **comparison history** (which other episodes it's been directly compared against, and the
+  result) — this is the durable state. The **1-10 score is derived, not stored as source of truth**:
+  since scores shift whenever a new episode is inserted (see `DevelopmentPlan.md`), it gets
+  (re)computed from an episode's current rank position and the show's current episode count rather
+  than persisted as an independent value. The comparison history is required (not just a rank
+  position) since the tie-break mechanic needs to look up what a given episode has already been
+  compared to in order to find a common reference episode.
 
 ## Monetization
 
