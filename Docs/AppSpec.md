@@ -48,8 +48,10 @@ position is found (roughly log2(n) comparisons, not a fixed count). A "neutral" 
 triggers a follow-up comparison against a *common reference episode* — one the tied-against episode
 has itself already been compared to — to break the tie using shared context rather than leaving it
 unresolved. See `DevelopmentPlan.md`'s "Ranking Algorithm" section for the full mechanic and its
-still-open sub-questions. The final position maps to a 1-10 score; the exact formula for that is
-still an open discussion — see `DevelopmentPlan.md`'s "Discussion" section.
+still-open sub-questions. The final position maps to a 1-10 score via a linear, per-show formula
+that recomputes on every insertion (so existing episodes' scores can shift) — see
+`DevelopmentPlan.md`'s "Discussion" section for the current v1 formula, which is a starting point
+expected to need tuning, not a locked answer.
 
 ### Score display / episode list
 A per-show list of ranked episodes, each showing its current 1-10 score, presumably sorted by rank.
@@ -61,10 +63,14 @@ Rough shape, to be refined once the ranking algorithm (Phase 0) is settled:
 
 - **Show**: identifier, TMDB show ID, title, poster/art (from TMDB)
 - **Episode**: identifier, show reference, season number, episode number, title
-- **Ranking state per episode**: current 1-10 score, current rank position within its show, and a
-  **comparison history** (which other episodes it's been directly compared against, and the result)
-  — the history is required, not just a final score, since the tie-break mechanic needs to look up
-  what a given episode has already been compared to in order to find a common reference episode
+- **Ranking state per episode**: current rank position within its show, and a **comparison
+  history** (which other episodes it's been directly compared against, and the result) — this is
+  the durable state. The **1-10 score is derived, not stored as source of truth**: since scores
+  shift whenever a new episode is inserted (see `DevelopmentPlan.md`), it gets (re)computed from an
+  episode's current rank position and the show's current episode count rather than persisted as an
+  independent value. The comparison history is required (not just a rank position) since the
+  tie-break mechanic needs to look up what a given episode has already been compared to in order to
+  find a common reference episode.
 
 ## Monetization
 
@@ -78,8 +84,9 @@ gets a line in `DevelopmentPlan.md`'s Development Phases / Issues sections. Full
 of the ranking algorithm's open questions lives in `DevelopmentPlan.md` — this list is a short
 pointer, not a duplicate:
 
-- **Score-from-position formula** — see `DevelopmentPlan.md`'s "Discussion" section (actively being
-  worked out together, not yet decided).
+- **Score-from-position formula's exact constants** — direction is decided (linear, per-show,
+  shifts on insertion, compresses for small samples), but the v1 curve is a hypothesis pending
+  real-world tuning. See `DevelopmentPlan.md`'s "Discussion" section.
 - **Tie-break common-episode selection** — see `DevelopmentPlan.md`'s "Ranking Algorithm" section
   (which common episode to pick when several exist; what happens when none exist yet).
 - **Re-ranking**: if a user's opinion of an old episode changes, can they re-rank it, and does that

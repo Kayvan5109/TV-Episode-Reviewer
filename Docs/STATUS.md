@@ -13,16 +13,15 @@ unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence:**
 1. Phase 0: prototype the ranking algorithm (Beli-style binary-insertion comparison with
-   common-episode tie-break — see `DevelopmentPlan.md` Phase 0) — this is the riskiest,
-   least-proven part of the app and should be settled before any real UI work starts.
+   common-episode tie-break, plus the v1 score-from-position formula — see `DevelopmentPlan.md`
+   Phase 0) — this is the riskiest, least-proven part of the app and should be settled before any
+   real UI work starts.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
 (empty for now)
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
-1. Score-from-rank-position formula — actively being discussed together, see `DevelopmentPlan.md`'s
-   Discussion section. Not yet resolved.
-2. Tie-break common-episode selection mechanics — which episode to pick when several candidates
+1. Tie-break common-episode selection mechanics — which episode to pick when several candidates
    exist, what to do when none exist yet. See `DevelopmentPlan.md`'s Ranking Algorithm section.
 
 **Bucket 4 — Backlog, logged, not being chased:**
@@ -47,6 +46,15 @@ and resolved below now that data sourcing and the ranking model are confirmed)
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-15: Third follow-up round: worked out the score-from-position formula's direction
+  together — **linear**, **per-show only** (a show's best episode is always a 10 regardless of the
+  show's overall quality), **scores shift on every insertion** (so 1-10 is derived from current rank
+  position + episode count, not stored as source of truth — see `AppSpec.md` data model), and
+  **compresses for small sample sizes**, reaching the full 1-10 spread around 8 ranked episodes.
+  Recorded a concrete v1 formula in `DevelopmentPlan.md`'s Discussion section as a tunable starting
+  point — Kayvan explicitly expects this to need real tuning once there's an app to test it in, so
+  it's not being treated as settled. Remaining open item narrowed to just the tie-break
+  common-episode selection mechanics (Bucket 3 above).
 - 2026-07-15: Second follow-up round: confirmed **3 cold-start buckets** (liked/disliked/neutral,
   matching Beli, not the original binary liked/disliked); designed the **tie-break mechanic** — a
   "neutral" comparison result triggers a follow-up comparison against a common reference episode

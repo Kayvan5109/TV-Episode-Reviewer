@@ -6,10 +6,10 @@ ruled out and why).
 
 ## Open risks
 
-- **Score-from-position formula may not converge to sensible scores.** The binary-insertion
-  comparison mechanic (Beli-style) is well-proven for *ordering* episodes, but the remaining question
-  — how a rank position maps to a 1-10 number, and how that number should shift as more episodes get
-  inserted into the list — is still unresolved and is the Phase 0 de-risking target.
+- **Score-from-position formula's v1 constants are unproven.** Direction is decided (linear,
+  per-show, shifts on insertion, compresses for small samples — see `DevelopmentPlan.md`), but the
+  exact curve (e.g. "full range by 8 episodes") is a guess pending real usage. Explicitly expected to
+  need tuning, not a one-and-done design.
 - **TMDB API dependency**: needs an API key (free tier) and network access to browse/add shows.
   Rate limits and API availability are outside this project's control; if TMDB is ever down or
   unreachable, browsing new shows breaks even though existing ranking data (on-device) is unaffected.

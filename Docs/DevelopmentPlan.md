@@ -39,9 +39,10 @@ understanding, most-resolved-first:
    - What happens if B has no prior comparison history yet (e.g. B was placed very early, or B's
      placement also came from a tie that's still unresolved) — does the tie-break recurse, fall back
      to a different mechanism, or stay an open tie until more data exists?
-4. **Score-from-position formula**: not yet decided — see Discussion below. This is the one thing
-   still needing a real back-and-forth before Phase 0 can be considered feature-complete, since
-   ordering episodes correctly (steps 1-3) doesn't by itself tell you what number to show the user.
+4. **Score-from-position formula** (direction decided 2026-07-15, exact curve is a Phase 0 v1
+   hypothesis to be tuned through testing, not a final answer): linear, per-show only, and
+   **recomputed on every insertion** — see Discussion below for the full reasoning and the current
+   working formula.
 
 ## Discussion — Ideas & Open Questions to Work Out Together
 
@@ -49,34 +50,43 @@ Live scratchpad for things worth talking through before they're locked in. Once 
 resolved, it moves up into "Ranking Algorithm" or `AppSpec.md` with a decided-on date, and a note
 stays here pointing to where it landed.
 
-### Active: turning rank position into a 1-10 score
+### Resolved (2026-07-15, direction only — expect heavy tuning): turning rank position into a 1-10 score
 
-This is genuinely open and needs discussion, not something to guess at unilaterally. Some framing,
-to kick off that conversation:
+Beli's exact internal formula isn't public, so this is genuinely ours to design — decided direction,
+answered against the framing questions raised earlier:
 
-- **What we know about Beli's approach**: broadly, apps like this normalize an item's position
-  within its fully-ranked list into a score range — better position → higher score — rather than
-  scoring each comparison independently (there's no way to derive an absolute "9.2" from a single
-  better/worse/neutral answer; the number only means something relative to everything else ranked
-  so far). The exact curve/formula Beli uses internally isn't public, so "modeled on Beli" so far
-  means "the comparison mechanic," not a specific known scoring formula — that part is ours to
-  design.
-- **Design questions worth deciding together**:
-  - Is the score a simple linear function of rank position (e.g. top episode = 10, bottom = some
-    floor, evenly spaced in between), or non-linear (e.g. compressed at the top so only truly
-    exceptional episodes get 9s/10s)?
-  - Does the score for existing episodes shift every time a new episode is inserted into the
-    ranking (since positions shift), or does a score "settle" and only get revisited occasionally?
-    A shifting score is more mathematically honest but means numbers change on their own over time,
-    which might feel odd; a settled score is more stable but can drift out of sync with the true
-    ordering.
-  - Is scoring per-show only (a show's #1 episode is always a 10, regardless of how good it
-    actually is relative to other shows), or is there ever a cross-show normalization? (Ties into
-    the still-open "cross-show ranking" question below.)
-  - Floor/ceiling behavior for very small shows: does a show with only 2 ranked episodes really
-    have a "10" and a "1," or should score range compress for small sample sizes?
-- **Not yet decided.** Flag this back up whenever we're ready to hash it out — it doesn't block
-  prototyping the comparison/placement mechanic (steps 1-3 above), only the final score display.
+- **Linear, for now** — kept deliberately simple as a v1 to prototype against, with the explicit
+  expectation that getting this to *feel* right will take real testing and iteration once there's an
+  actual app to try it in. Not treated as a final answer.
+- **Scores shift on every insertion.** Ranking a new episode can change every other episode's score
+  in that show, not just settle the new one. This has a real data-model consequence: **the 1-10
+  score is derived, not stored as source of truth** — the durable state is each episode's comparison
+  history / rank position, and the displayed score gets (re)computed from current rank position and
+  the show's current episode count whenever it's shown or whenever a new episode is inserted. See
+  `AppSpec.md`'s data model.
+- **Per-show only.** A show's best-ranked episode is always a 10, and its worst-ranked is always a 1
+  (subject to the small-sample compression below) — regardless of whether the show itself is great
+  or terrible. No cross-show normalization. This also resolves the "cross-show ranking" open idea
+  below in the negative for scoring purposes (ranking itself was already assumed within-show).
+- **Range compresses for small sample sizes.** A show with only 1-2 ranked episodes shouldn't
+  immediately claim a full 1-10 spread; the gap between best and worst should widen as more episodes
+  get ranked, reaching the full range around where most shows actually sit (~6-8 episodes).
+
+**Working v1 formula** (a concrete starting point to prototype in Phase 0, expected to need tuning):
+for a show with `N` ranked episodes, an episode at rank position `p` (1 = best, `N` = worst) scores:
+
+```
+spread(N) = 9 * min(1, (N - 1) / 7)      # reaches the full 9-point spread at N = 8
+score(p, N) = 10 - (p - 1) * spread(N) / (N - 1)     # for N > 1
+score(1, 1) = 10                                      # single-episode case
+```
+
+This gives a single ranked episode a 10 by definition (satisfies "best is always a 10"), a small
+compressed spread for a handful of episodes (e.g. at N=2, worst episode ≈ 8.7, not 1), and the full
+1-10 spread once a show reaches 8 ranked episodes. The `7` in `spread(N)` (i.e. "full range by N=8")
+is a tunable constant, not a fixed law — expect to adjust it, and possibly the linear shape itself,
+once this is actually being used. Flag any of this back up for a rethink once real usage makes it
+feel off.
 
 ### Other open ideas (lower priority, not blocking Phase 0)
 
@@ -105,8 +115,9 @@ What "done" looks like:
 - The comparison/placement mechanic (cold-start bucket → binary-insertion comparative placement →
   tie-break via common comparison episode) implemented and unit-tested against made-up episode
   data, run from the command line or a minimal test harness — no SwiftUI screens needed yet.
-- The score-from-position formula (see Discussion above) decided and implemented, with tests
-  showing it produces sensible-looking scores across a range of show sizes (tiny show, large show).
+- The v1 score-from-position formula (see Discussion above) implemented, with tests showing it
+  produces sensible-looking scores across a range of show sizes (1 episode, a handful, 8+) — treated
+  as a tunable starting point, not a final formula.
 - A basic TMDB API integration proven end-to-end: fetch a show, fetch its episode list, map it into
   the app's data model.
 - XcodeGen or Tuist chosen and the project scaffolded from a plain-text config (see
@@ -152,8 +163,9 @@ Things to refer back to. Real code bugs get added here once Phase 0 produces act
 this is design/algorithm-level unresolved items (implementation bugs will get their own dated
 entries once there's code to have bugs in).
 
-1. **Score-from-rank-position formula is undecided.** See Discussion above — blocks Phase 0
-   completion, doesn't block starting the comparison-mechanic prototype.
+1. **Score-from-rank-position formula is a v1 hypothesis, not tuned.** Direction is decided (linear,
+   per-show, shifts on insertion, compresses for small samples — see Discussion above), but the
+   exact curve/constants will need real tuning once there's an app to test it in.
 2. **Tie-break "common comparison episode" selection is underspecified**: which episode to pick when
    multiple candidates exist, and what to do when no common episode exists yet. See "Ranking
    Algorithm" above.
