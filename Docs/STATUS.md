@@ -3,7 +3,11 @@
 **Read this file first** — before the other docs, before doing anything else. It's the single
 "what's actually going on right now" pointer, kept short and current on purpose.
 
-Last updated: 2026-07-15 (later same day), **clean deliberate stop.** No agent is running.
+Last updated: 2026-07-15 (later same day). **Paused mid-Phase-0, awaiting review.** An implementer
+agent finished the ranking-algorithm prototype + website scaffold; nothing is committed or merged
+yet — it's sitting in a worktree pending the independent-review pass this correctness-critical work
+requires (see `ProcessAndRoles.md`). Paused here rather than reviewing/merging immediately due to
+session budget.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -12,11 +16,16 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence:**
-1. Phase 0: prototype the ranking algorithm in TypeScript (Beli-style binary-insertion comparison
-   with common-episode tie-break, plus the v1 score-from-position formula), stand up the Supabase
-   project (Auth + schema), and prove the TMDB proxy + Next.js/Vercel deploy path — see
-   `DevelopmentPlan.md` Phase 0. This is the riskiest, least-proven part of the app and should be
-   settled before any real website UI work starts.
+1. **Review and merge the Phase 0 algorithm/scaffold work.** An implementer agent built the
+   ranking-algorithm module (`website/src/lib/ranking/`) and a minimal Next.js scaffold — 42/42 tests
+   pass, typecheck/lint/build all clean. Sitting uncommitted in worktree
+   `.claude\worktrees\agent-a5d288589bf0cb0ed` (branch `worktree-agent-a5d288589bf0cb0ed`, already
+   fast-forwarded onto `main` at `cfe900d`). Needs the independent-reviewer pass before merge (see
+   `ProcessAndRoles.md`) — not yet done, paused for session budget. See Deviations below for the 7
+   judgment calls the implementer made, one of which (#7, cold-start→comparative migration) actually
+   pre-empts an open `AppSpec.md` question and needs your input, not just a code review.
+2. Once merged: stand up the Supabase project (Auth + schema) and prove the TMDB proxy +
+   Next.js/Vercel deploy path — the rest of `DevelopmentPlan.md` Phase 0.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
 (empty for now)
@@ -39,6 +48,29 @@ Solo judgment calls made mid-session that weren't slept on get logged here and s
 start of the next session for a second look — even solo, "I decided this at 11pm without thinking
 it through" is worth a deliberate re-check, not silent acceptance.
 
+- 2026-07-15: Implementer agent made 7 judgment calls while building the ranking-algorithm prototype
+  (`website/src/lib/ranking/`), each marked `JUDGMENT CALL` in the source. Most-important-first:
+  1. **(Needs your input, not just review)** Cold-start episodes get permanently folded into the
+     comparative comparison pool the first time a show crosses the cold-start threshold
+     (`engine.ts`, `addComparativeEpisode`) — this wasn't specified anywhere and effectively answers
+     `AppSpec.md`'s open "do cold-start-only episodes ever join the comparison pool?" question by
+     assuming "yes, immediately." Worth an explicit decision rather than letting this stand by
+     default.
+  2. Cold-start bucket ordering (`coldStart.ts`): liked > neutral > disliked; most-recent-first
+     within a bucket. Arbitrary, undiscussed.
+  3. Common-reference-episode selection when several candidates exist (`comparativePlacement.ts`,
+     `findCommonReference`): picks the partner closest to the tied-against episode in current rank
+     position. This is the actual answer to the open Bucket-3 item above — needs confirmation, not
+     just awareness.
+  4. Tie-break recursion mechanics: the new subject-vs-common-reference result stands in directly
+     for the neutral subject-vs-B result to keep narrowing the same binary-search bounds, rather than
+     treating the common reference's own rank position as a separate bound.
+  5. Recursion cap: after 3 all-neutral tie-break attempts, falls back to inserting adjacent to the
+     last-compared episode.
+  6. No-history fallback: if the tied-against episode has no comparison history yet, skip tie-break
+     entirely and insert adjacent to it.
+  7. "Adjacent" direction in both fallbacks above means immediately *after* (worse than) the
+     reference episode — arbitrary, could equally be "before."
 - 2026-07-15: Picked the specific backend/hosting vendors — **Supabase** (Postgres + Auth) and
   **Vercel** (website hosting) — when Kayvan asked for a website-first, shared-account architecture
   and said "let me pick" on tech stack specifics. This is a real third-party dependency (accounts,
