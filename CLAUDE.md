@@ -25,9 +25,9 @@ lives in `Docs/`:
   next).
 - [Docs/AppSpec.md](Docs/AppSpec.md) — the product spec: screens, flows, features, data model at a
   glance — what the app actually is and does.
-- [Docs/Roadmap.md](Docs/Roadmap.md) — phased plan; its Phase Status table is the whole project's
-  timeline at a glance, and its Idea & Decision Backlog is the comprehensive, phase-indexed list of
-  everything not yet decided.
+- [Docs/DevelopmentPlan.md](Docs/DevelopmentPlan.md) — the primary planning doc: the idea, the
+  ranking algorithm's current design, a running discussion space for open questions, detailed
+  development phases, and a list of currently-unresolved issues.
 - [Docs/Risks.md](Docs/Risks.md) — unknown-unknowns / risk log.
 - [Docs/TechArchitecture.md](Docs/TechArchitecture.md) — chosen stack + reasoning.
 - [Docs/ProcessAndRoles.md](Docs/ProcessAndRoles.md) — how work gets done here; read it in full
@@ -65,8 +65,8 @@ silently assumed settled. Full reasoning in [Docs/ProcessAndRoles.md](Docs/Proce
 - Commit to git at meaningful *completed* milestones, not continuously mid-task — see
   [Docs/ProcessAndRoles.md](Docs/ProcessAndRoles.md) for why this matters here specifically.
 - Never spend real money (Apple Developer Program's $99/year, paid dependencies, paid backend
-  services) without an explicit go-ahead — see the Idea & Decision Backlog in
-  [Docs/Roadmap.md](Docs/Roadmap.md).
+  services) without an explicit go-ahead — see
+  [Docs/DevelopmentPlan.md](Docs/DevelopmentPlan.md).
 - Before stopping/pausing a session (running out of usage, or just wrapping up for the day): make
   sure any in-flight background agent's work is actually pushed (if a remote exists) or at minimum
   committed to its own branch. Update `Docs/STATUS.md` so a cold-start session tomorrow — even from

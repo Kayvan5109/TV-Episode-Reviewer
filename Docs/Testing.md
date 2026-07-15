@@ -1,7 +1,7 @@
 # Episode Ranker — Testing
 
 Operational manual-test staging: how to actually run a build and check it, distinct from
-`Roadmap.md`'s "what/when" and `STATUS.md`'s "what's next right now."
+`DevelopmentPlan.md`'s "what/when" and `STATUS.md`'s "what's next right now."
 
 ## How to build and run
 

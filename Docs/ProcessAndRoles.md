@@ -12,7 +12,8 @@ critical work before it's called done.
 
 **The doc set, and what each one actually owns**:
 - `STATUS.md` — the **dashboard**. Read first, every session.
-- `Roadmap.md` — **the plan**. Phase Status table + phase-indexed Idea & Decision Backlog.
+- `DevelopmentPlan.md` — **the plan**. The idea, current ranking-algorithm design, a running
+  discussion space for open questions, detailed development phases, and unresolved issues.
 - `AppSpec.md` — **the design content**. What each screen/flow/feature actually is.
 - `Risks.md` — the risk/gotcha log, plus resolved technical risks.
 - `TechArchitecture.md` — the chosen stack and why.
@@ -40,10 +41,11 @@ apparent `.xcodeproj`/`project.pbxproj` conflict by regenerating from the source
 principle as never hand-patching a compiled artifact.
 
 **How ideas/decisions get tracked**: every open item is classified into one of 5 buckets (Blocking
-/ Bug / Design decision / Backlog / Rework) the moment it surfaces, tagged with the `Roadmap.md`
-phase it needs deciding by. Defaults to "log it, don't chase it" unless it's small or actually
-blocking. Whenever a new phase starts, proactively review the Backlog for anything tagged to it — a
-**Phase-Entry Decision Review** — rather than waiting to notice it in a table.
+/ Bug / Design decision / Backlog / Rework) the moment it surfaces, tagged with the
+`DevelopmentPlan.md` phase it needs deciding by. Defaults to "log it, don't chase it" unless it's
+small or actually blocking. Whenever a new phase starts, proactively review the Backlog for
+anything tagged to it — a **Phase-Entry Decision Review** — rather than waiting to notice it in a
+table.
 
 **How git/commits work**: `main` only ever gets reviewed, verified, completed-milestone commits.
 Unfinished/unreviewed work still gets committed and pushed (if a remote exists), just to a separate

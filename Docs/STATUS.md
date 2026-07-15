@@ -12,17 +12,18 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence:**
-1. Phase 0: prototype the ranking algorithm (Beli-style binary-insertion comparison — see
-   `Roadmap.md` Phase 0) — this is the riskiest, least-proven part of the app and should be settled
-   before any real UI work starts.
+1. Phase 0: prototype the ranking algorithm (Beli-style binary-insertion comparison with
+   common-episode tie-break — see `DevelopmentPlan.md` Phase 0) — this is the riskiest,
+   least-proven part of the app and should be settled before any real UI work starts.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
 (empty for now)
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
-1. Neutral middle bucket — Beli uses 3 initial buckets (liked/fine/disliked); this app's spec has 2
-   (liked/disliked). Confirm which before/during Phase 0. See `AppSpec.md` Open Design Questions.
-2. "Same" / tie handling — exact tie vs. secondary tiebreak. See `AppSpec.md` Open Design Questions.
+1. Score-from-rank-position formula — actively being discussed together, see `DevelopmentPlan.md`'s
+   Discussion section. Not yet resolved.
+2. Tie-break common-episode selection mechanics — which episode to pick when several candidates
+   exist, what to do when none exist yet. See `DevelopmentPlan.md`'s Ranking Algorithm section.
 
 **Bucket 4 — Backlog, logged, not being chased:**
 1. iCloud/CloudKit sync across devices — app is on-device-only for now (see `TechArchitecture.md`);
@@ -46,12 +47,19 @@ and resolved below now that data sourcing and the ranking model are confirmed)
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
-- 2026-07-15: Follow-up design/technical questions answered by Kayvan, closing out several open
-  items: show/episode data source is **TMDB API**; ranking mechanic is modeled on **Beli**'s
-  binary-insertion comparison approach; cold-start threshold is **~3-5 episodes**; visual design
-  stays undecided until Phase 1. Docs updated accordingly (`AppSpec.md`, `TechArchitecture.md`,
-  `Roadmap.md`, `Risks.md`). Remaining open items narrowed to: score-from-position formula, 2 vs. 3
-  initial buckets, and "same"/tie handling — see Bucket 1 and Bucket 3 above.
+- 2026-07-15: Second follow-up round: confirmed **3 cold-start buckets** (liked/disliked/neutral,
+  matching Beli, not the original binary liked/disliked); designed the **tie-break mechanic** — a
+  "neutral" comparison result triggers a follow-up comparison against a common reference episode
+  (one the tied-against episode has already been compared to) rather than leaving the tie
+  unresolved. `Docs/Roadmap.md` renamed to `Docs/DevelopmentPlan.md` and restructured into: The Idea,
+  Ranking Algorithm (current design), Discussion (open questions to work out together), Development
+  Phases (much more detailed than the old Phase Status table), and Issues. The score-from-position
+  formula remains genuinely open — flagged for direct discussion, not something to decide
+  unilaterally. All cross-references updated across `CLAUDE.md`, `AppSpec.md`, `ProcessAndRoles.md`,
+  `Testing.md`.
+- 2026-07-15: First follow-up round: closed out data-source and ranking-model questions — show/
+  episode data source is **TMDB API**; ranking mechanic is modeled on **Beli**'s binary-insertion
+  comparison approach; cold-start threshold is **~3-5 episodes**; visual design stays undecided
+  until Phase 1.
 - 2026-07-15: Initial bootstrap — PM-Claude operating docs created (`CLAUDE.md`, all of `Docs/`).
-  No app code written yet. See `AppSpec.md` Open Design Questions and `Roadmap.md` Phase 0 for the
-  actual starting point.
+  No app code written yet.
