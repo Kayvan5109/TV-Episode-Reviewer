@@ -25,13 +25,14 @@ tagged to it and surface it plainly (a **Phase-Entry Decision Review**) rather t
 to be noticed.
 
 **Phase 0:**
-- Show/episode data sourcing: manual entry vs. an external TV metadata API (TheTVDB, TMDB, etc.).
-  See `AppSpec.md` Open Design Questions.
-- Ranking algorithm specifics: value of X (how many comparison episodes), how those episodes get
-  selected, and how "better/worse/same" answers convert into a 1-10 score. See `AppSpec.md` Open
-  Design Questions.
-- Cold-start threshold: how many liked/disliked-only episodes before a show switches into
-  comparative ranking mode.
+- ~~Show/episode data sourcing~~ — **decided 2026-07-15**: TMDB API. See `TechArchitecture.md`.
+- ~~Cold-start threshold~~ — **decided 2026-07-15**: ~3-5 episodes. See `AppSpec.md`.
+- ~~Ranking algorithm model~~ — **decided 2026-07-15**: Beli-style binary-insertion comparison
+  (compare against a midpoint episode, narrow the range each answer). See `AppSpec.md`.
+- Still open, part of the Phase 0 prototype itself: score-from-rank-position formula, whether to add
+  a neutral middle bucket (Beli uses 3: liked/fine/disliked; this spec has 2 so far), and how a
+  "same" answer is represented (exact tie vs. secondary tiebreak). See `AppSpec.md` Open Design
+  Questions.
 
 **Phase 1+:**
 - Re-ranking of previously-scored episodes.

@@ -19,9 +19,12 @@ made, not preemptively.
 - **Persistence**: SwiftData, tentatively. Chosen as the default for a fully on-device, no-backend
   app; not yet battle-tested against the actual ranking-algorithm data model, so treat as a Phase 0
   working assumption, not a final decision.
-- **Networking/backend**: None for now — app is fully on-device. Depends on the still-open
-  show/episode data sourcing question in `AppSpec.md`: if an external metadata API (e.g. TheTVDB,
-  TMDB) is chosen over manual entry, this section needs to be revisited to add a networking layer.
+- **Networking/backend**: no ranking-data backend (all ranking state stays on-device in SwiftData),
+  but the app does call the **TMDB API** to fetch show/episode metadata (titles, season/episode
+  numbers, artwork) — see `AppSpec.md`. This means "fully on-device" applies to user data, not to
+  metadata lookups; the app needs network access and a TMDB API key (free tier) to browse/add shows.
+  Needs an API-key storage approach (e.g. a config file or `xcconfig` kept out of git) once Phase 0
+  starts.
 - **Testing**: XCTest for unit/integration tests, especially for the ranking algorithm once it
   exists (this is the part of the app most worth having real test coverage on). XCUITest for UI
   testing not planned for now — feel-based UI work gets hands-on Simulator checks instead (see
@@ -33,10 +36,14 @@ made, not preemptively.
 - **2026-07-15 — SwiftUI over UIKit**: Kayvan is a complete Xcode/Swift beginner who wants to stay
   mostly hands-off in Xcode. SwiftUI avoids most Interface Builder/Storyboard GUI wiring, which UIKit
   would require. This is the single biggest lever for keeping the project scriptable/CLI-drivable.
-- **2026-07-15 — Fully on-device, no backend, SwiftData for persistence**: no user/account system or
+- **2026-07-15 — No ranking-data backend, SwiftData for persistence**: no user/account system or
   cross-device sync was requested, this is a personal-use app with no monetization, and avoiding a
-  backend avoids both cost and operational complexity. Logged as a Deviation Awaiting Review in
-  `STATUS.md` since it was a general recommendation rather than an explicit requirement — worth
-  revisiting once the show/episode data sourcing question (which may require network access anyway)
-  is resolved.
+  backend avoids both cost and operational complexity.
+- **2026-07-15 — TMDB API for show/episode metadata**: confirmed by Kayvan over manual entry — free,
+  well-documented, has artwork. Means the app isn't purely offline (needs network access to browse/
+  add shows), even though ranking data itself never leaves the device.
+- **2026-07-15 — Ranking mechanic modeled on Beli**: confirmed by Kayvan. Binary-insertion-style
+  comparison (compare new episode against a midpoint episode, narrow the range each answer) rather
+  than a fixed count of comparisons against arbitrary episodes — see `AppSpec.md` for the mechanic
+  and its still-open specifics (score-from-position formula, bucket count, tie handling).
 - **2026-07-15 — No monetization**: personal use, explicitly no ads/IAP/subscription for now.
