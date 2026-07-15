@@ -8,6 +8,11 @@ later, a native **iOS app** — see `DevelopmentPlan.md` for why and the phase s
 to the same account system and the same ranking data, so a user's rankings are the same whether they
 use the site or the app.
 
+**Repo layout**: `website/` holds the Next.js project; `supabase/` (top-level, sibling to
+`website/`, not nested inside it) holds the Supabase schema/migrations via the Supabase CLI +
+GitHub integration — kept at the repo root since it's shared backend, not something the website
+subproject owns. An `ios/` directory joins them at the same level once Phase 4 starts.
+
 ## Backend (shared by both clients)
 
 - **Supabase** (Postgres + built-in Auth), free tier. Chosen so accounts, database, and
