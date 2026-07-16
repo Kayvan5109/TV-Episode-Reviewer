@@ -3,14 +3,16 @@
 **Read this file first** — before the other docs, before doing anything else. It's the single
 "what's actually going on right now" pointer, kept short and current on purpose.
 
-Last updated: 2026-07-15 (later session). **Phase 1, piece 1 (auth) code-complete and merged
-(`07e5aca`); needs a hands-on browser check before it's truly done.** Sign up, log in, log out,
-session refresh (via a Proxy — this Next.js version's renamed middleware), and route protection are
-all built on Supabase Auth. 89 tests passing, typecheck/lint/build clean, independently reviewed
-(read the proxy/session-client/every auth action directly; confirmed `getUser()` revalidation is
-used everywhere, the service-role client never touches auth, and `force-dynamic` prevents session
-leakage via caching). Not yet exercised in a real browser against the live Supabase project — see
-Bucket 2. Piece 2 (show search, cold-start/comparative ranking UI, score display) is next.
+Last updated: 2026-07-16. **Phase 1, piece 1 (auth) fully verified — done.** Sign up, log in, log
+out, session refresh, and route protection all confirmed working end-to-end in a real browser
+against the live Supabase project. Getting there required fixing three Supabase *configuration*
+bugs (not code bugs): `NEXT_PUBLIC_SUPABASE_URL` was set to the dashboard URL instead of the actual
+project API URL, Auth's "Site URL" was left at `http://localhost:3000` instead of the live Vercel
+URL, and the "Confirm signup" email template needed updating to the `token_hash`/`type` link pattern
+`/auth/confirm` expects. All three are fixed. Custom SMTP (Resend, to lift the default provider's
+2-emails/hour cap) was attempted but never got a connection through — logged as backlog, not
+blocking; currently running on Supabase's default email provider, which is fine for now. Piece 2
+(show search, cold-start/comparative ranking UI, score display) is next.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -24,15 +26,7 @@ unless it's small or genuinely blocking.
    Not started yet; builds on the auth piece below.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **Auth flow needs a real browser check** before Phase 1's auth piece counts as done (unit tests
-   can't exercise this — Server Components/Proxy/real Supabase calls together): (a) full
-   signup → email confirmation → dashboard flow against the live project, (b) login → dashboard →
-   logout round trip, (c) session survives a page refresh, (d) hitting `/dashboard` while logged out
-   redirects to `/login` and vice versa for `/login`/`/signup` while logged in.
-2. **Supabase email template check**: the confirmation-link handler (`/auth/confirm`) expects the
-   "Confirm signup" email template (Auth → Email Templates in the Supabase dashboard) to link to
-   `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email`. If it's still the
-   out-of-the-box default template, confirmation links won't work — needs checking/updating.
+(empty for now — the auth flow's hands-on check passed fully, see History below)
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
 (empty for now — the tie-break selection question that lived here is resolved, see History below)
@@ -41,6 +35,13 @@ unless it's small or genuinely blocking.
 1. Shared test-fixture format to keep the TypeScript (website) and Swift (iOS) ranking-algorithm
    implementations from drifting apart — relevant once the iOS phase (Phase 4) starts porting the
    algorithm, not before. See `DevelopmentPlan.md` Discussion.
+2. **Custom SMTP (Resend) for auth emails, to lift the default provider's 2-emails/hour cap.**
+   Attempted 2026-07-16: configured Resend as custom SMTP (host `smtp.resend.com`, tried both port
+   465 and 587, fresh API key, correct sender/username) — Resend's own dashboard never showed a
+   single connection attempt regardless of port, so the failure is upstream of Resend itself (some
+   Supabase-side connection issue, not a Resend credentials/config problem). Deliberately not chased
+   further — the default provider works fine for continued solo development. Revisit if/when other
+   people start using the app, or if the 2/hour cap is actually hit in practice.
 
 **Bucket 5 — Rework flagged for a later phase, not being worked now:**
 (empty for now)
@@ -88,6 +89,29 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-16: Hands-on browser-verified the full auth flow end-to-end, finding and fixing three
+  Supabase *configuration* bugs along the way (no code changes needed):
+  1. `NEXT_PUBLIC_SUPABASE_URL` was set to the Supabase **dashboard** URL
+     (`supabase.com/dashboard/project/...`) instead of the actual **project API** URL
+     (`https://<ref>.supabase.co`) — this caused `signUp()` to fail with a client-side "Unexpected
+     token '<'... is not valid JSON" error, since the Supabase JS client couldn't parse the HTML
+     dashboard page it was accidentally hitting instead of the Auth API.
+  2. Auth's **Site URL** setting was still the default `http://localhost:3000`, so confirmation
+     emails linked to a dead localhost URL instead of the live Vercel site — fixed by setting it to
+     the production URL and adding `localhost:3000/**` to the redirect allowlist for future local
+     testing.
+  3. The **"Confirm signup" email template** was still using the default `{{ .ConfirmationURL }}`
+     link (Supabase's old pattern), not the `token_hash`/`type` pattern `/auth/confirm` was built to
+     handle — fixed by editing the template's link directly in the Supabase dashboard.
+  With all three fixed: full signup → email confirmation → dashboard login works, as do
+  login/logout, session persistence across a refresh, and all route-protection redirects. Also
+  attempted setting up custom SMTP (Resend) to lift the default email provider's 2/hour cap (which
+  required its own detour: editing email templates on Supabase's free tier now requires custom SMTP
+  configured at all, a June 2026 platform change) — spent significant effort (wrong port docs said
+  465, actually needed 587 per a known Resend-specific issue; regenerated API key; confirmed sender/
+  account settings) but never got Resend to show a single connection attempt, meaning the failure is
+  upstream of Resend. Decided to stop chasing this and log it as backlog (see Bucket 4) rather than
+  keep going — the default provider works fine for now. Phase 1's auth piece is fully done.
 - 2026-07-15: Phase 0 marked complete; started Phase 1 (website vertical slice) as two sequential
   pieces. Reviewed and merged piece 1, **auth** (sign up/log in/log out/session handling), to `main`
   (commit `07e5aca`) — built on Supabase Auth via `@supabase/ssr`'s cookie pattern for the App
