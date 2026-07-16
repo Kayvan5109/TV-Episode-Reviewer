@@ -3,15 +3,12 @@
 **Read this file first** — before the other docs, before doing anything else. It's the single
 "what's actually going on right now" pointer, kept short and current on purpose.
 
-Last updated: 2026-07-15 (later session). **Supabase schema + TMDB proxy merged to `main`
-(commit `39c9feb`); Vercel project imported and deployed by Kayvan.** Phase 0 is now essentially
-code-complete: ranking algorithm (`4fa5fd6`), Supabase schema with RLS (`39c9feb`), TMDB proxy
-route, and a live Vercel deployment. `website/.env.local` is filled in locally; the same four vars
-are in Vercel's dashboard. Not yet done: actually pushing `39c9feb` to `origin` (which will trigger
-the connected Supabase GitHub integration to apply the migration to the *live* Supabase project —
-flagged for a explicit go-ahead before that push, since it's the first action this project takes
-against real external infrastructure, not just git). Once pushed, worth confirming in the Supabase
-dashboard that the migration actually applied cleanly.
+Last updated: 2026-07-15 (later session). **Phase 0 complete — Phase 1 (website vertical slice)
+starting now.** Pushed to `origin` (`6a47a97`), live Supabase migration confirmed applied (all four
+tables present, Kayvan verified in the dashboard), and the TMDB proxy smoke-tested successfully
+against real credentials (both `/api/tmdb/search` and `/api/tmdb/[showId]/episodes` returned real,
+correctly-shaped data locally). Phase 1 is being built in two sequential pieces: auth first, then
+the core ranking flow on top of it — see Bucket 1.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -20,9 +17,11 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence:**
-1. Push `main` to `origin` (triggers the live Supabase migration via the GitHub integration), then
-   confirm in the Supabase dashboard that it applied cleanly and do a smoke-test call against the
-   deployed Vercel site's TMDB proxy route with a real query. This is the last step of Phase 0.
+1. Phase 1, piece 1: **auth** — sign up / log in / log out / session-aware server & client Supabase
+   helpers, protected-route handling. In progress.
+2. Phase 1, piece 2 (after auth lands): the core ranking flow — pick a show (TMDB search, upsert
+   into `shows`/`episodes`), cold-start rank a handful of episodes, comparative ranking, score
+   display. Not started yet.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
 (empty for now)

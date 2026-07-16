@@ -132,7 +132,7 @@ it.
 
 Website comes first (Phases 0-3), iOS second (Phases 4-5) — see "The Idea" above for why.
 
-### Phase 0 — De-risk (current phase)
+### Phase 0 — De-risk (complete, 2026-07-15)
 
 Goal: prove out the ranking algorithm and stand up the shared backend, before any real UI exists —
 the algorithm is the app's riskiest, least-proven idea, so it gets built and stress-tested in
@@ -154,9 +154,15 @@ What "done" looks like:
 
 Not in scope for Phase 0: any real screens/navigation, visual design, the iOS app.
 
-### Phase 1 — Website vertical slice / MVP
+All done: ranking algorithm (cold-start/comparative/tie-break/score formula), Supabase schema with
+RLS, TMDB proxy route, Next.js scaffold, live on Vercel. See `STATUS.md` History for the review
+trail.
 
-Goal: one complete core user flow, end to end, minimal polish, live on the website.
+### Phase 1 — Website vertical slice / MVP (current phase)
+
+Goal: one complete core user flow, end to end, minimal polish, live on the website. Being built in
+two sequential pieces: **auth first** (everything else needs a signed-in user), **then** the core
+ranking flow on top of it.
 
 What "done" looks like: sign up / log in (Supabase Auth) → pick a show (via TMDB search) →
 cold-start rank a handful of episodes (liked/disliked/neutral) → rank enough to trigger comparative
