@@ -21,9 +21,21 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence:**
-1. Phase 1, piece 2: the core ranking flow — pick a show (TMDB search, upsert into
-   `shows`/`episodes`), cold-start rank a handful of episodes, comparative ranking, score display.
-   Not started yet; builds on the auth piece below.
+1. Phase 1, piece 2, split into two sub-steps given its complexity:
+   - **2a** (in progress): show search (TMDB) → pick a show → import its episodes into
+     `shows`/`episodes` → a basic "my shows" list. Lower-risk, foundational.
+   - **2b** (not started, deliberately deferred to a fresh session for budget reasons): the actual
+     ranking UI — cold-start buttons, then comparative better/worse/neutral prompts wired to
+     `website/src/lib/ranking/`. Architecturally tricky: the algorithm expects synchronous
+     comparisons but a real website only gets one answer per HTTP request. Planned approach:
+     reconstruct `ShowRankingState` fresh on every request from `episode_rankings` +
+     `episode_comparisons` (which already record everything needed), and give the algorithm a
+     comparator that replays already-answered comparisons instantly and throws a sentinel error on
+     the first genuinely new one — that sentinel becomes "here's the next question to show the
+     user." No new schema/state needed for this beyond what already exists, except adding
+     `cold_start_bucket`/`cold_start_sequence` columns to `episode_rankings` (currently only has
+     `rank_position`, which is correct for comparatively-placed episodes but has nowhere to persist
+     an episode still sitting in cold-start).
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
 (empty for now — the auth flow's hands-on check passed fully, see History below)
