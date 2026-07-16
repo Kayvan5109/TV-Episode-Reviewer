@@ -3,14 +3,9 @@
 **Read this file first** — before the other docs, before doing anything else. It's the single
 "what's actually going on right now" pointer, kept short and current on purpose.
 
-Last updated: 2026-07-16. **Phase 1 fully done and verified, plus two follow-up UX fixes from
-further hands-on testing (commit `32e04a6`), not yet pushed.** Show search on `/shows/search` is
-now live/debounced-as-you-type instead of requiring an explicit submit, and results the signed-in
-user has already added now show "Go to show" instead of a re-clickable "Add show" that idempotently
-no-op'd but looked broken (redirecting to a show you're already viewing reads as nothing happening).
-The "already added" check is done server-side in `/api/tmdb/search` itself (session-aware client,
-scoped by `user_id` + RLS, fails open to "not added" on any error) in the same round trip as the
-TMDB lookup. Piece 2b (the actual ranking UI) is next — see Bucket 1.
+Last updated: 2026-07-16. **Phase 1 fully done and verified, including the two follow-up UX fixes
+(live search, "already added" indication) — Kayvan hands-on confirmed both work.** Piece 2b (the
+actual ranking UI) is next and is the last piece of Phase 1 — see Bucket 1 for the planned approach.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -36,10 +31,7 @@ unless it's small or genuinely blocking.
      an episode still sitting in cold-start).
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **Live search + "already added" needs a hands-on check** once pushed: does the 300ms debounce
-   feel right, does the loading indicator flash annoyingly on fast typers, and does searching for an
-   already-added show actually show "Go to show" (exercises the full annotate round trip against
-   real data, not just tests).
+(empty for now — live search and "already added" both confirmed working, see History)
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
 (empty for now — the tie-break selection question that lived here is resolved, see History below)
@@ -116,7 +108,9 @@ keeps this file fast to read at the start of every session instead of growing fo
   by `user_id` + RLS, fails open to "not added" on any lookup error) in the same round trip as the
   TMDB search itself, rather than a second client-side call. Review: read the route's user-scoping,
   the pure cross-referencing logic, and the client's `AbortController`-based stale-request handling
-  directly; 140/140 tests passing. Not yet pushed or hands-on tested — see Bucket 1/2.
+  directly; 140/140 tests passing. Pushed and hands-on confirmed working by Kayvan: live search
+  updates correctly, and re-searching an already-added show now shows "Go to show." **Phase 1 is
+  now completely done** — piece 2b (the ranking UI) is the only thing left before Phase 2.
 - 2026-07-16: Kayvan confirmed via a real fresh signup that the `proxy.ts` `?code=` exchange fix
   works — email confirmation now lands on `/dashboard` already logged in. **Phase 1 is fully done**:
   piece 1 (auth) and piece 2a (show search/import), both hands-on verified in the browser, not just
