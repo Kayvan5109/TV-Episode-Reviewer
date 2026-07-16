@@ -3,14 +3,14 @@
 **Read this file first** — before the other docs, before doing anything else. It's the single
 "what's actually going on right now" pointer, kept short and current on purpose.
 
-Last updated: 2026-07-16. **Clean deliberate stop, for session budget (76%).** Piece 2b, part 1 (the
+Last updated: 2026-07-16. **Clean deliberate stop, for session budget (78%).** Piece 2b, part 1 (the
 resumable ranking-session logic) is done, reviewed thoroughly, merged, and pushed (`78b7dcd`) — the
-`cold_start_bucket`/`cold_start_sequence` migration is live. `getNextRankingStep`/
-`submitColdStartAnswer`/`submitComparisonAnswer` reconstruct a show's ranking state from the DB on
-every call and replay already-answered comparisons through the existing algorithm, surfacing only
-genuinely new questions — 159 tests, typecheck/lint/build clean. No agent is running. **Next
-session: start with part 2** — the actual ranking UI on `/shows/[showId]`, see Bucket 1. This is
-feel-based UI work on top of an already-reviewed API, not correctness-critical itself.
+`cold_start_bucket`/`cold_start_sequence` migration is live. No agent is running. Also reviewed the
+full pre-real-world-testing gap list with Kayvan and got explicit prioritization — **next session has
+a full ordered plan, see Bucket 1 below and `DevelopmentPlan.md`'s Phase 1 section (same list, more
+detail)**: ranking UI first, then TMDB attribution, password reset, remove-show + re-ranking, and a
+privacy notice, in that order. Custom SMTP, mobile/responsive check, error monitoring, and visual
+design are explicitly logged for later, not next session — see Bucket 4.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -18,15 +18,26 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 [ProcessAndRoles.md](ProcessAndRoles.md#punch-list-triage). Default is "log it, don't chase it"
 unless it's small or genuinely blocking.
 
-**Bucket 1 — Blocking / next in sequence:**
-1. Phase 1, piece 2b, part 2: the actual ranking UI on `/shows/[showId]` — replace the disabled
-   "Start ranking" placeholder with real screens calling `getNextRankingStep`/
-   `submitColdStartAnswer`/`submitComparisonAnswer` (see `website/src/lib/ranking-session/`): a
-   liked/disliked/neutral picker for cold-start steps, a better/worse/neutral comparison prompt for
-   compare steps (joining episode ids against `episodes` for title/season/episode display), and the
-   current ranked list with computed 1-10 scores (`website/src/lib/ranking/score.ts`) once a show
-   reaches `done`. This is feel-based UI work on top of an already-reviewed API, not correctness-
-   critical itself — needs a hands-on check once built, not a second deep review pass.
+**Bucket 1 — Blocking / next in sequence (work in this order):**
+1. **Ranking UI** on `/shows/[showId]` — replace the disabled "Start ranking" placeholder with real
+   screens calling `getNextRankingStep`/`submitColdStartAnswer`/`submitComparisonAnswer` (see
+   `website/src/lib/ranking-session/`): liked/disliked/neutral picker for cold-start steps,
+   better/worse/neutral prompt for compare steps, ranked list with computed 1-10 scores
+   (`website/src/lib/ranking/score.ts`) once a show reaches `done`. Feel-based UI on an
+   already-reviewed API — needs a hands-on check, not a second deep review pass.
+2. **TMDB attribution** — small, quick, do early. Required attribution text somewhere in the app
+   (e.g. `AppHeader` or a footer) per TMDB's API terms — see `Risks.md`.
+3. **Password reset flow** — currently doesn't exist at all. `resetPasswordForEmail` + a set-new-
+   password page. Same correctness-critical rigor as the rest of auth (read the code directly, real
+   email click-through check) — this is `proxy.ts`/cookie territory again.
+4. **Remove a show + re-ranking** — both confirmed wanted, neither designed yet. Decide at the start
+   of the session (don't just implement a guess): does removing a show also delete that user's
+   `episode_rankings`/`episode_comparisons` for it, or just the `user_shows` row? Does re-ranking
+   clear just `rank_position` (re-inserting via existing placement logic) or also
+   `episode_comparisons` history for that episode? See `DevelopmentPlan.md`'s Phase 1 section for
+   the full framing of both questions.
+5. **Privacy notice** — short static page, what's collected + the three third parties involved
+   (Supabase, TMDB, Vercel). Draft the content with Kayvan rather than inventing it.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
 (empty for now — live search and "already added" both confirmed working, see History)
@@ -48,8 +59,16 @@ unless it's small or genuinely blocking.
    465 and 587, fresh API key, correct sender/username) — Resend's own dashboard never showed a
    single connection attempt regardless of port, so the failure is upstream of Resend itself (some
    Supabase-side connection issue, not a Resend credentials/config problem). Deliberately not chased
-   further — the default provider works fine for continued solo development. Revisit if/when other
-   people start using the app, or if the 2/hour cap is actually hit in practice.
+   further — the default provider works fine for continued solo development. **Revisit before real-
+   world testing widens beyond a couple of people** — 2 emails/hour project-wide will start silently
+   failing signups/resets otherwise (confirmed priority 2026-07-16, still not urgent for a small
+   initial test group).
+4. **Mobile/responsive check** — nothing's been tested outside a desktop browser yet. Flagged
+   2026-07-16 as needed before real-world testing widens, not before.
+5. **Error monitoring** — no visibility if something breaks for a real user other than them telling
+   you. Consider a lightweight free-tier setup (e.g. Sentry) before wider testing. Flagged 2026-07-16.
+6. **Visual design** — still zero design polish, bare Tailwind defaults throughout. Flagged
+   2026-07-16 as a real gap before wider testing, deliberately deferred past piece 2b.
 
 **Bucket 5 — Rework flagged for a later phase, not being worked now:**
 (empty for now)
