@@ -3,18 +3,19 @@
 **Read this file first** — before the other docs, before doing anything else. It's the single
 "what's actually going on right now" pointer, kept short and current on purpose.
 
-Last updated: 2026-07-16. **Phase 1, piece 1 (auth) fully verified; piece 2a (show search/import)
-code-complete, reviewed, merged (`a4b1b4e`), not yet pushed.** Auth (sign up/log in/log out/session/
-route protection) confirmed working end-to-end in a real browser, after fixing three Supabase
-*configuration* bugs (wrong project URL, Site URL pointing at localhost, email template using the
-old link pattern — all fixed, see History). Piece 2a adds show search (TMDB), full-show episode
-import into `shows`/`episodes` (upsert, idempotent), a new RLS-protected `user_shows` table, and a
-basic dashboard/show-detail UI — 106 tests, typecheck/lint/build clean, independently reviewed.
-**Not yet pushed**, which matters here specifically: pushing will trigger the Supabase GitHub
-integration to apply the new `user_shows` migration to the *live* project (same as the schema push
-back in Phase 0) — needs a go-ahead before that push, not just a routine one. Also not yet
-hands-on-tested in a browser. Piece 2b (the actual ranking UI) is deliberately deferred to a fresh
-session — see Bucket 1.
+Last updated: 2026-07-16. **Piece 2a hands-on tested and mostly working; two bugs found and fixed
+(`843c4b8`), not yet pushed or re-verified.** Kayvan browser-tested piece 2a: search/add/import/
+dedup/multi-show all work correctly. Two real issues found: (1) the email confirmation link landed
+on `/login` with no session or explanation instead of `/dashboard` logged in — fixed by having
+`/auth/confirm` build its redirect response explicitly and copy session cookies onto it directly,
+rather than relying on `next/navigation`'s `redirect()` to carry them (root-cause confidence is
+moderate only — reading Next.js's actual internals didn't prove the original failure mode, so an
+email-security-scanner pre-fetching the single-use link remains a possible alternative explanation;
+`/login` now shows a real message either way instead of silent ambiguity); (2) no way back to
+`/dashboard` from `/shows/search` except editing the URL — fixed with a small persistent header.
+**Not yet pushed** (would apply piece 2a's `user_shows` migration live) and the confirm-link fix
+specifically needs a real email click-through to verify — see Bucket 1. Piece 2b (the ranking UI) is
+still deliberately deferred to a fresh session.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -23,9 +24,9 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence:**
-1. Push `main` to `origin` (triggers the live `user_shows` migration via Supabase's GitHub
-   integration — confirm go-ahead first, same as any push that touches `supabase/migrations/`), then
-   hands-on browser-test the search → add → import → redirect flow.
+1. Push `main` to `origin` (already-live migration, no new schema changes in this last commit, but
+   confirm go-ahead per usual practice), then re-verify with a real email click-through that the
+   confirmation link now lands on `/dashboard` logged in.
 2. Phase 1, piece 2, split into two sub-steps given its complexity:
    - ~~2a~~ — **done**: show search (TMDB) → pick a show → import its episodes into
      `shows`/`episodes` → a basic "my shows" list. See History.
@@ -43,10 +44,9 @@ unless it's small or genuinely blocking.
      an episode still sitting in cold-start).
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **Show search/import flow needs a real browser check** once pushed: search → pick a result →
-   confirm import completes and redirects to `/shows/[showId]` with the right episode list, and that
-   the dashboard's "my shows" list (a `user_shows`-to-`shows` embedded query) resolves correctly
-   against the live schema.
+1. **Confirmation-link fix needs re-verification** via a real email click-through (see Bucket 1) —
+   the fix is defensively correct regardless of root cause, but the original failure mode was never
+   conclusively proven, so confirm it actually resolves what was observed.
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
 (empty for now — the tie-break selection question that lived here is resolved, see History below)
@@ -109,6 +109,23 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-16: Kayvan hands-on tested piece 2a in the browser: search, add, import, dedup on re-add,
+  and multi-show all confirmed working. Found two real issues, both fixed and reviewed, merged to
+  `main` (`843c4b8`): (1) the email confirmation link landed on `/login` with no session and no
+  explanation instead of `/dashboard` logged in — `verifyOtp()` itself was confirmed working
+  (immediate follow-up password login succeeded with no "not confirmed" error), so the bug was in
+  session cookies not reaching the browser via the redirect. Fix: `/auth/confirm` now builds
+  `NextResponse.redirect(...)` explicitly and copies every session cookie onto that exact response,
+  instead of relying on `next/navigation`'s `redirect()` — mirrors `src/proxy.ts`'s already-proven
+  pattern for the same problem. Root-cause confidence is only moderate: a deep read of this Next.js
+  version's actual route-handler/cookie internals didn't prove the original failure mode existed at
+  the framework level, so an alternative explanation (an email client or security scanner
+  pre-fetching and consuming the single-use confirmation link before the real click) hasn't been
+  ruled out — `/login` now shows a real message either way instead of silent ambiguity, and the fix
+  needs a real email click-through to confirm it resolves what was observed (see Bucket 1/2). (2) No
+  way back to `/dashboard` from `/shows/search` except editing the URL — fixed with a small shared
+  `AppHeader` component on all three authenticated pages. Also logged live/autocomplete show search
+  as a Phase 2 backlog idea (Kayvan's suggestion, reasonable but out of Phase 1's "no polish" scope).
 - 2026-07-16: Reviewed and merged Phase 1 piece 2a — show search, TMDB import, and a "my shows"
   list — to `main` (commit `a4b1b4e`). Adds `importShowFromTmdb` (fetches a show's full details +
   every season's episodes from TMDB, upserts into `shows`/`episodes` keyed on their unique TMDB-id
