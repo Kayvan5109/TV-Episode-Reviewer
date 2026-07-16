@@ -3,12 +3,14 @@
 **Read this file first** — before the other docs, before doing anything else. It's the single
 "what's actually going on right now" pointer, kept short and current on purpose.
 
-Last updated: 2026-07-15 (later session). **Phase 0 complete — Phase 1 (website vertical slice)
-starting now.** Pushed to `origin` (`6a47a97`), live Supabase migration confirmed applied (all four
-tables present, Kayvan verified in the dashboard), and the TMDB proxy smoke-tested successfully
-against real credentials (both `/api/tmdb/search` and `/api/tmdb/[showId]/episodes` returned real,
-correctly-shaped data locally). Phase 1 is being built in two sequential pieces: auth first, then
-the core ranking flow on top of it — see Bucket 1.
+Last updated: 2026-07-15 (later session). **Phase 1, piece 1 (auth) code-complete and merged
+(`07e5aca`); needs a hands-on browser check before it's truly done.** Sign up, log in, log out,
+session refresh (via a Proxy — this Next.js version's renamed middleware), and route protection are
+all built on Supabase Auth. 89 tests passing, typecheck/lint/build clean, independently reviewed
+(read the proxy/session-client/every auth action directly; confirmed `getUser()` revalidation is
+used everywhere, the service-role client never touches auth, and `force-dynamic` prevents session
+leakage via caching). Not yet exercised in a real browser against the live Supabase project — see
+Bucket 2. Piece 2 (show search, cold-start/comparative ranking UI, score display) is next.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -17,14 +19,20 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence:**
-1. Phase 1, piece 1: **auth** — sign up / log in / log out / session-aware server & client Supabase
-   helpers, protected-route handling. In progress.
-2. Phase 1, piece 2 (after auth lands): the core ranking flow — pick a show (TMDB search, upsert
-   into `shows`/`episodes`), cold-start rank a handful of episodes, comparative ranking, score
-   display. Not started yet.
+1. Phase 1, piece 2: the core ranking flow — pick a show (TMDB search, upsert into
+   `shows`/`episodes`), cold-start rank a handful of episodes, comparative ranking, score display.
+   Not started yet; builds on the auth piece below.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-(empty for now)
+1. **Auth flow needs a real browser check** before Phase 1's auth piece counts as done (unit tests
+   can't exercise this — Server Components/Proxy/real Supabase calls together): (a) full
+   signup → email confirmation → dashboard flow against the live project, (b) login → dashboard →
+   logout round trip, (c) session survives a page refresh, (d) hitting `/dashboard` while logged out
+   redirects to `/login` and vice versa for `/login`/`/signup` while logged in.
+2. **Supabase email template check**: the confirmation-link handler (`/auth/confirm`) expects the
+   "Confirm signup" email template (Auth → Email Templates in the Supabase dashboard) to link to
+   `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email`. If it's still the
+   out-of-the-box default template, confirmation links won't work — needs checking/updating.
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
 (empty for now — the tie-break selection question that lived here is resolved, see History below)
@@ -80,6 +88,20 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-15: Phase 0 marked complete; started Phase 1 (website vertical slice) as two sequential
+  pieces. Reviewed and merged piece 1, **auth** (sign up/log in/log out/session handling), to `main`
+  (commit `07e5aca`) — built on Supabase Auth via `@supabase/ssr`'s cookie pattern for the App
+  Router, with a Proxy (this Next.js version's renamed middleware) refreshing sessions and doing
+  optimistic route protection, plus an authoritative per-page `getUser()` check as defense in depth.
+  Discovered along the way that this Next.js version renames `middleware.ts` to `proxy.ts`/`proxy()`,
+  and that `@supabase/ssr` 0.12.3 requires `getAll`/`setAll` cookie methods (not the deprecated
+  singular ones). Review: read every auth-related file directly (not just the implementer's
+  summary), confirmed `getUser()` (not `getSession()`) is used everywhere revalidation matters, the
+  service-role client never appears in an auth/session context, and `force-dynamic` prevents session
+  data leaking via static caching; re-ran tests (89/89)/typecheck/lint/build fresh before committing.
+  Two things flagged and not yet resolved: a hands-on browser check of the full flow (see Bucket 2),
+  and confirming the Supabase dashboard's confirmation-email template points at `/auth/confirm` with
+  `token_hash`/`type` params.
 - 2026-07-15: Reviewed and merged the Supabase schema + TMDB proxy route to `main` (commit
   `39c9feb`). Schema: `shows`/`episodes` (global TMDB reference data) plus per-user
   `episode_rankings`/`episode_comparisons` with row-level security. Review consisted of reading the
