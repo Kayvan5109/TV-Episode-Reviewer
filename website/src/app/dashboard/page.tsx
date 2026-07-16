@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
 import { createSupabaseServerClient } from '@/lib/supabase/serverSession';
+import { AppHeader } from '@/components/AppHeader';
 
 import { logout } from './actions';
 
@@ -54,71 +55,74 @@ export default async function DashboardPage() {
   const myShows = (myShowsData ?? []) as unknown as MyShowRow[];
 
   return (
-    <div className="flex flex-1 flex-col items-center gap-8 p-8">
-      <div className="flex w-full max-w-2xl items-center justify-between">
-        <p className="text-lg">
-          Logged in as <span className="font-medium">{user.email}</span>
-        </p>
-        <form action={logout}>
-          <button
-            type="submit"
-            className="rounded border border-black/20 px-4 py-2 dark:border-white/30"
-          >
-            Log out
-          </button>
-        </form>
-      </div>
-
-      <div className="flex w-full max-w-2xl flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold">My shows</h1>
-          <Link
-            href="/shows/search"
-            className="rounded bg-black px-4 py-2 text-sm text-white dark:bg-white dark:text-black"
-          >
-            Find a show
-          </Link>
+    <>
+      <AppHeader />
+      <div className="flex flex-1 flex-col items-center gap-8 p-8">
+        <div className="flex w-full max-w-2xl items-center justify-between">
+          <p className="text-lg">
+            Logged in as <span className="font-medium">{user.email}</span>
+          </p>
+          <form action={logout}>
+            <button
+              type="submit"
+              className="rounded border border-black/20 px-4 py-2 dark:border-white/30"
+            >
+              Log out
+            </button>
+          </form>
         </div>
 
-        {myShowsError && (
-          <p role="alert" className="text-sm text-red-600 dark:text-red-400">
-            Couldn&apos;t load your shows: {myShowsError.message}
-          </p>
-        )}
+        <div className="flex w-full max-w-2xl flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <h1 className="text-xl font-semibold">My shows</h1>
+            <Link
+              href="/shows/search"
+              className="rounded bg-black px-4 py-2 text-sm text-white dark:bg-white dark:text-black"
+            >
+              Find a show
+            </Link>
+          </div>
 
-        {!myShowsError && myShows.length === 0 && (
-          <p className="text-sm text-black/60 dark:text-white/60">
-            You haven&apos;t added any shows yet — search for one to get started.
-          </p>
-        )}
+          {myShowsError && (
+            <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+              Couldn&apos;t load your shows: {myShowsError.message}
+            </p>
+          )}
 
-        {!myShowsError && myShows.length > 0 && (
-          <ul className="flex flex-col gap-3">
-            {myShows
-              .filter((row) => row.shows !== null)
-              .map((row) => (
-                <li key={row.show_id}>
-                  <Link
-                    href={`/shows/${row.show_id}`}
-                    className="flex items-center gap-3 rounded border border-black/10 p-3 hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/5"
-                  >
-                    {row.shows?.poster_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element -- external TMDB CDN image.
-                      <img
-                        src={row.shows.poster_url}
-                        alt=""
-                        width={46}
-                        height={69}
-                        className="h-[69px] w-[46px] rounded object-cover"
-                      />
-                    ) : null}
-                    <span className="font-medium">{row.shows?.title}</span>
-                  </Link>
-                </li>
-              ))}
-          </ul>
-        )}
+          {!myShowsError && myShows.length === 0 && (
+            <p className="text-sm text-black/60 dark:text-white/60">
+              You haven&apos;t added any shows yet — search for one to get started.
+            </p>
+          )}
+
+          {!myShowsError && myShows.length > 0 && (
+            <ul className="flex flex-col gap-3">
+              {myShows
+                .filter((row) => row.shows !== null)
+                .map((row) => (
+                  <li key={row.show_id}>
+                    <Link
+                      href={`/shows/${row.show_id}`}
+                      className="flex items-center gap-3 rounded border border-black/10 p-3 hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/5"
+                    >
+                      {row.shows?.poster_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element -- external TMDB CDN image.
+                        <img
+                          src={row.shows.poster_url}
+                          alt=""
+                          width={46}
+                          height={69}
+                          className="h-[69px] w-[46px] rounded object-cover"
+                        />
+                      ) : null}
+                      <span className="font-medium">{row.shows?.title}</span>
+                    </Link>
+                  </li>
+                ))}
+            </ul>
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }

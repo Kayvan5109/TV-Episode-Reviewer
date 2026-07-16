@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 
 import { createSupabaseServerClient } from '@/lib/supabase/serverSession';
+import { AppHeader } from '@/components/AppHeader';
 
 import { ShowSearchForm } from './ShowSearchForm';
 
@@ -30,9 +31,12 @@ export default async function ShowSearchPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col items-center gap-6 p-8">
-      <h1 className="text-2xl font-semibold">Find a show</h1>
-      <ShowSearchForm />
-    </div>
+    <>
+      <AppHeader />
+      <div className="flex flex-1 flex-col items-center gap-6 p-8">
+        <h1 className="text-2xl font-semibold">Find a show</h1>
+        <ShowSearchForm />
+      </div>
+    </>
   );
 }
