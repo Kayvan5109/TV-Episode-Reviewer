@@ -107,3 +107,80 @@ pointer, not a duplicate:
   ripple through other episodes' scores?
 - **Cross-show ranking**: is ranking strictly within a single show, or could episodes ever be
   compared across different shows? (Current concept assumes strictly within-show.)
+
+## Future Enhancement Ideas — Brainstorm (2026-07-16, not committed, not scheduled)
+
+A requested laundry list of ideas for improving the app's UX beyond Phase 1's bare-bones MVP scope.
+**None of this is committed, prioritized, or scheduled** — it's a brainstorm dump for Kayvan to pick
+through later, same spirit as the rest of this section ("brainstormed-but-undecided ideas land
+here first"). Concrete, already-tracked work stays in `STATUS.md`'s Punch List and
+`DevelopmentPlan.md`'s Phase sections, not duplicated here — this list is deliberately broader and
+more speculative than that. When any of these gets picked up for real, move it out of this list into
+a Phase/Bucket with an actual decision attached, per this project's normal triage process
+(`ProcessAndRoles.md`).
+
+### Ranking-flow feel
+- **Progress indicator while placing an episode** — comparative placement is roughly `log2(N)`
+  comparisons; a "getting closer..." indicator (even just a shrinking-range visual, not an exact
+  count) would make the binary-search mechanic feel purposeful instead of open-ended, especially to
+  a first-time user who doesn't know the mechanic yet.
+- **"I don't remember well enough" / skip escape hatch during a comparison** — right now every
+  comparison forces a better/worse/neutral answer. For an episode watched long ago, a user may
+  genuinely not remember it well enough to judge confidently against whatever it's being compared
+  to. An honest "skip, ask me something else" option (deferring that specific comparison) might beat
+  forcing a low-confidence guess that then anchors the algorithm's placement.
+- **Undo the last ranking action** — a misclick (hit "worse" meaning "better") currently has no
+  recovery path short of re-ranking. Even a single-level undo would help.
+- **Transparency when a tie-break falls back to "adjacent" placement** — `MAX_TIE_BREAK_ATTEMPTS`
+  (see `DevelopmentPlan.md`'s Ranking Algorithm section) can exhaust and fall back to inserting
+  adjacent to the last-compared episode as a genuine-tie fallback. Surfacing that ("we couldn't
+  fully place this — put it next to X") would be more honest than silently doing it.
+- **Keyboard shortcuts** for the better/worse/neutral and liked/disliked/neutral buttons (e.g. arrow
+  keys or number keys) — a power user ranking many episodes in one sitting is doing a lot of
+  repetitive clicking.
+- **A short first-time explainer** of the cold-start → comparative mechanic itself. This isn't a
+  star rating or a thumbs up/down app; a first-time user has no existing mental model for "why am I
+  being asked to compare two episodes instead of just rating this one," and the whole value
+  proposition depends on understanding why that produces a better result.
+
+### Show list / dashboard
+- **Poster art + progress indicator per show** on the "My Shows" dashboard (e.g. "14 of 22 episodes
+  ranked"), not just on the individual show page — makes the dashboard itself useful at a glance
+  instead of just a list of titles.
+- **Sort/filter "My Shows"** (alphabetical, most-recently-ranked, % complete) once the list is long
+  enough that this actually matters.
+- **Handling a show that airs new episodes after being imported** — `importShowFromTmdb` upserts and
+  is idempotent, but there's no UI affordance today to explicitly "check TMDB again for new
+  episodes" on an already-imported show; right now that would only happen as a side effect of
+  re-searching and re-adding the same show. Worth an explicit "refresh from TMDB" action once a
+  real show in someone's list actually airs a new season.
+
+### Insights / cross-show views
+- **A global "my top episodes across all shows" view** — a natural highlight reel once someone has
+  ranked several shows, distinct from the strictly per-show ranking the core mechanic uses (see the
+  still-open "cross-show ranking" question above — this would be a read-only aggregate view, not a
+  change to the ranking mechanic itself).
+- **Per-show or overall stats** — total episodes ranked, a favorite show, ranking activity over
+  time. Low-stakes, satisfying "look what you've built" feedback.
+- **Confidence indicator on a score** — an episode placed after one cold-start judgment and no
+  comparisons is on much shakier ground than one that's been through several comparisons; surfacing
+  that distinction (even just visually) would set more honest expectations than presenting every
+  score with equal confidence.
+- **"Why is this ranked here?"** — show the specific comparisons that led to an episode's current
+  position (e.g. "ranked better than X, worse than Y"). Doubles as user-facing transparency and a
+  debugging aid.
+
+### Data ownership
+- **Export your data** (CSV/JSON of shows/episodes/rankings) — this is personal taste data; letting
+  someone take it with them is a reasonable ask even for a personal-use app, and cheap relative to
+  the value.
+
+### Mobile-specific (once the mobile/responsive check in `STATUS.md` Bucket 4 happens)
+- **Swipe gestures for the comparison prompt** (swipe left/right for better/worse, tap for neutral)
+  — a natural fit for a binary-choice mechanic on a touchscreen, arguably a better interaction than
+  three buttons once there's a real mobile pass.
+
+### Accessibility
+- Keyboard navigation and screen-reader labeling for the ranking controls specifically (the
+  comparison/cold-start buttons are the app's core interaction, so they're the highest-value place
+  to get this right, ahead of the rest of the app).
