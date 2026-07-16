@@ -3,19 +3,14 @@
 **Read this file first** — before the other docs, before doing anything else. It's the single
 "what's actually going on right now" pointer, kept short and current on purpose.
 
-Last updated: 2026-07-16. **Root cause of the confirmation-link bug found for real: Supabase's free
-tier only honors a custom email template while custom SMTP is actively configured.** Since custom
-SMTP (Resend) was abandoned as backlog, real confirmation emails fell back to Supabase's *stock*
-template, which links to the site root with `?code=<uuid>` — a completely different pattern than
-`/auth/confirm`'s `token_hash`/`type`, which is why that first fix (explicit cookie-copy on
-`/auth/confirm`) didn't actually address the real problem, just made a genuinely-correct-but-
-unreachable code path more robust. Fixed properly this time (commit `13880c8`, pushed): `proxy.ts`
-now handles the `?code=` pattern directly via `exchangeCodeForSession`, so confirmation works
-without depending on custom SMTP or the custom template at all — `/auth/confirm` stays in place
-unused, ready for if custom SMTP ever gets sorted out. Also merged/pushed: the nav header fix
-(`843c4b8`) and piece 2a (show search/import, `a4b1b4e`) — both hands-on tested and confirmed
-working. **Needs**: a fresh signup → real email click-through to confirm this actually lands on
-`/dashboard` logged in. Piece 2b (the ranking UI) is still deliberately deferred to a fresh session.
+Last updated: 2026-07-16. **Phase 1 fully done and verified — piece 1 (auth) and piece 2a (show
+search/import) both hands-on confirmed working, including the confirmation-link bug's real fix.**
+Root cause turned out to be Supabase's free tier only honoring a custom email template while custom
+SMTP is actively configured — since custom SMTP (Resend) was abandoned as backlog, real emails fell
+back to Supabase's stock `?code=<uuid>` link pattern instead of `/auth/confirm`'s `token_hash`/`type`.
+Fixed by handling `?code=` directly in `proxy.ts` via `exchangeCodeForSession` (commit `13880c8`) —
+**Kayvan confirmed via a real signup that this now lands on `/dashboard` already logged in.** Piece
+2b (the actual ranking UI) is next — see Bucket 1.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -24,14 +19,10 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence:**
-1. Fresh signup → real email click-through to verify the `?code=` exchange in `proxy.ts` actually
-   lands the user on `/dashboard` logged in. This exact class of cookie/redirect issue has now
-   caused two real bugs unit tests couldn't fully catch — treat this as the real test, not the
-   tests passing.
-2. Phase 1, piece 2, split into two sub-steps given its complexity:
+1. Phase 1, piece 2, split into two sub-steps given its complexity:
    - ~~2a~~ — **done**: show search (TMDB) → pick a show → import its episodes into
      `shows`/`episodes` → a basic "my shows" list. See History.
-   - **2b** (not started, deliberately deferred to a fresh session for budget reasons): the actual
+   - **2b** (not started): the actual
      ranking UI — cold-start buttons, then comparative better/worse/neutral prompts wired to
      `website/src/lib/ranking/`. Architecturally tricky: the algorithm expects synchronous
      comparisons but a real website only gets one answer per HTTP request. Planned approach:
@@ -113,6 +104,10 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-16: Kayvan confirmed via a real fresh signup that the `proxy.ts` `?code=` exchange fix
+  works — email confirmation now lands on `/dashboard` already logged in. **Phase 1 is fully done**:
+  piece 1 (auth) and piece 2a (show search/import), both hands-on verified in the browser, not just
+  passing tests. Next: piece 2b, the ranking UI itself (see Bucket 1 for the planned approach).
 - 2026-07-16: Found the *actual* root cause of the confirmation-link bug (the earlier `/auth/confirm`
   cookie-copy fix, while itself correct, didn't fix the real problem since that route was never
   being reached): confirmed via Supabase's own changelog that free-tier projects only honor a custom
