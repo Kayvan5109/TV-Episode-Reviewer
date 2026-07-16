@@ -3,16 +3,18 @@
 **Read this file first** — before the other docs, before doing anything else. It's the single
 "what's actually going on right now" pointer, kept short and current on purpose.
 
-Last updated: 2026-07-16. **Phase 1, piece 1 (auth) fully verified — done.** Sign up, log in, log
-out, session refresh, and route protection all confirmed working end-to-end in a real browser
-against the live Supabase project. Getting there required fixing three Supabase *configuration*
-bugs (not code bugs): `NEXT_PUBLIC_SUPABASE_URL` was set to the dashboard URL instead of the actual
-project API URL, Auth's "Site URL" was left at `http://localhost:3000` instead of the live Vercel
-URL, and the "Confirm signup" email template needed updating to the `token_hash`/`type` link pattern
-`/auth/confirm` expects. All three are fixed. Custom SMTP (Resend, to lift the default provider's
-2-emails/hour cap) was attempted but never got a connection through — logged as backlog, not
-blocking; currently running on Supabase's default email provider, which is fine for now. Piece 2
-(show search, cold-start/comparative ranking UI, score display) is next.
+Last updated: 2026-07-16. **Phase 1, piece 1 (auth) fully verified; piece 2a (show search/import)
+code-complete, reviewed, merged (`a4b1b4e`), not yet pushed.** Auth (sign up/log in/log out/session/
+route protection) confirmed working end-to-end in a real browser, after fixing three Supabase
+*configuration* bugs (wrong project URL, Site URL pointing at localhost, email template using the
+old link pattern — all fixed, see History). Piece 2a adds show search (TMDB), full-show episode
+import into `shows`/`episodes` (upsert, idempotent), a new RLS-protected `user_shows` table, and a
+basic dashboard/show-detail UI — 106 tests, typecheck/lint/build clean, independently reviewed.
+**Not yet pushed**, which matters here specifically: pushing will trigger the Supabase GitHub
+integration to apply the new `user_shows` migration to the *live* project (same as the schema push
+back in Phase 0) — needs a go-ahead before that push, not just a routine one. Also not yet
+hands-on-tested in a browser. Piece 2b (the actual ranking UI) is deliberately deferred to a fresh
+session — see Bucket 1.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -21,9 +23,12 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence:**
-1. Phase 1, piece 2, split into two sub-steps given its complexity:
-   - **2a** (in progress): show search (TMDB) → pick a show → import its episodes into
-     `shows`/`episodes` → a basic "my shows" list. Lower-risk, foundational.
+1. Push `main` to `origin` (triggers the live `user_shows` migration via Supabase's GitHub
+   integration — confirm go-ahead first, same as any push that touches `supabase/migrations/`), then
+   hands-on browser-test the search → add → import → redirect flow.
+2. Phase 1, piece 2, split into two sub-steps given its complexity:
+   - ~~2a~~ — **done**: show search (TMDB) → pick a show → import its episodes into
+     `shows`/`episodes` → a basic "my shows" list. See History.
    - **2b** (not started, deliberately deferred to a fresh session for budget reasons): the actual
      ranking UI — cold-start buttons, then comparative better/worse/neutral prompts wired to
      `website/src/lib/ranking/`. Architecturally tricky: the algorithm expects synchronous
@@ -38,7 +43,10 @@ unless it's small or genuinely blocking.
      an episode still sitting in cold-start).
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-(empty for now — the auth flow's hands-on check passed fully, see History below)
+1. **Show search/import flow needs a real browser check** once pushed: search → pick a result →
+   confirm import completes and redirects to `/shows/[showId]` with the right episode list, and that
+   the dashboard's "my shows" list (a `user_shows`-to-`shows` embedded query) resolves correctly
+   against the live schema.
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
 (empty for now — the tie-break selection question that lived here is resolved, see History below)
@@ -101,6 +109,21 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-16: Reviewed and merged Phase 1 piece 2a — show search, TMDB import, and a "my shows"
+  list — to `main` (commit `a4b1b4e`). Adds `importShowFromTmdb` (fetches a show's full details +
+  every season's episodes from TMDB, upserts into `shows`/`episodes` keyed on their unique TMDB-id
+  columns — idempotent across users/re-adds), a new `user_shows` table (RLS-protected, same
+  `auth.uid()` pattern as `episode_rankings`/`episode_comparisons`) to track which shows a user has
+  added independent of ranking progress, and `/shows/search` + `/shows/[showId]` pages. Caught and
+  fixed its own bug during self-review: a merge-upsert for `user_shows` would need an `update` RLS
+  policy that deliberately doesn't exist (no mutable columns) — fixed by using `ignoreDuplicates`
+  (`ON CONFLICT DO NOTHING`, needs only the `insert` policy) instead. Review: read the migration,
+  the upsert logic, and the auth-checked Server Action directly; confirmed global writes
+  (`shows`/`episodes`) stay on the service-role client and per-user writes (`user_shows`) stay on
+  the session-aware client throughout; re-ran tests (106/106)/typecheck/lint/build fresh before
+  committing. Not yet pushed (would trigger the live migration) or hands-on browser-tested — see
+  Bucket 1/2. Piece 2b (the ranking UI itself) deliberately deferred to a fresh session for budget
+  reasons.
 - 2026-07-16: Hands-on browser-verified the full auth flow end-to-end, finding and fixing three
   Supabase *configuration* bugs along the way (no code changes needed):
   1. `NEXT_PUBLIC_SUPABASE_URL` was set to the Supabase **dashboard** URL
