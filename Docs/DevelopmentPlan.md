@@ -109,6 +109,9 @@ feel off.
 
 - **Re-ranking**: if a user's opinion of an old episode changes, can they re-rank it, and does that
   ripple through other episodes' scores?
+- **Live/autocomplete show search**: the `/shows/search` page (Phase 1 piece 2a) requires an
+  explicit submit rather than searching as you type. Reasonable UX improvement, deliberately not
+  built in Phase 1 (which explicitly scoped out visual/UX polish) — candidate for Phase 2.
 - **Cross-show ranking**: is ranking strictly within a single show, or could episodes ever be
   compared across different shows? (Current concept assumes strictly within-show.)
 - ~~Liked/disliked/neutral-only episodes joining the comparison pool~~ — **resolved 2026-07-15**:
