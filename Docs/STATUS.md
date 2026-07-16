@@ -3,15 +3,14 @@
 **Read this file first** — before the other docs, before doing anything else. It's the single
 "what's actually going on right now" pointer, kept short and current on purpose.
 
-Last updated: 2026-07-16. Piece 2b, part 2 (the ranking UI itself) is built, independently reviewed,
-verified (tests/typecheck/lint/build all fresh), and merged to `main` (not yet pushed — see below).
-**Phase 1's core ranking flow is now code-complete end to end**, but needs Kayvan's real hands-on
-browser check (against live Supabase data) before it's actually "done" — this is feel-based UI work
-on top of an already-reviewed API, so a hands-on check is the real test, not a second deep review
-pass. No agent is running. Next up after that check: TMDB attribution, password reset, remove-show +
-re-ranking, and a privacy notice, in that order — see Bucket 1/2 below and `DevelopmentPlan.md`'s
-Phase 1 section. Custom SMTP, mobile/responsive check, error monitoring, and visual design are still
-explicitly logged for later — see Bucket 4.
+Last updated: 2026-07-16. Piece 2b, part 2's first cut (a single auto-advancing ranking flow) was
+built, reviewed, merged, and pushed — then Kayvan's hands-on browser test the same day found it was
+the wrong interaction model (see History). **Confirmed direction: an episode-picker rebuild** —
+`/shows/[showId]` becomes a per-episode list (ranked+score / cold-start-pending / unranked), clicking
+an unranked episode ranks that one specifically. Confirmed as the top priority, ahead of the rest of
+the Bucket 1 queue below. An implementer agent is building this now (see Bucket 1 item 1) — this is
+correctness-critical (touches `ranking-session`'s persistence/validation logic, not just UI), so it
+gets an independent reviewer pass before being called done, same as the persistence layer itself was.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -20,46 +19,34 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence (work in this order):**
-1. **TMDB attribution** — small, quick, do early. Required attribution text somewhere in the app
+1. **Episode-picker rebuild of the ranking UI** — confirmed 2026-07-16 (see History), in progress
+   now. `/shows/[showId]` becomes a per-episode list (ranked+score / cold-start-pending+bucket /
+   unranked-and-clickable); clicking an unranked episode ranks that one specifically via a new
+   per-episode route, replacing the old whole-show auto-advance flow. Also resolves the "no way back
+   to the show page" gap (the show page is the persistent home now) and "view current rankings"
+   (shown inline, not gated behind full completion). Correctness-critical (touches
+   `ranking-session`'s validation logic) — implementer + independent reviewer, then a real hands-on
+   browser check, before this is called done.
+2. **TMDB attribution** — small, quick, do early. Required attribution text somewhere in the app
    (e.g. `AppHeader` or a footer) per TMDB's API terms — see `Risks.md`.
-2. **Password reset flow** — currently doesn't exist at all. `resetPasswordForEmail` + a set-new-
+3. **Password reset flow** — currently doesn't exist at all. `resetPasswordForEmail` + a set-new-
    password page. Same correctness-critical rigor as the rest of auth (read the code directly, real
    email click-through check) — this is `proxy.ts`/cookie territory again.
-3. **Remove a show + re-ranking** — both confirmed wanted, neither designed yet; Kayvan's 2026-07-16
+4. **Remove a show + re-ranking** — both confirmed wanted, neither designed yet; Kayvan's 2026-07-16
    hands-on test independently re-surfaced wanting show removal, reconfirming this. Decide at the
    start of the session (don't just implement a guess): does removing a show also delete that user's
    `episode_rankings`/`episode_comparisons` for it, or just the `user_shows` row? Does re-ranking
    clear just `rank_position` (re-inserting via existing placement logic) or also
    `episode_comparisons` history for that episode? See `DevelopmentPlan.md`'s Phase 1 section for
    the full framing of both questions.
-4. **Privacy notice** — short static page, what's collected + the three third parties involved
+5. **Privacy notice** — short static page, what's collected + the three third parties involved
    (Supabase, TMDB, Vercel). Draft the content with Kayvan rather than inventing it.
-5. **"Return to show page" link on `/shows/[showId]/rank`** — found 2026-07-16 hands-on testing;
-   `AppHeader` only links to `/dashboard`, no way back to the specific show short of browser back.
-   Small, no design decision needed — add a link once the episode-picker design below is settled
-   (may end up folded into that same page).
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-(empty — the ranking-UI hands-on check that lived here is done, see History below; it surfaced real
-gaps, now in Bucket 1/3)
+(empty for now)
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
-1. **Episode-picker + "view current rankings" design** — Kayvan's 2026-07-16 hands-on test of the
-   new ranking UI surfaced that it forces a single sequential path with no way to (a) pick which
-   specific episode to rank next (it always jumps straight to whatever `nextUnrankedEpisode` picks —
-   currently hardcoded to season/episode order) or (b) view the show's current rankings while some
-   episodes are still unranked (only reachable today as a side effect of reaching `'done'`).
-   Proposed direction, pending Kayvan's confirmation before building (this touches the
-   correctness-critical `ranking-session` orchestration layer, not just UI): turn `/shows/[showId]`
-   into a real per-episode list — each episode shows its current status (ranked + score /
-   cold-start bucket / unranked) and an unranked episode is clickable to start ranking *that*
-   episode specifically, in whatever order the user wants. This is compatible with the underlying
-   algorithm as designed: `addColdStartEpisode`/`addComparativeEpisode` (`@/lib/ranking/engine.ts`)
-   take an arbitrary `episodeId` and don't care what order episodes are placed in — only
-   `nextUnrankedEpisode` (`ranking-session/session.ts`) currently hardcodes "first unranked in
-   season/episode order," and would need to become "the episode the user picked" instead. Also
-   would naturally resolve Bucket 1 item 5 (a persistent show-scoped view IS the "return to show
-   page" experience) and expose current rankings mid-way as a byproduct of the same per-episode list.
+(empty for now — the episode-picker design that lived here is confirmed, see Bucket 1 item 1)
 
 **Bucket 4 — Backlog, logged, not being chased:**
 1. Shared test-fixture format to keep the TypeScript (website) and Swift (iOS) ranking-algorithm
@@ -132,6 +119,16 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-16: Confirmed the episode-picker design with Kayvan (both the interaction model and that
+  it jumps ahead of the rest of the Bucket 1 queue) and verified against the actual algorithm source
+  before building: `orderColdStartIds` orders purely by judgment sequence not air-date
+  (`@/lib/ranking/coldStart.ts`), and `placeEpisodeComparatively`/`resolveTie` keep the placed
+  episode fixed as `subject` through an entire placement including tie-break hops
+  (`@/lib/ranking/comparativePlacement.ts`) — so nothing in the algorithm assumes sequential
+  air-date ranking, confirming the picker is safe to build. See `DevelopmentPlan.md`'s Phase 1
+  section for the full design write-up. An implementer agent is building it now, to be followed by
+  an independent reviewer pass (correctness-critical — touches `ranking-session`'s validation logic)
+  before a hands-on browser check.
 - 2026-07-16: Kayvan hands-on tested the new ranking UI in the browser (real Supabase data). Found
   5 real gaps, all logged and triaged: no way to remove a show from "My shows" (reconfirms Bucket 1
   item 3, already planned); the ranking flow forces a single sequential path with no way to pick a

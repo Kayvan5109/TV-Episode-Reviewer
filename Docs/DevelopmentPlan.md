@@ -173,10 +173,29 @@ placement → see a resulting 1-10 score per episode in a simple list. Data pers
 Postgres, tied to the signed-in account. No onboarding, no settings, no visual polish beyond
 "functional and readable." Deployed on Vercel so it's usable from any browser, not just localhost.
 
-Auth, show search/import, the ranking algorithm's persistence layer, and now the ranking UI itself
-are all built and reviewed (see `STATUS.md` History) — **Phase 1's core ranking flow is
-code-complete end to end**, pending a real hands-on browser check (see `STATUS.md` Bucket 2) before
-it's actually called done. **Next session's plan (after that check) — work in this order:**
+Auth, show search/import, and the ranking algorithm's persistence layer are all built and reviewed
+(see `STATUS.md` History). The first cut of the ranking UI (a single auto-advancing flow) was built
+2026-07-16, then Kayvan's hands-on browser test the same day surfaced that this was the wrong
+interaction model — see the decision below, now confirmed and being rebuilt on top of the same
+already-reviewed persistence layer.
+
+**Decided 2026-07-16: episode-picker replaces the auto-advancing single flow.** Kayvan's test found
+the first cut forced ranking whatever episode `nextUnrankedEpisode` picked (hardcoded season/episode
+order), with no way to pick a specific episode or to see current rankings mid-way. Confirmed
+direction: `/shows/[showId]` becomes a real per-episode list (each episode shows ranked+score /
+cold-start-pending+bucket / unranked), and clicking any unranked episode ranks *that one*
+specifically, in whatever order the user wants — this also surfaces current rankings as a natural
+byproduct, and resolves the "no way back to the show page" gap (the show page IS the persistent home
+now). This is compatible with the underlying algorithm exactly as designed, confirmed by re-reading
+the source directly rather than assuming: `orderColdStartIds` (`coldStart.ts`) already orders purely
+by judgment sequence, not air-date, and `placeEpisodeComparatively`/`resolveTie`
+(`comparativePlacement.ts`) keep `subject` fixed as the episode being placed through an entire
+placement including any tie-break hops — so nothing about the algorithm assumes or requires
+air-date-sequential ranking. Confirmed priority: build this next, ahead of the rest of the Phase 1
+queue below.
+
+**Next session's plan (after the episode-picker rebuild and its own hands-on check) — work in this
+order:**
 
 1. **TMDB attribution** (small, quick — do this early as an easy win). TMDB's API terms require
    visible attribution (something like "This product uses the TMDB API but is not endorsed or
