@@ -8,17 +8,32 @@ Operational manual-test staging: how to actually run a build and check it, disti
 
 ### How to build and run
 
-Not yet set up — no Next.js project exists yet (Phase 0 hasn't started). Once it exists: `npm run
-dev` for a local dev server (fastest iteration loop), with a real deploy to Vercel once there's
-something worth trying outside localhost — Vercel deploys automatically from the git repo, so
-"deployed" mostly just means "pushed." Fill in the exact commands once the project is scaffolded.
+From the `website/` directory:
+- `npm install` — install dependencies (only needed after a fresh clone or when `package.json`
+  changes).
+- `npm run dev` — local dev server at `http://localhost:3000`, fastest iteration loop.
+- `npm run test` — runs the Vitest suite (currently the ranking-algorithm tests; grows as
+  Supabase/TMDB integration tests are added).
+- `npx tsc --noEmit` — typecheck without emitting files.
+- `npm run lint` — ESLint.
+- `npm run build` — production build (same as what Vercel runs); worth running before pushing
+  something you expect to deploy cleanly.
+
+Needs a `website/.env.local` (copy `website/.env.local.example` and fill in real values — see
+`TechArchitecture.md`) for anything that talks to Supabase or TMDB; the ranking-algorithm tests
+don't need it since they don't touch either.
+
+Deployed automatically to Vercel on every push to `main` once the Vercel project is imported (root
+directory set to `website`, env vars mirrored from `.env.local` in Vercel's dashboard) — see
+`STATUS.md` for whether that's been set up yet.
 
 ### What to check each time
 
-Not yet applicable — no app to run. Once Phase 1 (website vertical slice) exists, this becomes a
-running checklist of the core flows to click through (sign up/log in → pick a show → cold-start
-rank a few episodes → trigger comparative ranking → see a score), so a manual test session has a
-repeatable baseline instead of ad hoc poking. Grows as features are added.
+Not yet applicable — no user-facing screens exist yet (Phase 0 is backend/algorithm work, no UI).
+Once Phase 1 (website vertical slice) exists, this becomes a running checklist of the core flows to
+click through (sign up/log in → pick a show → cold-start rank a few episodes → trigger comparative
+ranking → see a score), so a manual test session has a repeatable baseline instead of ad hoc poking.
+Grows as features are added.
 
 ## iOS (Phase 4+)
 
