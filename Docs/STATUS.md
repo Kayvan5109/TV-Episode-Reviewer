@@ -3,19 +3,19 @@
 **Read this file first** — before the other docs, before doing anything else. It's the single
 "what's actually going on right now" pointer, kept short and current on purpose.
 
-Last updated: 2026-07-16. **Piece 2a hands-on tested and mostly working; two bugs found and fixed
-(`843c4b8`), not yet pushed or re-verified.** Kayvan browser-tested piece 2a: search/add/import/
-dedup/multi-show all work correctly. Two real issues found: (1) the email confirmation link landed
-on `/login` with no session or explanation instead of `/dashboard` logged in — fixed by having
-`/auth/confirm` build its redirect response explicitly and copy session cookies onto it directly,
-rather than relying on `next/navigation`'s `redirect()` to carry them (root-cause confidence is
-moderate only — reading Next.js's actual internals didn't prove the original failure mode, so an
-email-security-scanner pre-fetching the single-use link remains a possible alternative explanation;
-`/login` now shows a real message either way instead of silent ambiguity); (2) no way back to
-`/dashboard` from `/shows/search` except editing the URL — fixed with a small persistent header.
-**Not yet pushed** (would apply piece 2a's `user_shows` migration live) and the confirm-link fix
-specifically needs a real email click-through to verify — see Bucket 1. Piece 2b (the ranking UI) is
-still deliberately deferred to a fresh session.
+Last updated: 2026-07-16. **Root cause of the confirmation-link bug found for real: Supabase's free
+tier only honors a custom email template while custom SMTP is actively configured.** Since custom
+SMTP (Resend) was abandoned as backlog, real confirmation emails fell back to Supabase's *stock*
+template, which links to the site root with `?code=<uuid>` — a completely different pattern than
+`/auth/confirm`'s `token_hash`/`type`, which is why that first fix (explicit cookie-copy on
+`/auth/confirm`) didn't actually address the real problem, just made a genuinely-correct-but-
+unreachable code path more robust. Fixed properly this time (commit `13880c8`, pushed): `proxy.ts`
+now handles the `?code=` pattern directly via `exchangeCodeForSession`, so confirmation works
+without depending on custom SMTP or the custom template at all — `/auth/confirm` stays in place
+unused, ready for if custom SMTP ever gets sorted out. Also merged/pushed: the nav header fix
+(`843c4b8`) and piece 2a (show search/import, `a4b1b4e`) — both hands-on tested and confirmed
+working. **Needs**: a fresh signup → real email click-through to confirm this actually lands on
+`/dashboard` logged in. Piece 2b (the ranking UI) is still deliberately deferred to a fresh session.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -24,9 +24,10 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence:**
-1. Push `main` to `origin` (already-live migration, no new schema changes in this last commit, but
-   confirm go-ahead per usual practice), then re-verify with a real email click-through that the
-   confirmation link now lands on `/dashboard` logged in.
+1. Fresh signup → real email click-through to verify the `?code=` exchange in `proxy.ts` actually
+   lands the user on `/dashboard` logged in. This exact class of cookie/redirect issue has now
+   caused two real bugs unit tests couldn't fully catch — treat this as the real test, not the
+   tests passing.
 2. Phase 1, piece 2, split into two sub-steps given its complexity:
    - ~~2a~~ — **done**: show search (TMDB) → pick a show → import its episodes into
      `shows`/`episodes` → a basic "my shows" list. See History.
@@ -44,9 +45,7 @@ unless it's small or genuinely blocking.
      an episode still sitting in cold-start).
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **Confirmation-link fix needs re-verification** via a real email click-through (see Bucket 1) —
-   the fix is defensively correct regardless of root cause, but the original failure mode was never
-   conclusively proven, so confirm it actually resolves what was observed.
+(empty for now — folded into Bucket 1 above)
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
 (empty for now — the tie-break selection question that lived here is resolved, see History below)
@@ -55,7 +54,12 @@ unless it's small or genuinely blocking.
 1. Shared test-fixture format to keep the TypeScript (website) and Swift (iOS) ranking-algorithm
    implementations from drifting apart — relevant once the iOS phase (Phase 4) starts porting the
    algorithm, not before. See `DevelopmentPlan.md` Discussion.
-2. **Custom SMTP (Resend) for auth emails, to lift the default provider's 2-emails/hour cap.**
+2. **`code` query param collision risk**: `proxy.ts`'s code-exchange branch (for Supabase's
+   default confirmation-link pattern) checks for a `code` query param on *any* route it matches, not
+   just `/`. Fine today (nothing else uses that param name), but worth remembering if a future
+   feature ever wants a `?code=` param for something unrelated (e.g. an invite/referral code) — it
+   would collide with this Supabase auth handling.
+3. **Custom SMTP (Resend) for auth emails, to lift the default provider's 2-emails/hour cap.**
    Attempted 2026-07-16: configured Resend as custom SMTP (host `smtp.resend.com`, tried both port
    465 and 587, fresh API key, correct sender/username) — Resend's own dashboard never showed a
    single connection attempt regardless of port, so the failure is upstream of Resend itself (some
@@ -109,6 +113,22 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-16: Found the *actual* root cause of the confirmation-link bug (the earlier `/auth/confirm`
+  cookie-copy fix, while itself correct, didn't fix the real problem since that route was never
+  being reached): confirmed via Supabase's own changelog that free-tier projects only honor a custom
+  email template while custom SMTP is actively configured — sending through the default provider
+  silently reverts to Supabase's stock template regardless of what's saved in the dashboard editor.
+  Since custom SMTP (Resend) was abandoned as backlog, real confirmation emails were using the stock
+  template's `{{ .SiteURL }}?code=<uuid>` link — a totally different pattern from `/auth/confirm`'s
+  `token_hash`/`type`. Rather than resume chasing custom SMTP, adapted the code instead: `proxy.ts`
+  (the only place that can both intercept the request and write cookies before a page renders) now
+  handles `?code=` directly via `exchangeCodeForSession`, mirroring `/auth/confirm`'s proven explicit-
+  cookie-copy pattern. Reviewed and merged (`13880c8`, pushed): read the change directly, confirmed
+  it's checked first and fully separated from the existing session-refresh/route-protection logic,
+  confirmed the single-use code is genuinely dropped from the redirect URL, 124/124 tests passing.
+  Noted a minor forward-looking collision risk (the `code` param check applies proxy-wide, not just
+  to `/`) in Bucket 4. Still needs a real signup/email click-through to confirm this actually works —
+  see Bucket 1.
 - 2026-07-16: Kayvan hands-on tested piece 2a in the browser: search, add, import, dedup on re-add,
   and multi-show all confirmed working. Found two real issues, both fixed and reviewed, merged to
   `main` (`843c4b8`): (1) the email confirmation link landed on `/login` with no session and no
