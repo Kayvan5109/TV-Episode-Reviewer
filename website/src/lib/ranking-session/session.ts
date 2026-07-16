@@ -20,7 +20,12 @@
  */
 
 import { createSupabaseServerClient } from '@/lib/supabase/serverSession';
-import { addComparativeEpisode, createInitialShowState, isColdStart } from '@/lib/ranking/engine';
+import {
+  addComparativeEpisode,
+  createInitialShowState,
+  currentDisplayOrder,
+  isColdStart,
+} from '@/lib/ranking/engine';
 import type { ColdStartBucket, ComparisonResult, EpisodeId, ShowRankingState } from '@/lib/ranking/types';
 import { makeReplayComparator } from './comparator';
 import { reconstructShowRankingState, type ComparisonRow, type RankingRow } from './reconstruct';
@@ -211,6 +216,37 @@ export async function getNextRankingStep(showId: string): Promise<NextRankingSte
   const userId = await requireUserId(supabase);
   const loaded = await loadShowRankingState(supabase, userId, showId);
   return deriveNextStep(supabase, userId, loaded);
+}
+
+/**
+ * The show's full best-to-worst episode order, if ranking is actually complete — `null` while
+ * there's still a pending step (`coldStart` or `compare`).
+ *
+ * Deliberately re-derives "is this actually done?" via `deriveNextStep` rather than checking
+ * something cheaper like "does every episode have a non-null `rank_position`": a show with fewer
+ * than `COLD_START_THRESHOLD` total episodes finishes cold-start ranking every episode and *never*
+ * enters comparative placement, so its episodes never get a `rank_position` at all — for that show,
+ * `rank_position IS NOT NULL` would (wrongly) never be true even once ranking is fully done.
+ * `deriveNextStep`/`currentDisplayOrder` already know how to handle both cases correctly, so this
+ * just defers to them instead of re-encoding that rule here.
+ *
+ * Reloads the state fresh after confirming `'done'` rather than reusing the `loaded` state from
+ * before the `deriveNextStep` call: that call's internal loop may have just persisted newly-folded
+ * rank positions (crossing `COLD_START_THRESHOLD` mid-derivation), so the pre-call `loaded.state`
+ * can be stale even though the derivation itself didn't throw.
+ */
+export async function getRankedEpisodeOrder(showId: string): Promise<EpisodeId[] | null> {
+  const supabase = await createSupabaseServerClient();
+  const userId = await requireUserId(supabase);
+  const loaded = await loadShowRankingState(supabase, userId, showId);
+
+  const step = await deriveNextStep(supabase, userId, loaded);
+  if (step.type !== 'done') {
+    return null;
+  }
+
+  const reloaded = await loadShowRankingState(supabase, userId, showId);
+  return currentDisplayOrder(reloaded.state);
 }
 
 /**
