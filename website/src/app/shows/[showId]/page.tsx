@@ -4,6 +4,7 @@ import { notFound, redirect } from 'next/navigation';
 
 import { createSupabaseServerClient } from '@/lib/supabase/serverSession';
 import { AppHeader } from '@/components/AppHeader';
+import { getShowRankingDisplay } from '@/lib/ranking-session';
 
 export const metadata: Metadata = {
   title: 'Show — Episode Ranker',
@@ -25,16 +26,30 @@ interface EpisodeRow {
   title: string;
 }
 
+const BUCKET_LABELS: Record<string, string> = {
+  liked: 'Liked',
+  neutral: 'Neutral',
+  disliked: 'Disliked',
+};
+
 /**
- * Show detail page: confirms a show's episode import worked by listing everything that got
- * pulled in from TMDB, grouped by season. Reads `shows`/`episodes` via the *session-aware* client
- * — RLS lets any signed-in user read this global reference data (see
- * `supabase/migrations/20260715000000_initial_schema.sql`), so this isn't scoped to "shows this
- * particular user added".
+ * Show detail page: a real per-episode list, grouped by season. Each row shows that episode's
+ * current ranking status — a derived 1-10 score once it's ranked, its cold-start bucket while
+ * mid-judgment, or a "Rank" link if it hasn't been touched at all yet. Clicking any unranked
+ * episode starts ranking *that one specifically*
+ * (`/shows/[showId]/rank/[episodeId]`, see that route's own doc comment) in whatever order the
+ * user picks — not forced season/episode order.
  *
- * "Start ranking" links to `/shows/[showId]/rank` (the actual ranking flow, built on top of
- * `@/lib/ranking-session`) — disabled only when there are genuinely 0 imported episodes, since
- * there'd be nothing to rank.
+ * This replaces an earlier version of this page that just showed an episode count and a single
+ * "Start ranking" button into a fixed whole-show auto-advance flow: hands-on testing found that
+ * flow gave no way to pick a specific episode, no way to see current rankings mid-show, and no way
+ * back out of it (see Docs/DevelopmentPlan.md's Phase 1 write-up for the full account).
+ *
+ * Reads `shows`/`episodes` via the *session-aware* client — RLS lets any signed-in user read this
+ * global reference data (see `supabase/migrations/20260715000000_initial_schema.sql`), so this
+ * isn't scoped to "shows this particular user added". Ranking status, by contrast, is genuinely
+ * per-user (`getShowRankingDisplay`, from `@/lib/ranking-session`, scopes it via the signed-in
+ * user itself).
  */
 export default async function ShowDetailPage({
   params,
@@ -79,6 +94,24 @@ export default async function ShowDetailPage({
     seasons.set(episode.season_number, seasonEpisodes);
   }
 
+  // Only worth asking for ranking status if there's actually something to rank and the episode
+  // fetch itself succeeded — an empty/errored episode list has nothing for `getShowRankingDisplay`
+  // to say anyway.
+  const display = !episodesError && episodes.length > 0 ? await getShowRankingDisplay(showId) : null;
+
+  const scoreByEpisode = new Map<string, number>();
+  const bucketByEpisode = new Map<string, string>();
+  if (display) {
+    for (const { episodeId, score } of display.ranked) {
+      scoreByEpisode.set(episodeId, score);
+    }
+    if (!display.done) {
+      for (const { episodeId, bucket } of display.coldStartPending) {
+        bucketByEpisode.set(episodeId, bucket);
+      }
+    }
+  }
+
   return (
     <>
       <AppHeader />
@@ -99,22 +132,8 @@ export default async function ShowDetailPage({
             <p className="text-sm text-black/60 dark:text-white/60">
               {episodes.length} episode{episodes.length === 1 ? '' : 's'} imported
             </p>
-            {episodes.length > 0 ? (
-              <Link
-                href={`/shows/${showId}/rank`}
-                className="w-fit rounded bg-black px-4 py-2 text-sm text-white dark:bg-white dark:text-black"
-              >
-                Start ranking
-              </Link>
-            ) : (
-              <button
-                type="button"
-                disabled
-                title="No episodes imported for this show yet — nothing to rank."
-                className="w-fit rounded bg-black px-4 py-2 text-sm text-white opacity-50 dark:bg-white dark:text-black"
-              >
-                Start ranking
-              </button>
+            {display?.done && (
+              <p className="text-sm font-medium text-green-700 dark:text-green-400">Ranking complete</p>
             )}
           </div>
         </div>
@@ -136,15 +155,38 @@ export default async function ShowDetailPage({
               .map(([seasonNumber, seasonEpisodes]) => (
                 <div key={seasonNumber} className="flex flex-col gap-2">
                   <h2 className="text-lg font-medium">Season {seasonNumber}</h2>
-                  <ol className="flex flex-col gap-1">
-                    {seasonEpisodes.map((episode) => (
-                      <li key={episode.id} className="flex gap-3 text-sm">
-                        <span className="text-black/50 dark:text-white/50">
-                          E{episode.episode_number}
-                        </span>
-                        <span>{episode.title}</span>
-                      </li>
-                    ))}
+                  <ol className="flex flex-col gap-2">
+                    {seasonEpisodes.map((episode) => {
+                      const score = scoreByEpisode.get(episode.id);
+                      const bucket = bucketByEpisode.get(episode.id);
+                      return (
+                        <li
+                          key={episode.id}
+                          className="flex items-center justify-between gap-3 rounded border border-black/10 p-2 text-sm dark:border-white/20"
+                        >
+                          <span className="flex gap-3">
+                            <span className="text-black/50 dark:text-white/50">
+                              E{episode.episode_number}
+                            </span>
+                            <span>{episode.title}</span>
+                          </span>
+                          {score !== undefined ? (
+                            <span className="font-medium">{score.toFixed(1)}</span>
+                          ) : bucket !== undefined ? (
+                            <span className="rounded bg-black/5 px-2 py-1 text-xs text-black/70 dark:bg-white/10 dark:text-white/70">
+                              {BUCKET_LABELS[bucket] ?? bucket}
+                            </span>
+                          ) : (
+                            <Link
+                              href={`/shows/${showId}/rank/${episode.id}`}
+                              className="rounded bg-black px-3 py-1 text-xs text-white dark:bg-white dark:text-black"
+                            >
+                              Rank
+                            </Link>
+                          )}
+                        </li>
+                      );
+                    })}
                   </ol>
                 </div>
               ))}
