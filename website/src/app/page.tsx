@@ -1,8 +1,17 @@
 import Image from "next/image";
+import Link from "next/link";
 
 export default function Home() {
   return (
     <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
+      <nav className="flex w-full max-w-3xl justify-end gap-4 px-16 pt-8 text-sm">
+        <Link href="/login" className="underline">
+          Log in
+        </Link>
+        <Link href="/signup" className="underline">
+          Sign up
+        </Link>
+      </nav>
       <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
         <Image
           className="dark:invert"
