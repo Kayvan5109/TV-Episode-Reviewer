@@ -3,9 +3,13 @@
 **Read this file first** — before the other docs, before doing anything else. It's the single
 "what's actually going on right now" pointer, kept short and current on purpose.
 
-Last updated: 2026-07-16. **Phase 1 fully done and verified, including the two follow-up UX fixes
-(live search, "already added" indication) — Kayvan hands-on confirmed both work.** Piece 2b (the
-actual ranking UI) is next and is the last piece of Phase 1 — see Bucket 1 for the planned approach.
+Last updated: 2026-07-16. **Piece 2b, part 1 (the resumable ranking-session logic) done, reviewed
+thoroughly, merged (`aab0dbd`), not yet pushed.** `getNextRankingStep`/`submitColdStartAnswer`/
+`submitComparisonAnswer` reconstruct a show's ranking state from the DB on every call and replay
+already-answered comparisons through the existing algorithm, surfacing only genuinely new questions
+— 159 tests, typecheck/lint/build clean. This included a new migration
+(`episode_rankings.cold_start_bucket`/`cold_start_sequence`) — **pushing will apply it live**, same
+as previous schema pushes, confirm go-ahead first. No UI yet — that's part 2, next.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -14,21 +18,16 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence:**
-1. Phase 1, piece 2, split into two sub-steps given its complexity:
-   - ~~2a~~ — **done**: show search (TMDB) → pick a show → import its episodes into
-     `shows`/`episodes` → a basic "my shows" list. See History.
-   - **2b** (not started): the actual
-     ranking UI — cold-start buttons, then comparative better/worse/neutral prompts wired to
-     `website/src/lib/ranking/`. Architecturally tricky: the algorithm expects synchronous
-     comparisons but a real website only gets one answer per HTTP request. Planned approach:
-     reconstruct `ShowRankingState` fresh on every request from `episode_rankings` +
-     `episode_comparisons` (which already record everything needed), and give the algorithm a
-     comparator that replays already-answered comparisons instantly and throws a sentinel error on
-     the first genuinely new one — that sentinel becomes "here's the next question to show the
-     user." No new schema/state needed for this beyond what already exists, except adding
-     `cold_start_bucket`/`cold_start_sequence` columns to `episode_rankings` (currently only has
-     `rank_position`, which is correct for comparatively-placed episodes but has nowhere to persist
-     an episode still sitting in cold-start).
+1. Push `main` to `origin` (applies the `cold_start_bucket`/`cold_start_sequence` migration live —
+   confirm go-ahead first).
+2. Phase 1, piece 2b, part 2: the actual ranking UI on `/shows/[showId]` — replace the disabled
+   "Start ranking" placeholder with real screens calling `getNextRankingStep`/
+   `submitColdStartAnswer`/`submitComparisonAnswer` (see `website/src/lib/ranking-session/`): a
+   liked/disliked/neutral picker for cold-start steps, a better/worse/neutral comparison prompt for
+   compare steps (joining episode ids against `episodes` for title/season/episode display), and the
+   current ranked list with computed 1-10 scores (`website/src/lib/ranking/score.ts`) once a show
+   reaches `done`. This is feel-based UI work on top of an already-reviewed API, not correctness-
+   critical itself — needs a hands-on check once built, not a second deep review pass.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
 (empty for now — live search and "already added" both confirmed working, see History)
@@ -99,6 +98,21 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-16: Built and thoroughly reviewed piece 2b's persistence layer — the resumable
+  ranking-session logic (`website/src/lib/ranking-session/`), reviewed and merged (`aab0dbd`). This
+  is the piece that makes the already-tested, already-reviewed pure algorithm (`@/lib/ranking`) work
+  across real HTTP requests: reconstructs a `ShowRankingState` from `episode_rankings`/
+  `episode_comparisons` on every call, replays already-answered comparisons instantly via a
+  comparator that throws a sentinel (`NeedsComparisonInput`) on the first genuinely new question.
+  Added `episode_rankings.cold_start_bucket`/`cold_start_sequence` columns via a new migration (not
+  yet pushed live). Given how central and tricky this is, reviewed it more thoroughly than usual:
+  read every function by hand, confirmed the bidirectional history reconstruction exactly mirrors
+  the pure algorithm's in-memory `recordComparison`/`invert`, traced the cold-start-to-comparative
+  transition and a full multi-hop tie-break chain, and confirmed both `submit*` functions re-derive
+  the pending step server-side and reject mismatches rather than trusting client-claimed state
+  (defends against stale/concurrent submissions corrupting data). Per-user scoping confirmed
+  throughout (explicit `user_id` filters plus RLS, identity always from `getUser()`). 159/159 tests
+  passing, including a genuinely rigorous multi-step tie-break test. No UI yet — that's next.
 - 2026-07-16: Two follow-up UX fixes from further hands-on testing of piece 2a, reviewed and merged
   (`32e04a6`): show search is now live/debounced-as-you-type (previously required an explicit
   submit), and search results the signed-in user has already added now show "Go to show" instead of
