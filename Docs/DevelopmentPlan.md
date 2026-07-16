@@ -173,34 +173,22 @@ placement → see a resulting 1-10 score per episode in a simple list. Data pers
 Postgres, tied to the signed-in account. No onboarding, no settings, no visual polish beyond
 "functional and readable." Deployed on Vercel so it's usable from any browser, not just localhost.
 
-Auth, show search/import, and the ranking algorithm's persistence layer are all done and reviewed
-(see `STATUS.md` History). **Next session's plan — work in this order:**
+Auth, show search/import, the ranking algorithm's persistence layer, and now the ranking UI itself
+are all built and reviewed (see `STATUS.md` History) — **Phase 1's core ranking flow is
+code-complete end to end**, pending a real hands-on browser check (see `STATUS.md` Bucket 2) before
+it's actually called done. **Next session's plan (after that check) — work in this order:**
 
-1. **Ranking UI** (the actual point of the app, and the only reason nothing can be tested end to
-   end yet). Build the screens on `/shows/[showId]` that call the already-reviewed
-   `website/src/lib/ranking-session/` API (`getNextRankingStep`, `submitColdStartAnswer`,
-   `submitComparisonAnswer`):
-   - A liked/disliked/neutral picker for `{ type: 'coldStart', episode }` steps.
-   - A better/worse/neutral comparison prompt for `{ type: 'compare', subject, reference }` steps —
-     join `subject`/`reference` episode ids against `episodes` for title/season/episode display.
-   - Once a show reaches `{ type: 'done' }`: the ranked episode list with computed 1-10 scores
-     (`website/src/lib/ranking/score.ts` — remember the score is derived from rank position +
-     episode count on the fly, never stored).
-   - Replace `/shows/[showId]`'s disabled "Start ranking" placeholder with a real entry point into
-     this flow.
-   - This is feel-based UI work on top of an already-reviewed API — needs a hands-on check once
-     built, not a second deep correctness review of the persistence layer itself.
-2. **TMDB attribution** (small, quick — do this early as an easy win). TMDB's API terms require
+1. **TMDB attribution** (small, quick — do this early as an easy win). TMDB's API terms require
    visible attribution (something like "This product uses the TMDB API but is not endorsed or
    certified by TMDB") somewhere in the app — add it to `AppHeader` or a small shared footer. See
    `Risks.md`.
-3. **Password reset flow** — currently completely absent; a real user who forgets their password has
+2. **Password reset flow** — currently completely absent; a real user who forgets their password has
    no way to recover their account. Use Supabase Auth's `resetPasswordForEmail` (sends a reset-link
    email — reuse the site's existing default-email-provider path, same as signup confirmation) plus
    a page to set a new password. Same session/cookie-handling care as the rest of auth — this touches
    the same correctness-critical territory as `/auth/confirm`/`proxy.ts`, so give it the same review
    rigor (read the actual code, don't just trust tests, and get a real email click-through check).
-4. **Remove a show, and re-ranking.** Two related asks from Kayvan:
+3. **Remove a show, and re-ranking.** Two related asks from Kayvan:
    - Removing a show: decide (this needs a real design decision, not just an implementation — flag
      it back to Kayvan rather than guessing) whether removing a show from "my shows" also deletes
      that user's `episode_rankings`/`episode_comparisons` for its episodes (clean slate if re-added
@@ -214,7 +202,7 @@ Auth, show search/import, and the ranking algorithm's persistence layer are all 
      This was flagged as an open idea in Discussion above long before today; it's now confirmed
      wanted, but the mechanics still need designing — do that at the start of next session before
      writing code.
-5. **Privacy notice.** A short, honest static page describing what's collected (email/password,
+4. **Privacy notice.** A short, honest static page describing what's collected (email/password,
    show/episode preferences) and that it passes through three third parties (Supabase, TMDB,
    Vercel). Content/writing task more than a code task — draft it together with Kayvan rather than
    inventing legal-sounding text unilaterally.

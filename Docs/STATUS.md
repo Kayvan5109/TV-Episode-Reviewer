@@ -3,14 +3,15 @@
 **Read this file first** — before the other docs, before doing anything else. It's the single
 "what's actually going on right now" pointer, kept short and current on purpose.
 
-Last updated: 2026-07-16. **Clean deliberate stop, for session budget (78%).** Piece 2b, part 1 (the
-resumable ranking-session logic) is done, reviewed thoroughly, merged, and pushed (`78b7dcd`) — the
-`cold_start_bucket`/`cold_start_sequence` migration is live. No agent is running. Also reviewed the
-full pre-real-world-testing gap list with Kayvan and got explicit prioritization — **next session has
-a full ordered plan, see Bucket 1 below and `DevelopmentPlan.md`'s Phase 1 section (same list, more
-detail)**: ranking UI first, then TMDB attribution, password reset, remove-show + re-ranking, and a
-privacy notice, in that order. Custom SMTP, mobile/responsive check, error monitoring, and visual
-design are explicitly logged for later, not next session — see Bucket 4.
+Last updated: 2026-07-16. Piece 2b, part 2 (the ranking UI itself) is built, independently reviewed,
+verified (tests/typecheck/lint/build all fresh), and merged to `main` (not yet pushed — see below).
+**Phase 1's core ranking flow is now code-complete end to end**, but needs Kayvan's real hands-on
+browser check (against live Supabase data) before it's actually "done" — this is feel-based UI work
+on top of an already-reviewed API, so a hands-on check is the real test, not a second deep review
+pass. No agent is running. Next up after that check: TMDB attribution, password reset, remove-show +
+re-ranking, and a privacy notice, in that order — see Bucket 1/2 below and `DevelopmentPlan.md`'s
+Phase 1 section. Custom SMTP, mobile/responsive check, error monitoring, and visual design are still
+explicitly logged for later — see Bucket 4.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -19,28 +20,26 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence (work in this order):**
-1. **Ranking UI** on `/shows/[showId]` — replace the disabled "Start ranking" placeholder with real
-   screens calling `getNextRankingStep`/`submitColdStartAnswer`/`submitComparisonAnswer` (see
-   `website/src/lib/ranking-session/`): liked/disliked/neutral picker for cold-start steps,
-   better/worse/neutral prompt for compare steps, ranked list with computed 1-10 scores
-   (`website/src/lib/ranking/score.ts`) once a show reaches `done`. Feel-based UI on an
-   already-reviewed API — needs a hands-on check, not a second deep review pass.
-2. **TMDB attribution** — small, quick, do early. Required attribution text somewhere in the app
+1. **TMDB attribution** — small, quick, do early. Required attribution text somewhere in the app
    (e.g. `AppHeader` or a footer) per TMDB's API terms — see `Risks.md`.
-3. **Password reset flow** — currently doesn't exist at all. `resetPasswordForEmail` + a set-new-
+2. **Password reset flow** — currently doesn't exist at all. `resetPasswordForEmail` + a set-new-
    password page. Same correctness-critical rigor as the rest of auth (read the code directly, real
    email click-through check) — this is `proxy.ts`/cookie territory again.
-4. **Remove a show + re-ranking** — both confirmed wanted, neither designed yet. Decide at the start
+3. **Remove a show + re-ranking** — both confirmed wanted, neither designed yet. Decide at the start
    of the session (don't just implement a guess): does removing a show also delete that user's
    `episode_rankings`/`episode_comparisons` for it, or just the `user_shows` row? Does re-ranking
    clear just `rank_position` (re-inserting via existing placement logic) or also
    `episode_comparisons` history for that episode? See `DevelopmentPlan.md`'s Phase 1 section for
    the full framing of both questions.
-5. **Privacy notice** — short static page, what's collected + the three third parties involved
+4. **Privacy notice** — short static page, what's collected + the three third parties involved
    (Supabase, TMDB, Vercel). Draft the content with Kayvan rather than inventing it.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-(empty for now — live search and "already added" both confirmed working, see History)
+1. **Ranking UI hands-on check** — `/shows/[showId]/rank` (built 2026-07-16, see History) needs a
+   real browser click-through against live Supabase data: cold-start picking, the comparison prompt
+   (including a tie-break chain if one comes up naturally), and the final ranked-list/score display,
+   for both a normal-size show and a show with fewer than 4 episodes (the "never leaves cold start"
+   edge case). Log anything found here, triaged into the right bucket.
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
 (empty for now — the tie-break selection question that lived here is resolved, see History below)
@@ -116,6 +115,23 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-16: Built piece 2b, part 2 — the ranking UI itself — via one implementer agent (worktree),
+  reviewed, and merged to `main` (`857e1a1`, merging `178f81b`); not yet pushed. New route
+  `/shows/[showId]/rank` (`website/src/app/shows/[showId]/rank/{page,actions,ColdStartPicker,
+  ComparisonPrompt}`) calls the already-reviewed `getNextRankingStep`/`submitColdStartAnswer`/
+  `submitComparisonAnswer` and renders whichever step is pending: a liked/disliked/neutral picker,
+  a better/worse/about-the-same comparison prompt, or (once `done`) the final ranked list with
+  scores from `scoreForPosition`. `/shows/[showId]`'s disabled "Start ranking" placeholder now links
+  there for real. Added one small function to the correctness-critical persistence layer itself —
+  `getRankedEpisodeOrder` in `ranking-session/session.ts` — to correctly surface final order for a
+  show with fewer than `COLD_START_THRESHOLD` episodes total, which finishes entirely in cold start
+  and never gets a `rank_position` at all (an edge case `rank_position IS NOT NULL` alone would get
+  wrong); added 3 tests covering it including that exact edge case. Reviewed the diff directly
+  (all 7 changed/new files), independently re-ran tests (162/162)/typecheck/lint/build fresh in the
+  actual merged location (not just the agent's worktree) before merging. Not hands-on tested in a
+  real browser yet — the agent's worktree had no `.env.local`, so only confirmed the new route
+  fails identically to every other page under missing Supabase credentials, not that it actually
+  works end to end. **This is the next thing to do** — see Bucket 2.
 - 2026-07-16: Built and thoroughly reviewed piece 2b's persistence layer — the resumable
   ranking-session logic (`website/src/lib/ranking-session/`), reviewed and merged (`aab0dbd`). This
   is the piece that makes the already-tested, already-reviewed pure algorithm (`@/lib/ranking`) work
