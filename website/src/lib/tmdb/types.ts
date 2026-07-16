@@ -18,6 +18,18 @@ export interface TmdbTvSearchResponse {
   results: TmdbTvSearchResult[];
 }
 
+/**
+ * Raw shape (subset) of GET /tv/{series_id} ("show details"). Used only server-side, when
+ * importing a show's full episode list — `number_of_seasons` is what drives looping over every
+ * season rather than assuming season 1 is the only one.
+ */
+export interface TmdbShowDetails {
+  id: number;
+  name: string;
+  poster_path: string | null;
+  number_of_seasons: number;
+}
+
 /** Raw shape (subset) of one episode entry from GET /tv/{series_id}/season/{season_number}. */
 export interface TmdbSeasonEpisode {
   id: number;
@@ -44,4 +56,12 @@ export interface EpisodeSummary {
   seasonNumber: number;
   episodeNumber: number;
   title: string;
+}
+
+/** App-facing shape for a show's details — maps to the `shows` table's columns, plus season count. */
+export interface ShowDetails {
+  tmdbShowId: number;
+  title: string;
+  posterUrl: string | null;
+  numberOfSeasons: number;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mapSeasonEpisode, mapShowSearchResult } from './mappers';
+import { mapSeasonEpisode, mapShowDetails, mapShowSearchResult } from './mappers';
 
 describe('mapShowSearchResult', () => {
   it('reshapes a raw TMDB search result into the app shape', () => {
@@ -35,6 +35,35 @@ describe('mapSeasonEpisode', () => {
       seasonNumber: 1,
       episodeNumber: 1,
       title: 'Pilot',
+    });
+  });
+});
+
+describe('mapShowDetails', () => {
+  it('reshapes raw TMDB show details into the app shape', () => {
+    expect(
+      mapShowDetails({
+        id: 1396,
+        name: 'Breaking Bad',
+        poster_path: '/abc.jpg',
+        number_of_seasons: 5,
+      })
+    ).toEqual({
+      tmdbShowId: 1396,
+      title: 'Breaking Bad',
+      posterUrl: 'https://image.tmdb.org/t/p/w500/abc.jpg',
+      numberOfSeasons: 5,
+    });
+  });
+
+  it('leaves posterUrl null when TMDB has no poster_path', () => {
+    expect(
+      mapShowDetails({ id: 2, name: 'No Poster Show', poster_path: null, number_of_seasons: 1 })
+    ).toEqual({
+      tmdbShowId: 2,
+      title: 'No Poster Show',
+      posterUrl: null,
+      numberOfSeasons: 1,
     });
   });
 });

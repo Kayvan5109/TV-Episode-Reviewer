@@ -5,7 +5,14 @@
  */
 
 import { posterUrlFromPath } from './client';
-import type { EpisodeSummary, ShowSearchResult, TmdbSeasonEpisode, TmdbTvSearchResult } from './types';
+import type {
+  EpisodeSummary,
+  ShowDetails,
+  ShowSearchResult,
+  TmdbSeasonEpisode,
+  TmdbShowDetails,
+  TmdbTvSearchResult,
+} from './types';
 
 export function mapShowSearchResult(result: TmdbTvSearchResult): ShowSearchResult {
   return {
@@ -21,5 +28,14 @@ export function mapSeasonEpisode(episode: TmdbSeasonEpisode): EpisodeSummary {
     seasonNumber: episode.season_number,
     episodeNumber: episode.episode_number,
     title: episode.name,
+  };
+}
+
+export function mapShowDetails(details: TmdbShowDetails): ShowDetails {
+  return {
+    tmdbShowId: details.id,
+    title: details.name,
+    posterUrl: posterUrlFromPath(details.poster_path),
+    numberOfSeasons: details.number_of_seasons,
   };
 }
