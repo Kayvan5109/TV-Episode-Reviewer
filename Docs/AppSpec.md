@@ -20,9 +20,10 @@ binary-insertion-style comparison process — the new episode is compared agains
 episode in the current ranking, and each "better/worse" answer halves the remaining range, narrowing
 toward the right spot in roughly log2(n) comparisons rather than a fixed number against arbitrary
 episodes. Once placed, the episode's position in the overall ranked list maps to a 1-10 score. Full
-detail, including the tie-break mechanic and what's still undecided, lives in
-`DevelopmentPlan.md`'s "Ranking Algorithm" and "Discussion" sections — this is the app's central
-mechanic and the main thing Phase 0 exists to prove out.
+detail, including the (now fully resolved) tie-break mechanic and what's still genuinely undecided
+(the score formula's exact constants), lives in `DevelopmentPlan.md`'s "Ranking Algorithm" and
+"Discussion" sections — this is the app's central mechanic and the main thing Phase 0 exists to
+prove out.
 
 ## Target platform
 
@@ -46,19 +47,23 @@ User picks the TV show whose episodes they want to rank. Show/episode metadata (
 episode numbers, artwork) comes from the TMDB API — see `TechArchitecture.md`.
 
 ### Initial ranking (cold start)
-For a show with fewer than ~3-5 ranked episodes, the user is shown an episode and asked for a coarse
-judgment: liked, disliked, or neutral. No comparison against other episodes happens yet.
+For a show with fewer than 4 ranked episodes (i.e. the first 3), the user is shown an episode and
+asked for a coarse judgment: liked, disliked, or neutral. No comparison against other episodes
+happens yet. These cold-start episodes fold into the comparison pool immediately once the show
+crosses into comparative ranking — there's no separate "cruder score" tier for them.
 
 ### Comparative ranking (steady state)
-Once a show has ~3-5+ ranked episodes, ranking a new episode instead means: the app runs a Beli-
-style binary-insertion comparison — the new episode is compared against a midpoint episode in the
-current ranking, and each "better/worse/neutral" answer narrows the range until the episode's
-position is found (roughly log2(n) comparisons, not a fixed count). A "neutral" (tied) result
-triggers a follow-up comparison against a *common reference episode* — one the tied-against episode
-has itself already been compared to — to break the tie using shared context rather than leaving it
-unresolved. See `DevelopmentPlan.md`'s "Ranking Algorithm" section for the full mechanic and its
-still-open sub-questions. The final position maps to a 1-10 score via a linear, per-show formula
-that recomputes on every insertion (so existing episodes' scores can shift) — see
+Once a show has 4+ ranked episodes, ranking a new episode instead means: the app runs a true
+binary-insertion comparison — the new episode is compared against a midpoint episode in the current
+ranking, and each "better/worse/neutral" answer narrows the range until the episode's position is
+found (roughly log2(n) comparisons, not a fixed count — this stays true at every show size; an
+exhaustive-then-fixed-sample alternative was considered and rejected, see `DevelopmentPlan.md`). A
+"neutral" (tied) result triggers a follow-up comparison against a *common reference episode*, chosen
+by a two-tier rule: prefer the closest-in-rank episode among the tied-against episode's history that
+has a decisive (non-neutral) relationship with it; if none exists, fall back to simply the
+closest-in-rank episode in the whole current ranking. See `DevelopmentPlan.md`'s "Ranking Algorithm"
+section for the full mechanic. The final position maps to a 1-10 score via a linear, per-show
+formula that recomputes on every insertion (so existing episodes' scores can shift) — see
 `DevelopmentPlan.md`'s "Discussion" section for the current v1 formula, which is a starting point
 expected to need tuning, not a locked answer.
 
@@ -98,12 +103,7 @@ pointer, not a duplicate:
 - **Score-from-position formula's exact constants** — direction is decided (linear, per-show,
   shifts on insertion, compresses for small samples), but the v1 curve is a hypothesis pending
   real-world tuning. See `DevelopmentPlan.md`'s "Discussion" section.
-- **Tie-break common-episode selection** — see `DevelopmentPlan.md`'s "Ranking Algorithm" section
-  (which common episode to pick when several exist; what happens when none exist yet).
 - **Re-ranking**: if a user's opinion of an old episode changes, can they re-rank it, and does that
   ripple through other episodes' scores?
 - **Cross-show ranking**: is ranking strictly within a single show, or could episodes ever be
   compared across different shows? (Current concept assumes strictly within-show.)
-- **Cold-start-only episodes**: once a show has moved into comparative ranking mode, do earlier
-  liked/disliked/neutral-only episodes ever get folded into the comparison pool, or do they keep a
-  cruder score?

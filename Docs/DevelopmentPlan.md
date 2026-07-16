@@ -28,24 +28,34 @@ to an account (email signup), shared between the website and the iOS app via one
 This is the app's core mechanic and the main thing Phase 0 exists to prove out. Current shared
 understanding, most-resolved-first:
 
-1. **Cold start**: for a show with fewer than ~3-5 ranked episodes, a newly-ranked episode just gets
-   a coarse bucket: **liked**, **disliked**, or **neutral** (decided 2026-07-15 — three buckets, to
-   match Beli, not the original two-bucket liked/disliked idea).
-2. **Comparative placement**: once a show has enough ranked episodes, a new episode is placed via
+1. **Cold start**: for a show with fewer than 4 ranked episodes (i.e. the first 3), a newly-ranked
+   episode just gets a coarse bucket: **liked**, **disliked**, or **neutral** — three buckets, to
+   match Beli, not a binary liked/disliked choice (decided 2026-07-15; reconfirmed 2026-07-15 after
+   a brief mix-up in a later write-up implied only two buckets — the three-bucket version is what's
+   built and what stands).
+2. **Comparative placement**: once a show has 4+ ranked episodes, a new episode is placed via true
    binary-insertion-style comparison — compared against a midpoint episode in the current ranking,
    with each "better/worse/neutral" answer narrowing the range, converging in roughly log2(n)
-   comparisons rather than a fixed count against arbitrary episodes.
-3. **Tie-break via a common comparison episode** (decided 2026-07-15, mechanics still being worked
-   out): if a comparison comes back "neutral" (a tie) between the new episode (A) and the episode it
-   was compared against (B), the tie isn't left as-is — A is next compared against an episode that B
-   itself has *already* been compared against (a "common reference point"), and the result of that
-   comparison is used to break the tie and refine A's placement relative to B. This means the
-   comparison history per episode needs to be queryable (not just a final score) so a common
-   reference episode can be found. Still open, tracked in Issues below:
-   - Which common episode to pick if B has been compared against several candidates.
-   - What happens if B has no prior comparison history yet (e.g. B was placed very early, or B's
-     placement also came from a tie that's still unresolved) — does the tie-break recurse, fall back
-     to a different mechanism, or stay an open tie until more data exists?
+   comparisons rather than a fixed count against arbitrary episodes. **Reconfirmed 2026-07-15**: an
+   alternative was floated and explicitly rejected — comparing exhaustively against every existing
+   episode for small shows, then against a fixed sample of ~5 for larger ones. Binary search is
+   cheaper at every list size worked through as examples *and* guarantees an exact placement, where
+   a fixed sample only narrows to an approximate band and would need its own (undesigned)
+   interpolation rule to turn into a real position. True binary search stays the mechanism at every
+   show size.
+3. **Tie-break via a common comparison episode** (fully resolved 2026-07-15): if a comparison comes
+   back "neutral" (a tie) between the new episode (A) and the episode it was compared against (B),
+   A is compared against a follow-up reference episode instead, chosen by a two-tier rule:
+   1. Prefer the closest-in-rank episode among B's own comparison history that has a **decisive**
+      (non-neutral) recorded result with B.
+   2. If no such episode exists (B has no history, or none of it is decisive), fall back to simply
+      the closest-in-rank episode anywhere in the current ranking — no history requirement at all.
+   The follow-up comparison's result is used to keep narrowing the binary search exactly as an
+   ordinary better/worse answer would. If it's *also* neutral, the same two-tier rule runs again from
+   the new reference episode (excluding episodes already tried), up to 3 attempts total — if every
+   attempt ties, the new episode is inserted immediately adjacent to whichever episode was tried
+   last. This means the comparison history per episode needs to be queryable (not just a final
+   score) so a common reference episode can be found.
 4. **Score-from-position formula** (direction decided 2026-07-15, exact curve is a Phase 0 v1
    hypothesis to be tuned through testing, not a final answer): linear, per-show only, and
    **recomputed on every insertion** — see Discussion below for the full reasoning and the current
@@ -101,9 +111,9 @@ feel off.
   ripple through other episodes' scores?
 - **Cross-show ranking**: is ranking strictly within a single show, or could episodes ever be
   compared across different shows? (Current concept assumes strictly within-show.)
-- **Liked/disliked/neutral-only episodes**: once a show has moved into comparative ranking mode, do
-  earlier cold-start-only episodes ever get folded into the comparison pool, or do they keep a
-  cruder score?
+- ~~Liked/disliked/neutral-only episodes joining the comparison pool~~ — **resolved 2026-07-15**:
+  yes, cold-start episodes fold into the comparison pool immediately the first time a show crosses
+  into comparative ranking mode, confirmed by Kayvan. See `AppSpec.md`.
 - ~~iCloud/CloudKit sync across devices~~ — **superseded 2026-07-15**: cross-device sync now comes
   for free from the shared Supabase account (website and iOS both read/write the same backend), so
   a separate iCloud sync mechanism isn't needed.
@@ -199,11 +209,11 @@ entries once there's code to have bugs in).
 1. **Score-from-rank-position formula is a v1 hypothesis, not tuned.** Direction is decided (linear,
    per-show, shifts on insertion, compresses for small samples — see Discussion above), but the
    exact curve/constants will need real tuning once there's an app to test it in.
-2. **Tie-break "common comparison episode" selection is underspecified**: which episode to pick when
-   multiple candidates exist, and what to do when no common episode exists yet. See "Ranking
-   Algorithm" above.
-3. **Cold-start → comparative-mode threshold is a placeholder** ("~3-5 episodes") — not yet tuned
-   against real use; expect to revisit after using the app for a while.
+2. ~~Tie-break "common comparison episode" selection~~ — **resolved 2026-07-15**: two-tier rule
+   (decisive-relationship-first, then plain-closest-in-rank fallback). See "Ranking Algorithm" above.
+3. ~~Cold-start → comparative-mode threshold~~ — **resolved 2026-07-15**: exactly 3 cold-start
+   episodes, the 4th is the first comparative one. Still a Phase-2 candidate for retuning once
+   there's real usage, but no longer a placeholder range.
 4. **Backend vendor choice (Supabase) is Claude's pick, not independently reviewed.** Kayvan said
    "let me pick" for the stack, but choosing a specific third-party vendor for accounts/data is a
    real dependency worth a second look — logged as a Deviation Awaiting Review in `STATUS.md`.

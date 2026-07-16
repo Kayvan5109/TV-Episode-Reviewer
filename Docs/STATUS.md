@@ -3,12 +3,14 @@
 **Read this file first** — before the other docs, before doing anything else. It's the single
 "what's actually going on right now" pointer, kept short and current on purpose.
 
-Last updated: 2026-07-15 (later same day). **Clean deliberate stop, mid-Phase-0, for session
-budget.** An implementer agent finished the ranking-algorithm prototype + website scaffold (42/42
-tests passing); nothing is committed to `main` or merged yet — it's sitting in a worktree pending
-the independent-review pass this correctness-critical work requires (see `ProcessAndRoles.md`). No
-agent is currently running. Next session: start with the review (Bucket 1 below), then proceed to
-the rest of Phase 0.
+Last updated: 2026-07-15 (later session). **Mid-Phase-0, algorithm design refined, code update
+in flight.** Kayvan proposed a detailed alternative ranking design this session; after discussion,
+the core binary-search mechanic was reconfirmed as-is, and the tie-break's common-reference
+selection (previously an open judgment call) was resolved into a concrete two-tier rule. An agent is
+currently updating the Phase 0 code (`website/src/lib/ranking/`, still in the same worktree, nothing
+merged to `main` yet) to match. Once that lands, still need: the independent-review pass this
+correctness-critical work requires (see `ProcessAndRoles.md`), then merge, then the rest of Phase 0
+(Supabase + TMDB proxy + Vercel deploy).
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -17,14 +19,13 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence:**
-1. **Review and merge the Phase 0 algorithm/scaffold work.** An implementer agent built the
-   ranking-algorithm module (`website/src/lib/ranking/`) and a minimal Next.js scaffold — 42/42 tests
-   pass, typecheck/lint/build all clean. Sitting uncommitted in worktree
-   `.claude\worktrees\agent-a5d288589bf0cb0ed` (branch `worktree-agent-a5d288589bf0cb0ed`, already
-   fast-forwarded onto `main` at `cfe900d`). Needs the independent-reviewer pass before merge (see
-   `ProcessAndRoles.md`) — not yet done, paused for session budget. See Deviations below for the 7
-   judgment calls the implementer made, one of which (#7, cold-start→comparative migration) actually
-   pre-empts an open `AppSpec.md` question and needs your input, not just a code review.
+1. **Finish + review + merge the Phase 0 algorithm/scaffold work.** An agent is currently updating
+   `findCommonReference` (`comparativePlacement.ts`) to the newly-confirmed two-tier tie-break rule
+   (decisive-relationship-first, then plain-closest-in-rank fallback — see `DevelopmentPlan.md`'s
+   Ranking Algorithm section). Still sitting uncommitted in worktree
+   `.claude\worktrees\agent-a5d288589bf0cb0ed` (branch `worktree-agent-a5d288589bf0cb0ed`). Once that
+   update lands: needs the independent-reviewer pass this correctness-critical work requires (see
+   `ProcessAndRoles.md`), not yet done.
 2. Once merged: stand up the Supabase project (Auth + schema) and prove the TMDB proxy +
    Next.js/Vercel deploy path — the rest of `DevelopmentPlan.md` Phase 0.
 
@@ -32,8 +33,7 @@ unless it's small or genuinely blocking.
 (empty for now)
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
-1. Tie-break common-episode selection mechanics — which episode to pick when several candidates
-   exist, what to do when none exist yet. See `DevelopmentPlan.md`'s Ranking Algorithm section.
+(empty for now — the tie-break selection question that lived here is resolved, see History below)
 
 **Bucket 4 — Backlog, logged, not being chased:**
 1. Shared test-fixture format to keep the TypeScript (website) and Swift (iOS) ranking-algorithm
@@ -58,10 +58,11 @@ it through" is worth a deliberate re-check, not silent acceptance.
      the affirmative — update that doc's Open Design Questions accordingly next session.
   2. Cold-start bucket ordering (`coldStart.ts`): liked > neutral > disliked; most-recent-first
      within a bucket. Arbitrary, undiscussed.
-  3. Common-reference-episode selection when several candidates exist (`comparativePlacement.ts`,
-     `findCommonReference`): picks the partner closest to the tied-against episode in current rank
-     position. This is the actual answer to the open Bucket-3 item above — needs confirmation, not
-     just awareness.
+  3. ~~Common-reference-episode selection when several candidates exist~~ (`comparativePlacement.ts`,
+     `findCommonReference`) — **superseded 2026-07-15**: Kayvan proposed a more specific rule
+     (candidate must have a decisive, non-neutral relationship with the tied episode; fall back to
+     plain-closest-in-rank only if none exists), now being implemented in place of the original
+     closest-in-rank-only default. See History below.
   4. Tie-break recursion mechanics: the new subject-vs-common-reference result stands in directly
      for the neutral subject-vs-B result to keep narrowing the same binary-search bounds, rather than
      treating the common reference's own rank position as a separate bound.
@@ -85,6 +86,21 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-15: Kayvan proposed a detailed alternative ranking design this session (exhaustive
+  comparisons for small shows, then a fixed weighted sample of ~5 for larger ones, plus a specific
+  tie-break refinement), modeled further on a fuller writeup of Beli's actual reported mechanics.
+  After discussion: **the exhaustive/fixed-sample idea was explicitly rejected** — true
+  binary-insertion search is cheaper at every list size worked through as examples and guarantees
+  exact placement, where a fixed sample only narrows to an approximate band. **The tie-break
+  refinement was adopted**: common-reference selection is now a confirmed two-tier rule (prefer a
+  decisive/non-neutral relationship with the tied episode, closest in rank; if none exists, fall
+  back to plain-closest-in-rank with no relationship requirement) — this resolves what was previously
+  an open judgment call. Also reconfirmed 3-bucket cold start (a brief mix-up in Kayvan's write-up
+  implied binary liked/disliked; three buckets is what stands) and tightened the cold-start threshold
+  from a placeholder range ("~3-5") to an exact number (3, with the 4th episode being the first
+  comparative one — this already matched what was built, `COLD_START_THRESHOLD = 4`). Updated
+  `DevelopmentPlan.md` and `AppSpec.md` accordingly; an agent is implementing the two-tier rule in
+  code now (see Bucket 1).
 - 2026-07-15: Major architecture pivot: **website first, then iOS**, sharing one account system.
   Kayvan wants a website built first (not thrown away afterward) so the ranking algorithm and score
   formula can be tuned through fast iteration and real usage before committing to native iOS work.
