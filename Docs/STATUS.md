@@ -3,14 +3,16 @@
 **Read this file first** — before the other docs, before doing anything else. It's the single
 "what's actually going on right now" pointer, kept short and current on purpose.
 
-Last updated: 2026-07-15 (later session). **Mid-Phase-0, algorithm design refined, code update
-in flight.** Kayvan proposed a detailed alternative ranking design this session; after discussion,
-the core binary-search mechanic was reconfirmed as-is, and the tie-break's common-reference
-selection (previously an open judgment call) was resolved into a concrete two-tier rule. An agent is
-currently updating the Phase 0 code (`website/src/lib/ranking/`, still in the same worktree, nothing
-merged to `main` yet) to match. Once that lands, still need: the independent-review pass this
-correctness-critical work requires (see `ProcessAndRoles.md`), then merge, then the rest of Phase 0
-(Supabase + TMDB proxy + Vercel deploy).
+Last updated: 2026-07-15 (later session). **Phase 0 algorithm + website scaffold merged to
+`main` (commit `4fa5fd6`), not yet pushed to `origin`.** The ranking algorithm (cold start,
+true binary-insertion placement, two-tier tie-break, v1 score formula) is implemented in
+`website/src/lib/ranking/` — 48 tests passing, typecheck/lint clean, independently re-verified
+(re-ran tests/typecheck/lint fresh after copying out of the build worktree, and hand-traced the
+tie-break logic through its trickiest recursive cases) before committing. The build worktree has
+been unregistered from git; its on-disk folder under `.claude/worktrees/` failed to delete (Windows
+file lock) but is harmless/gitignored — safe to delete by hand later if it's still there. Next:
+stand up Supabase + TMDB proxy + Vercel (rest of Phase 0), and decide whether to push this commit to
+`origin` now.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -19,15 +21,9 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence:**
-1. **Finish + review + merge the Phase 0 algorithm/scaffold work.** An agent is currently updating
-   `findCommonReference` (`comparativePlacement.ts`) to the newly-confirmed two-tier tie-break rule
-   (decisive-relationship-first, then plain-closest-in-rank fallback — see `DevelopmentPlan.md`'s
-   Ranking Algorithm section). Still sitting uncommitted in worktree
-   `.claude\worktrees\agent-a5d288589bf0cb0ed` (branch `worktree-agent-a5d288589bf0cb0ed`). Once that
-   update lands: needs the independent-reviewer pass this correctness-critical work requires (see
-   `ProcessAndRoles.md`), not yet done.
-2. Once merged: stand up the Supabase project (Auth + schema) and prove the TMDB proxy +
-   Next.js/Vercel deploy path — the rest of `DevelopmentPlan.md` Phase 0.
+1. Stand up the Supabase project (Auth + schema) and prove the TMDB proxy + Next.js/Vercel deploy
+   path — the rest of `DevelopmentPlan.md` Phase 0. The ranking algorithm itself is done, reviewed,
+   and merged (see commit `4fa5fd6`).
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
 (empty for now)
@@ -50,7 +46,8 @@ start of the next session for a second look — even solo, "I decided this at 11
 it through" is worth a deliberate re-check, not silent acceptance.
 
 - 2026-07-15: Implementer agent made 7 judgment calls while building the ranking-algorithm prototype
-  (`website/src/lib/ranking/`), each marked `JUDGMENT CALL` in the source. Most-important-first:
+  (`website/src/lib/ranking/`), each marked `JUDGMENT CALL` in the source (now merged to `main`).
+  Most-important-first:
   1. ~~Cold-start episodes get permanently folded into the comparative comparison pool the first
      time a show crosses the cold-start threshold~~ (`engine.ts`, `addComparativeEpisode`) —
      **confirmed 2026-07-15 by Kayvan**: yes, fold them in immediately, as built. This resolves
@@ -58,11 +55,10 @@ it through" is worth a deliberate re-check, not silent acceptance.
      the affirmative — update that doc's Open Design Questions accordingly next session.
   2. Cold-start bucket ordering (`coldStart.ts`): liked > neutral > disliked; most-recent-first
      within a bucket. Arbitrary, undiscussed.
-  3. ~~Common-reference-episode selection when several candidates exist~~ (`comparativePlacement.ts`,
-     `findCommonReference`) — **superseded 2026-07-15**: Kayvan proposed a more specific rule
-     (candidate must have a decisive, non-neutral relationship with the tied episode; fall back to
-     plain-closest-in-rank only if none exists), now being implemented in place of the original
-     closest-in-rank-only default. See History below.
+  3. ~~Common-reference-episode selection when several candidates exist~~ — **resolved and shipped
+     2026-07-15**: two-tier rule (decisive-relationship-first, then plain-closest-in-rank fallback)
+     implemented in `findCommonReference`, 6 new tests added, independently reviewed. See History
+     below.
   4. Tie-break recursion mechanics: the new subject-vs-common-reference result stands in directly
      for the neutral subject-vs-B result to keep narrowing the same binary-search bounds, rather than
      treating the common reference's own rank position as a separate bound.
@@ -86,6 +82,14 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-15: Reviewed and merged the Phase 0 ranking algorithm + Next.js website scaffold to
+  `main` (commit `4fa5fd6`). Review consisted of: reading the updated `findCommonReference`
+  implementation directly and hand-tracing its logic through the chained-hop and full-exhaustion
+  test cases; independently re-running tests (48/48), `tsc --noEmit`, and lint fresh in the final
+  committed location (not just the agent's build worktree) before committing. The build worktree
+  (`.claude/worktrees/agent-a5d288589bf0cb0ed`) was unregistered from git; its on-disk contents
+  failed to delete due to a Windows file lock but are gitignored and harmless. Not yet pushed to
+  `origin`.
 - 2026-07-15: Kayvan proposed a detailed alternative ranking design this session (exhaustive
   comparisons for small shows, then a fixed weighted sample of ~5 for larger ones, plus a specific
   tie-break refinement), modeled further on a fuller writeup of Beli's actual reported mechanics.
