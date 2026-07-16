@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { COLD_START_THRESHOLD } from '@/lib/ranking/constants';
+import { scoreForPosition } from '@/lib/ranking/score';
 
 /**
  * A small in-memory fake standing in for the session-aware Supabase client, covering exactly the
@@ -130,8 +131,13 @@ vi.mock('@/lib/supabase/serverSession', () => ({
   createSupabaseServerClient: async () => fake,
 }));
 
-const { getNextRankingStep, getRankedEpisodeOrder, submitColdStartAnswer, submitComparisonAnswer } =
-  await import('./session');
+const {
+  getNextRankingStep,
+  getNextStepForEpisode,
+  getShowRankingDisplay,
+  submitColdStartAnswer,
+  submitComparisonAnswer,
+} = await import('./session');
 
 /** Adds `count` episodes (ids `ep1..epN`) to the fake show in season/episode order. */
 function seedEpisodes(count: number, showId = 'show-1'): string[] {
@@ -167,33 +173,49 @@ describe('cold-start progression and threshold crossing', () => {
     const ids = seedEpisodes(COLD_START_THRESHOLD + 1);
     const buckets: Array<'liked' | 'neutral' | 'disliked'> = ['liked', 'neutral', 'disliked', 'liked'];
 
-    let step = await getNextRankingStep(SHOW_ID);
     for (let i = 0; i < COLD_START_THRESHOLD; i++) {
+      const step = await getNextRankingStep(SHOW_ID);
       expect(step).toEqual({ type: 'coldStart', episode: ids[i] });
-      step = await submitColdStartAnswer(SHOW_ID, ids[i], buckets[i % buckets.length]);
+
+      // Cold-start submissions always resolve to 'alreadyRanked' for the submitted episode
+      // itself — there's never a same-episode follow-up question for cold start.
+      const result = await submitColdStartAnswer(SHOW_ID, ids[i], buckets[i % buckets.length]);
+      expect(result).toEqual({ type: 'alreadyRanked' });
     }
 
     // The threshold just crossed on the last submission above: cold-start entries fold into
     // comparative ranking immediately, and since there's one more unranked episode, the very next
-    // step should already be a real comparison question, not "done" or another cold-start prompt.
-    expect(step.type).toBe('compare');
-    if (step.type === 'compare') {
-      expect(step.subject).toBe(ids[COLD_START_THRESHOLD]);
+    // global step should already be a real comparison question, not "done" or another cold-start
+    // prompt.
+    const finalStep = await getNextRankingStep(SHOW_ID);
+    expect(finalStep.type).toBe('compare');
+    if (finalStep.type === 'compare') {
+      expect(finalStep.subject).toBe(ids[COLD_START_THRESHOLD]);
       // Cold-start seed order is liked (most-recent-first) > neutral > disliked (see
       // @/lib/ranking/coldStart.ts) — with buckets [liked, neutral, disliked, liked] assigned to
       // ep1..ep4, the seeded ranked order is [ep4, ep1, ep2, ep3], and binary search starts at the
       // midpoint (index 1) of that 4-long list.
-      expect(step.reference).toBe(ids[0]);
+      expect(finalStep.reference).toBe(ids[0]);
     }
   });
 
-  it('rejects a cold-start submission for the wrong (non-next) episode without writing anything', async () => {
-    const ids = seedEpisodes(COLD_START_THRESHOLD + 2);
+  it('rejects a cold-start submission for an episode that does not belong to the show, without writing anything', async () => {
+    seedEpisodes(COLD_START_THRESHOLD + 2);
 
-    await expect(submitColdStartAnswer(SHOW_ID, ids[1], 'liked')).rejects.toThrow(
+    await expect(submitColdStartAnswer(SHOW_ID, 'not-an-episode', 'liked')).rejects.toThrow(
       /Unexpected cold-start submission/
     );
     expect(fake.rankings).toHaveLength(0);
+  });
+
+  it('rejects a duplicate cold-start submission for an episode that already has ranking data, without writing anything again', async () => {
+    const ids = seedEpisodes(COLD_START_THRESHOLD + 2);
+
+    await submitColdStartAnswer(SHOW_ID, ids[0], 'liked');
+    await expect(submitColdStartAnswer(SHOW_ID, ids[0], 'disliked')).rejects.toThrow(
+      /Unexpected cold-start submission/
+    );
+    expect(fake.rankings).toHaveLength(1);
   });
 });
 
@@ -236,22 +258,22 @@ function seedComparativePool(extraUnranked: number) {
 }
 
 describe('comparative placement — resolves without a tie-break', () => {
-  it('completes placement across two decisive comparison answers, then advances to the next unranked episode', async () => {
+  it('completes placement across two decisive comparison answers, then reports alreadyRanked for that episode', async () => {
     const { extraIds } = seedComparativePool(1);
     const subject = extraIds[0]; // 'X1'
 
     // ranked = [A, B, C, D]; binary search starts at mid index 1 -> B.
-    let step = await getNextRankingStep(SHOW_ID);
+    const step = await getNextRankingStep(SHOW_ID);
     expect(step).toEqual({ type: 'compare', subject, reference: 'B' });
 
     // X1 worse than B -> lo=2, hi=3, mid=2 -> next pivot C.
-    step = await submitComparisonAnswer(SHOW_ID, subject, 'B', 'worse');
-    expect(step).toEqual({ type: 'compare', subject, reference: 'C' });
+    let targetedStep = await submitComparisonAnswer(SHOW_ID, subject, 'B', 'worse');
+    expect(targetedStep).toEqual({ type: 'compare', subject, reference: 'C' });
 
     // X1 better than C -> hi=1, lo(2) > hi(1) -> placement completes, inserted at index 2:
-    // [A, B, X1, C, D]. No more unranked episodes -> done.
-    step = await submitComparisonAnswer(SHOW_ID, subject, 'C', 'better');
-    expect(step).toEqual({ type: 'done' });
+    // [A, B, X1, C, D]. Nothing left to ask about X1 specifically.
+    targetedStep = await submitComparisonAnswer(SHOW_ID, subject, 'C', 'better');
+    expect(targetedStep).toEqual({ type: 'alreadyRanked' });
 
     const positions = new Map(fake.rankings.map((r) => [r.episode_id, r.rank_position]));
     expect(positions.get('A')).toBe(1);
@@ -290,24 +312,24 @@ describe('comparative placement — tie-break via a common reference episode', (
     });
 
     // Binary search starts at mid index 1 -> B.
-    let step = await getNextRankingStep(SHOW_ID);
+    const step = await getNextRankingStep(SHOW_ID);
     expect(step).toEqual({ type: 'compare', subject: e, reference: 'B' });
 
     // Tie against B -> tie-break should ask about D (B's closest decisive partner), not just
     // re-ask about B or fall back to plain rank proximity (which would pick A or C instead).
-    step = await submitComparisonAnswer(SHOW_ID, e, 'B', 'neutral');
-    expect(step).toEqual({ type: 'compare', subject: e, reference: 'D' });
+    let targetedStep = await submitComparisonAnswer(SHOW_ID, e, 'B', 'neutral');
+    expect(targetedStep).toEqual({ type: 'compare', subject: e, reference: 'D' });
 
     // E better than D resolves the tie in E's favor, standing in for the neutral B comparison —
     // narrows hi to 0, so the search continues against A next rather than completing outright.
-    step = await submitComparisonAnswer(SHOW_ID, e, 'D', 'better');
-    expect(step).toEqual({ type: 'compare', subject: e, reference: 'A' });
+    targetedStep = await submitComparisonAnswer(SHOW_ID, e, 'D', 'better');
+    expect(targetedStep).toEqual({ type: 'compare', subject: e, reference: 'A' });
     // Nothing should be persisted to rank_position yet — the placement isn't finished.
     expect(fake.rankings.find((r) => r.episode_id === e)).toBeUndefined();
 
     // E worse than A completes the placement: inserted right after A -> [A, E, B, C, D].
-    step = await submitComparisonAnswer(SHOW_ID, e, 'A', 'worse');
-    expect(step).toEqual({ type: 'done' });
+    targetedStep = await submitComparisonAnswer(SHOW_ID, e, 'A', 'worse');
+    expect(targetedStep).toEqual({ type: 'alreadyRanked' });
 
     const positions = new Map(fake.rankings.map((r) => [r.episode_id, r.rank_position]));
     expect(positions.get('A')).toBe(1);
@@ -318,45 +340,183 @@ describe('comparative placement — tie-break via a common reference episode', (
   });
 });
 
-describe('getRankedEpisodeOrder', () => {
-  it('returns null while a show still has a pending step', async () => {
-    seedEpisodes(COLD_START_THRESHOLD + 1);
+describe('getNextStepForEpisode', () => {
+  it('returns a coldStart step for an unranked episode while the show is still in cold start', async () => {
+    const ids = seedEpisodes(COLD_START_THRESHOLD + 1);
 
-    // Nothing submitted yet — still waiting on the very first cold-start answer.
-    await expect(getRankedEpisodeOrder(SHOW_ID)).resolves.toBeNull();
+    await expect(getNextStepForEpisode(SHOW_ID, ids[2])).resolves.toEqual({
+      type: 'coldStart',
+      episode: ids[2],
+    });
   });
 
-  it('returns the correct best-to-worst order once a show crosses the threshold and finishes comparative placement', async () => {
+  it('returns a compare step for an unranked episode once the show is past cold start', async () => {
     const { extraIds } = seedComparativePool(1);
-    const subject = extraIds[0]; // 'X1'
+    const subject = extraIds[0];
 
-    // Same decisive-comparison walk as the "resolves without a tie-break" case above: ends with
-    // [A, B, X1, C, D].
-    await submitComparisonAnswer(SHOW_ID, subject, 'B', 'worse');
-    const step = await submitComparisonAnswer(SHOW_ID, subject, 'C', 'better');
-    expect(step).toEqual({ type: 'done' });
-
-    await expect(getRankedEpisodeOrder(SHOW_ID)).resolves.toEqual(['A', 'B', subject, 'C', 'D']);
+    await expect(getNextStepForEpisode(SHOW_ID, subject)).resolves.toEqual({
+      type: 'compare',
+      subject,
+      reference: 'B',
+    });
   });
 
-  it('still returns a sensible order for a show too small to ever leave cold start, per the bucket ordering rule', async () => {
+  it('returns alreadyRanked for an episode that already has a rank_position', async () => {
+    const { rankedIds } = seedComparativePool(1);
+
+    await expect(getNextStepForEpisode(SHOW_ID, rankedIds[0])).resolves.toEqual({
+      type: 'alreadyRanked',
+    });
+  });
+
+  it('returns alreadyRanked for an episode that already has a cold-start entry', async () => {
+    const ids = seedEpisodes(COLD_START_THRESHOLD + 2);
+    await submitColdStartAnswer(SHOW_ID, ids[0], 'liked');
+
+    await expect(getNextStepForEpisode(SHOW_ID, ids[0])).resolves.toEqual({ type: 'alreadyRanked' });
+  });
+
+  it('throws for an episode that does not belong to the show', async () => {
+    seedEpisodes(3);
+
+    await expect(getNextStepForEpisode(SHOW_ID, 'not-an-episode')).rejects.toThrow();
+  });
+});
+
+describe('ranking episodes out of season/episode order', () => {
+  it('lets the user cold-start and comparatively place episodes in whatever order they pick, not forced season/episode order', async () => {
+    const ids = seedEpisodes(5);
+    const [ep1, ep2, ep3, ep4, ep5] = ids;
+
+    // Deliberately scrambled order: ep4 first, then ep1, ep2, ep3 — none of the first three
+    // submissions is "next" in season/episode order (that would have been ep1 first). The old
+    // "must equal nextUnrankedEpisode" validation would have rejected all of these except the
+    // very first coincidental match; the whole point of this rework is that they succeed.
+    await expect(submitColdStartAnswer(SHOW_ID, ep4, 'liked')).resolves.toEqual({
+      type: 'alreadyRanked',
+    });
+    await expect(submitColdStartAnswer(SHOW_ID, ep1, 'liked')).resolves.toEqual({
+      type: 'alreadyRanked',
+    });
+    await expect(submitColdStartAnswer(SHOW_ID, ep2, 'liked')).resolves.toEqual({
+      type: 'alreadyRanked',
+    });
+
+    // ep3 and ep5 are still unranked; ask specifically about ep3 via the targeted lookup.
+    await expect(getNextStepForEpisode(SHOW_ID, ep3)).resolves.toEqual({
+      type: 'coldStart',
+      episode: ep3,
+    });
+
+    // Crossing COLD_START_THRESHOLD (4 total) on this submission folds cold start into
+    // comparative ranking the next time some episode needs placing. Seed order via
+    // orderColdStartIds: all 'liked', so most-recently-judged first -> [ep3, ep2, ep1, ep4].
+    await expect(submitColdStartAnswer(SHOW_ID, ep3, 'liked')).resolves.toEqual({
+      type: 'alreadyRanked',
+    });
+
+    // ep5 is the only unranked episode left; place it entirely via targeted per-episode steps
+    // (as the per-episode rank page will), proving that flow works end to end.
+    let step = await getNextStepForEpisode(SHOW_ID, ep5);
+    // ranked seed = [ep3, ep2, ep1, ep4]; binary search starts at mid index 1 -> ep2.
+    expect(step).toEqual({ type: 'compare', subject: ep5, reference: ep2 });
+
+    // ep5 worse than ep2 -> lo=2, hi=3, mid=2 -> next pivot ep1.
+    step = await submitComparisonAnswer(SHOW_ID, ep5, ep2, 'worse');
+    expect(step).toEqual({ type: 'compare', subject: ep5, reference: ep1 });
+
+    // ep5 better than ep1 -> hi=1, lo(2) > hi(1) -> placement completes, inserted at index 2:
+    // [ep3, ep2, ep5, ep1, ep4].
+    step = await submitComparisonAnswer(SHOW_ID, ep5, ep1, 'better');
+    expect(step).toEqual({ type: 'alreadyRanked' });
+
+    const positions = new Map(fake.rankings.map((r) => [r.episode_id, r.rank_position]));
+    expect(positions.get(ep3)).toBe(1);
+    expect(positions.get(ep2)).toBe(2);
+    expect(positions.get(ep5)).toBe(3);
+    expect(positions.get(ep1)).toBe(4);
+    expect(positions.get(ep4)).toBe(5);
+  });
+});
+
+describe('getShowRankingDisplay', () => {
+  it('reports a mix of comparatively-ranked and unranked episodes while placement is still in progress', async () => {
+    seedComparativePool(1); // ranked A-D at positions 1-4, X1 unranked
+
+    const display = await getShowRankingDisplay(SHOW_ID);
+    expect(display.done).toBe(false);
+    if (display.done) return;
+
+    expect(display.ranked).toEqual([
+      { episodeId: 'A', score: scoreForPosition(1, 4) },
+      { episodeId: 'B', score: scoreForPosition(2, 4) },
+      { episodeId: 'C', score: scoreForPosition(3, 4) },
+      { episodeId: 'D', score: scoreForPosition(4, 4) },
+    ]);
+    expect(display.coldStartPending).toEqual([]);
+    expect(display.unranked).toEqual(['X1']);
+  });
+
+  it('reports a mix of cold-start-judged and unranked episodes while still in cold start', async () => {
+    const ids = seedEpisodes(COLD_START_THRESHOLD + 2);
+    await submitColdStartAnswer(SHOW_ID, ids[0], 'liked');
+    await submitColdStartAnswer(SHOW_ID, ids[1], 'disliked');
+
+    const display = await getShowRankingDisplay(SHOW_ID);
+    expect(display.done).toBe(false);
+    if (display.done) return;
+
+    expect(display.ranked).toEqual([]);
+    expect(display.coldStartPending).toEqual(
+      expect.arrayContaining([
+        { episodeId: ids[0], bucket: 'liked' },
+        { episodeId: ids[1], bucket: 'disliked' },
+      ])
+    );
+    expect(display.coldStartPending).toHaveLength(2);
+    expect(display.unranked).toEqual(ids.slice(2));
+  });
+
+  it('reports done: true with a full best-to-worst order for a show too small to ever leave cold start', async () => {
     // Fewer than COLD_START_THRESHOLD episodes total: this show finishes cold-start judging every
     // episode and never crosses into comparative placement, so none of them ever get a
     // `rank_position` — this is exactly the edge case this function exists to handle correctly.
     const ids = seedEpisodes(3);
 
-    let step = await getNextRankingStep(SHOW_ID);
-    expect(step).toEqual({ type: 'coldStart', episode: ids[0] });
-    step = await submitColdStartAnswer(SHOW_ID, ids[0], 'disliked');
-    expect(step).toEqual({ type: 'coldStart', episode: ids[1] });
-    step = await submitColdStartAnswer(SHOW_ID, ids[1], 'liked');
-    expect(step).toEqual({ type: 'coldStart', episode: ids[2] });
-    step = await submitColdStartAnswer(SHOW_ID, ids[2], 'neutral');
-    expect(step).toEqual({ type: 'done' });
+    await submitColdStartAnswer(SHOW_ID, ids[0], 'disliked');
+    await submitColdStartAnswer(SHOW_ID, ids[1], 'liked');
+    const finalStep = await submitColdStartAnswer(SHOW_ID, ids[2], 'neutral');
+    expect(finalStep).toEqual({ type: 'alreadyRanked' });
 
     // Bucket order liked > neutral > disliked (see @/lib/ranking/coldStart.ts) — one episode per
-    // bucket here, so recency-within-bucket doesn't come into play.
-    await expect(getRankedEpisodeOrder(SHOW_ID)).resolves.toEqual([ids[1], ids[2], ids[0]]);
+    // bucket here, so recency-within-bucket doesn't come into play: [ids[1], ids[2], ids[0]].
+    await expect(getShowRankingDisplay(SHOW_ID)).resolves.toEqual({
+      done: true,
+      ranked: [
+        { episodeId: ids[1], score: scoreForPosition(1, 3) },
+        { episodeId: ids[2], score: scoreForPosition(2, 3) },
+        { episodeId: ids[0], score: scoreForPosition(3, 3) },
+      ],
+    });
+  });
+
+  it('reports done: true with the full comparative order once every episode is placed', async () => {
+    const { extraIds } = seedComparativePool(1);
+    const subject = extraIds[0];
+
+    await submitComparisonAnswer(SHOW_ID, subject, 'B', 'worse');
+    await submitComparisonAnswer(SHOW_ID, subject, 'C', 'better');
+
+    await expect(getShowRankingDisplay(SHOW_ID)).resolves.toEqual({
+      done: true,
+      ranked: [
+        { episodeId: 'A', score: scoreForPosition(1, 5) },
+        { episodeId: 'B', score: scoreForPosition(2, 5) },
+        { episodeId: subject, score: scoreForPosition(3, 5) },
+        { episodeId: 'C', score: scoreForPosition(4, 5) },
+        { episodeId: 'D', score: scoreForPosition(5, 5) },
+      ],
+    });
   });
 });
 

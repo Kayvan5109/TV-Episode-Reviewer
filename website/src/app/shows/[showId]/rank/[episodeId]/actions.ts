@@ -8,20 +8,22 @@ import type { ComparisonResult, EpisodeId } from '@/lib/ranking-session';
 
 /**
  * Result shape both actions below return: `undefined` on success (the caller just re-renders with
- * whatever `getNextRankingStep` now reports), `{ error }` if the underlying `ranking-session`
- * function threw (e.g. a stale/out-of-order submission, or the user got signed out mid-session).
+ * whatever `getNextStepForEpisode` now reports for this route's episode), `{ error }` if the
+ * underlying `ranking-session` function threw (e.g. a stale/out-of-order submission, or the user
+ * got signed out mid-session).
  */
 export type RankingActionResult = { error: string } | undefined;
 
 /**
  * Thin wrapper around `submitColdStartAnswer`: catches thrown errors into a plain return value the
- * client component can display without crashing, and revalidates this page's own path on success.
+ * client component can display without crashing, and revalidates this specific episode's rank
+ * page on success.
  *
  * The `revalidatePath` call is required, not optional, in this Next.js version: a Server Action
  * only gets its calling route re-rendered in the same response if it calls
  * `revalidatePath`/`refresh`/`redirect` or mutates cookies — a plain return value alone does not
  * trigger a re-render (see `node_modules/next/dist/docs/01-app/02-guides/server-actions.md`). Since
- * this page derives what to show entirely from live Supabase state (via `getNextRankingStep`)
+ * this page derives what to show entirely from live Supabase state (via `getNextStepForEpisode`)
  * rather than anything cached, invalidating its own path is exactly what's needed for the next
  * request to reflect the just-submitted answer.
  */
@@ -38,10 +40,14 @@ export async function submitColdStart(
     };
   }
 
-  revalidatePath(`/shows/${showId}/rank`);
+  revalidatePath(`/shows/${showId}/rank/${episodeId}`);
 }
 
-/** Same shape as `submitColdStart`, wrapping `submitComparisonAnswer` instead. */
+/**
+ * Same shape as `submitColdStart`, wrapping `submitComparisonAnswer` instead. `subjectId` is
+ * always this route's own `episodeId` — the caller (`ComparisonPrompt`) is fixed to that subject,
+ * it just also needs `referenceId` to know which pending question it's answering.
+ */
 export async function submitComparison(
   showId: string,
   subjectId: EpisodeId,
@@ -56,5 +62,5 @@ export async function submitComparison(
     };
   }
 
-  revalidatePath(`/shows/${showId}/rank`);
+  revalidatePath(`/shows/${showId}/rank/${subjectId}`);
 }

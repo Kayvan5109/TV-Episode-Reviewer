@@ -27,6 +27,7 @@ import {
   isColdStart,
 } from '@/lib/ranking/engine';
 import type { ColdStartBucket, ComparisonResult, EpisodeId, ShowRankingState } from '@/lib/ranking/types';
+import { scoreForPosition } from '@/lib/ranking/score';
 import { makeReplayComparator } from './comparator';
 import { reconstructShowRankingState, type ComparisonRow, type RankingRow } from './reconstruct';
 import { NeedsComparisonInput, type NextRankingStep } from './types';
@@ -135,6 +136,21 @@ function nextUnrankedEpisode(
 }
 
 /**
+ * Whether `episodeId` has no ranking data recorded for it yet (no `episode_rankings` row at all,
+ * cold-start or comparative) — the per-episode analogue of `nextUnrankedEpisode`, but without the
+ * "is it *next*" constraint: once ranking can happen in any order (see `getNextStepForEpisode`),
+ * "has this specific episode been dealt with yet" is the only question that still makes sense.
+ * Does *not* check whether `episodeId` belongs to this show at all — callers that need to
+ * distinguish "unranked" from "not part of this show" should check `episodeIdsInOrder` separately
+ * (see `getNextStepForEpisode`, which needs to tell those two apart to decide whether to throw).
+ */
+function isUnranked(loaded: LoadedShowRanking, episodeId: EpisodeId): boolean {
+  const rankedSet = new Set(loaded.state.ranked);
+  const coldStartSet = new Set(loaded.state.coldStart.map((entry) => entry.episodeId));
+  return !rankedSet.has(episodeId) && !coldStartSet.has(episodeId);
+}
+
+/**
  * Persists a post-placement `ShowRankingState`'s `ranked` list: writes `rank_position` (1-based,
  * best = 1, matching `@/lib/ranking`'s convention) for *every* comparatively-ranked episode, not
  * just the newly-placed one — inserting into the middle of the list shifts every episode after it,
@@ -219,51 +235,156 @@ export async function getNextRankingStep(showId: string): Promise<NextRankingSte
 }
 
 /**
- * The show's full best-to-worst episode order, if ranking is actually complete — `null` while
- * there's still a pending step (`coldStart` or `compare`).
+ * Discriminated result of "what should the user be asked in order to rank *this specific*
+ * episode?" — the per-episode counterpart to `NextRankingStep`. `getNextRankingStep` always
+ * follows the show's fixed season/episode order; this answers the question for whichever episode
+ * the user actually clicked, which is what a picker UI (rank any episode, in any order) needs.
  *
- * Deliberately re-derives "is this actually done?" via `deriveNextStep` rather than checking
- * something cheaper like "does every episode have a non-null `rank_position`": a show with fewer
- * than `COLD_START_THRESHOLD` total episodes finishes cold-start ranking every episode and *never*
- * enters comparative placement, so its episodes never get a `rank_position` at all — for that show,
- * `rank_position IS NOT NULL` would (wrongly) never be true even once ranking is fully done.
- * `deriveNextStep`/`currentDisplayOrder` already know how to handle both cases correctly, so this
- * just defers to them instead of re-encoding that rule here.
- *
- * Reloads the state fresh after confirming `'done'` rather than reusing the `loaded` state from
- * before the `deriveNextStep` call: that call's internal loop may have just persisted newly-folded
- * rank positions (crossing `COLD_START_THRESHOLD` mid-derivation), so the pre-call `loaded.state`
- * can be stale even though the derivation itself didn't throw.
+ * `'alreadyRanked'` covers two distinct-but-equivalent situations from the caller's point of view:
+ * the episode already has a `rank_position`/cold-start entry from a previous session, or the
+ * comparison(s) needed to place it *right now* were all already answered before (replay resolved
+ * the whole placement without a new question) — either way, there's nothing left to ask, so the UI
+ * should just say so rather than treating it as an error.
  */
-export async function getRankedEpisodeOrder(showId: string): Promise<EpisodeId[] | null> {
+export type TargetedRankingStep =
+  | { type: 'alreadyRanked' }
+  | { type: 'coldStart'; episode: EpisodeId }
+  | { type: 'compare'; subject: EpisodeId; reference: EpisodeId };
+
+/**
+ * "What should the user be asked/shown next in order to rank `episodeId` specifically?" Unlike
+ * `getNextRankingStep` (which always follows `nextUnrankedEpisode`'s fixed order), this lets the
+ * UI drive ranking for any episode the user picks, in whatever order they pick them — the
+ * algorithm itself has no notion of a "required" order (see this file's module comment and the
+ * session notes that motivated this function), so nothing here needs to enforce one either.
+ *
+ * Throws if `episodeId` isn't one of this show's episodes at all (a real bug — a stale link or a
+ * bad id, not a normal "nothing to do" case). Returns `'alreadyRanked'` if it already has ranking
+ * data. Otherwise dispatches on the show's overall mode: cold start just needs the bucket
+ * question; comparative mode tries to resolve the placement via replay first (in case every
+ * comparison it needs was already answered, e.g. as a side effect of *another* episode's
+ * placement) and only surfaces a real `'compare'` question once replay hits something genuinely
+ * new — mirrors `deriveNextStep`'s own replay-then-ask approach, just scoped to one episode.
+ */
+export async function getNextStepForEpisode(
+  showId: string,
+  episodeId: EpisodeId
+): Promise<TargetedRankingStep> {
+  const supabase = await createSupabaseServerClient();
+  const userId = await requireUserId(supabase);
+  const loaded = await loadShowRankingState(supabase, userId, showId);
+
+  if (!loaded.episodeIdsInOrder.includes(episodeId)) {
+    throw new Error(`Episode ${episodeId} does not belong to show ${showId}.`);
+  }
+
+  if (!isUnranked(loaded, episodeId)) {
+    return { type: 'alreadyRanked' };
+  }
+
+  if (isColdStart(loaded.state)) {
+    return { type: 'coldStart', episode: episodeId };
+  }
+
+  const comparator = makeReplayComparator(loaded.state.history);
+  try {
+    const newState = await addComparativeEpisode(loaded.state, episodeId, comparator);
+    await persistRankedPositions(supabase, userId, newState);
+    return { type: 'alreadyRanked' };
+  } catch (error) {
+    if (error instanceof NeedsComparisonInput) {
+      return { type: 'compare', subject: error.subject, reference: error.reference };
+    }
+    throw error;
+  }
+}
+
+/**
+ * Everything the reworked `/shows/[showId]` page needs to render every episode's current ranking
+ * status in one call: which episodes are fully ranked (with derived scores), which are mid-cold-
+ * start (with their bucket), and which haven't been touched at all.
+ */
+export type ShowRankingDisplay =
+  | { done: true; ranked: { episodeId: EpisodeId; score: number }[] }
+  | {
+      done: false;
+      ranked: { episodeId: EpisodeId; score: number }[];
+      coldStartPending: { episodeId: EpisodeId; bucket: ColdStartBucket }[];
+      unranked: EpisodeId[];
+    };
+
+/**
+ * Loads the show's full ranking status for display. Reuses `deriveNextStep` (the same "is this
+ * show actually done?" derivation `getNextRankingStep` uses) purely to answer that one question —
+ * it may persist newly-folded rank positions as a side effect (crossing `COLD_START_THRESHOLD`),
+ * which is fine and is already how every other function in this module behaves.
+ *
+ * Reloads state fresh in *both* branches rather than reusing `loaded` from before the
+ * `deriveNextStep` call, for the same staleness reason `getRankedEpisodeOrder` used to document:
+ * that call's internal loop may have just written new `rank_position`s, so the pre-call state can
+ * be stale even when the derivation itself didn't throw.
+ *
+ * When done, uses `currentDisplayOrder` (not just "every episode with a non-null `rank_position`,
+ * sorted") because a show with fewer than `COLD_START_THRESHOLD` total episodes finishes cold-start
+ * judging every episode and *never* enters comparative placement — none of its episodes ever get a
+ * `rank_position` at all, so that condition would (wrongly) never be true for such a show even
+ * once ranking is fully done. `currentDisplayOrder` already knows how to handle both cases.
+ */
+export async function getShowRankingDisplay(showId: string): Promise<ShowRankingDisplay> {
   const supabase = await createSupabaseServerClient();
   const userId = await requireUserId(supabase);
   const loaded = await loadShowRankingState(supabase, userId, showId);
 
   const step = await deriveNextStep(supabase, userId, loaded);
-  if (step.type !== 'done') {
-    return null;
+
+  if (step.type === 'done') {
+    const reloaded = await loadShowRankingState(supabase, userId, showId);
+    const order = currentDisplayOrder(reloaded.state);
+    return {
+      done: true,
+      ranked: order.map((episodeId, index) => ({
+        episodeId,
+        score: scoreForPosition(index + 1, order.length),
+      })),
+    };
   }
 
   const reloaded = await loadShowRankingState(supabase, userId, showId);
-  return currentDisplayOrder(reloaded.state);
+  const state = reloaded.state;
+  const rankedSet = new Set(state.ranked);
+  const coldStartSet = new Set(state.coldStart.map((entry) => entry.episodeId));
+
+  return {
+    done: false,
+    ranked: state.ranked.map((episodeId, index) => ({
+      episodeId,
+      score: scoreForPosition(index + 1, state.ranked.length),
+    })),
+    coldStartPending: state.coldStart.map(({ episodeId, bucket }) => ({ episodeId, bucket })),
+    unranked: loaded.episodeIdsInOrder.filter((id) => !rankedSet.has(id) && !coldStartSet.has(id)),
+  };
 }
 
 /**
- * Records a cold-start (liked/disliked/neutral) judgment for `episodeId` and re-derives the next
- * step — crossing `COLD_START_THRESHOLD` on this answer folds cold-start episodes straight into
- * comparative ranking (per `@/lib/ranking/engine.ts`'s `addComparativeEpisode`), which may mean the
- * very next step is immediately a comparison question rather than another cold-start one.
+ * Records a cold-start (liked/disliked/neutral) judgment for `episodeId` and returns what's next
+ * *for that episode* — which, for cold start, is always `'alreadyRanked'` immediately afterward
+ * (cold start never needs a follow-up question for the same episode). Crossing
+ * `COLD_START_THRESHOLD` on this answer folds cold-start episodes straight into comparative
+ * ranking (per `@/lib/ranking/engine.ts`'s `addComparativeEpisode`) the next time *some* episode
+ * needs placing, but that's not this episode's concern anymore.
  *
- * Validates the submission against what's actually currently pending (rather than trusting
- * `episodeId` blindly) before writing anything — the show must still be in cold start, and
- * `episodeId` must be exactly the next unranked episode.
+ * Validates the submission against what's actually true (rather than trusting `episodeId`
+ * blindly) before writing anything: the show must still be in cold start, and `episodeId` must
+ * belong to this show and not already have ranking data. Deliberately does *not* require
+ * `episodeId` to be "the next" unranked episode in season/episode order — ranking any specific
+ * episode the user picks, in any order, is the whole point of the per-episode picker UI this
+ * supports.
  */
 export async function submitColdStartAnswer(
   showId: string,
   episodeId: EpisodeId,
   bucket: ColdStartBucket
-): Promise<NextRankingStep> {
+): Promise<TargetedRankingStep> {
   const supabase = await createSupabaseServerClient();
   const userId = await requireUserId(supabase);
   const loaded = await loadShowRankingState(supabase, userId, showId);
@@ -274,11 +395,12 @@ export async function submitColdStartAnswer(
     );
   }
 
-  const expected = nextUnrankedEpisode(loaded.episodeIdsInOrder, loaded.state);
-  if (expected !== episodeId) {
+  if (!loaded.episodeIdsInOrder.includes(episodeId)) {
+    throw new Error(`Unexpected cold-start submission: episode ${episodeId} does not belong to show ${showId}.`);
+  }
+  if (!isUnranked(loaded, episodeId)) {
     throw new Error(
-      `Unexpected cold-start submission for episode ${episodeId} (show ${showId}); ` +
-        `expected ${expected ?? 'none — show is fully ranked'}.`
+      `Unexpected cold-start submission for episode ${episodeId} (show ${showId}); it already has ranking data.`
     );
   }
 
@@ -295,26 +417,31 @@ export async function submitColdStartAnswer(
     throw new Error(`Failed to record cold-start answer: ${error.message}`);
   }
 
-  return getNextRankingStep(showId);
+  return getNextStepForEpisode(showId, episodeId);
 }
 
 /**
  * Records a comparison answer (`subjectId` is "better"/"worse"/"neutral" relative to
- * `referenceId`) and re-derives the next step — replay will now resolve past this newly-recorded
- * answer, which may immediately complete the current placement (and possibly cascade into further
- * fully-replayable placements, per `deriveNextStep`'s loop).
+ * `referenceId`) and returns what's next *for that subject episode's placement* — replay will now
+ * resolve past this newly-recorded answer, which may immediately complete the placement (or
+ * surface the next binary-search/tie-break hop, per `getNextStepForEpisode`'s replay-then-ask
+ * approach).
  *
- * Validates the submission against what's actually currently pending before writing anything: the
- * show must be past cold start, and `(subjectId, referenceId)` must be exactly the pending
- * question — this both rejects stale/out-of-order submissions and guarantees the row is never
- * written with the pair reversed from what the rest of this module expects.
+ * Validates the submission against what's actually currently pending for `subjectId` specifically
+ * (via `getNextStepForEpisode`, targeted at the subject) rather than the show's global next-in-
+ * order episode — this is what makes out-of-order ranking possible: `subjectId` need not be
+ * "next" in season/episode order, it just needs to be the episode currently being placed, with a
+ * pending question that actually matches `referenceId`. `subjectId` is already pinned by
+ * construction (it's exactly what we asked `getNextStepForEpisode` about), so only `reference`
+ * needs re-checking. This still rejects stale/out-of-order submissions and guarantees the row is
+ * never written with the pair reversed from what the rest of this module expects.
  */
 export async function submitComparisonAnswer(
   showId: string,
   subjectId: EpisodeId,
   referenceId: EpisodeId,
   result: ComparisonResult
-): Promise<NextRankingStep> {
+): Promise<TargetedRankingStep> {
   const supabase = await createSupabaseServerClient();
   const userId = await requireUserId(supabase);
   const loaded = await loadShowRankingState(supabase, userId, showId);
@@ -323,8 +450,8 @@ export async function submitComparisonAnswer(
     throw new Error(`Show ${showId} is still in cold start; submit a cold-start answer instead.`);
   }
 
-  const pending = await deriveNextStep(supabase, userId, loaded);
-  if (pending.type !== 'compare' || pending.subject !== subjectId || pending.reference !== referenceId) {
+  const pending = await getNextStepForEpisode(showId, subjectId);
+  if (pending.type !== 'compare' || pending.reference !== referenceId) {
     throw new Error(
       `Unexpected comparison submission for show ${showId}: got subject=${subjectId} ` +
         `reference=${referenceId}, but the pending step is ${JSON.stringify(pending)}.`
@@ -345,5 +472,5 @@ export async function submitComparisonAnswer(
     throw new Error(`Failed to record comparison answer: ${error.message}`);
   }
 
-  return getNextRankingStep(showId);
+  return getNextStepForEpisode(showId, subjectId);
 }
