@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 
 import { createSupabaseServerClient } from '@/lib/supabase/serverSession';
@@ -31,8 +32,9 @@ interface EpisodeRow {
  * `supabase/migrations/20260715000000_initial_schema.sql`), so this isn't scoped to "shows this
  * particular user added".
  *
- * The actual ranking flow (cold-start buckets, comparisons) is piece 2b's work — "Start ranking"
- * below is a visible, disabled placeholder only.
+ * "Start ranking" links to `/shows/[showId]/rank` (the actual ranking flow, built on top of
+ * `@/lib/ranking-session`) — disabled only when there are genuinely 0 imported episodes, since
+ * there'd be nothing to rank.
  */
 export default async function ShowDetailPage({
   params,
@@ -97,14 +99,23 @@ export default async function ShowDetailPage({
             <p className="text-sm text-black/60 dark:text-white/60">
               {episodes.length} episode{episodes.length === 1 ? '' : 's'} imported
             </p>
-            <button
-              type="button"
-              disabled
-              title="Ranking isn't built yet — coming in the next piece of work."
-              className="w-fit rounded bg-black px-4 py-2 text-sm text-white opacity-50 dark:bg-white dark:text-black"
-            >
-              Start ranking
-            </button>
+            {episodes.length > 0 ? (
+              <Link
+                href={`/shows/${showId}/rank`}
+                className="w-fit rounded bg-black px-4 py-2 text-sm text-white dark:bg-white dark:text-black"
+              >
+                Start ranking
+              </Link>
+            ) : (
+              <button
+                type="button"
+                disabled
+                title="No episodes imported for this show yet — nothing to rank."
+                className="w-fit rounded bg-black px-4 py-2 text-sm text-white opacity-50 dark:bg-white dark:text-black"
+              >
+                Start ranking
+              </button>
+            )}
           </div>
         </div>
 
