@@ -3,13 +3,14 @@
 **Read this file first** — before the other docs, before doing anything else. It's the single
 "what's actually going on right now" pointer, kept short and current on purpose.
 
-Last updated: 2026-07-16. **Piece 2b, part 1 (the resumable ranking-session logic) done, reviewed
-thoroughly, merged (`aab0dbd`), not yet pushed.** `getNextRankingStep`/`submitColdStartAnswer`/
-`submitComparisonAnswer` reconstruct a show's ranking state from the DB on every call and replay
-already-answered comparisons through the existing algorithm, surfacing only genuinely new questions
-— 159 tests, typecheck/lint/build clean. This included a new migration
-(`episode_rankings.cold_start_bucket`/`cold_start_sequence`) — **pushing will apply it live**, same
-as previous schema pushes, confirm go-ahead first. No UI yet — that's part 2, next.
+Last updated: 2026-07-16. **Clean deliberate stop, for session budget (76%).** Piece 2b, part 1 (the
+resumable ranking-session logic) is done, reviewed thoroughly, merged, and pushed (`78b7dcd`) — the
+`cold_start_bucket`/`cold_start_sequence` migration is live. `getNextRankingStep`/
+`submitColdStartAnswer`/`submitComparisonAnswer` reconstruct a show's ranking state from the DB on
+every call and replay already-answered comparisons through the existing algorithm, surfacing only
+genuinely new questions — 159 tests, typecheck/lint/build clean. No agent is running. **Next
+session: start with part 2** — the actual ranking UI on `/shows/[showId]`, see Bucket 1. This is
+feel-based UI work on top of an already-reviewed API, not correctness-critical itself.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -18,9 +19,7 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence:**
-1. Push `main` to `origin` (applies the `cold_start_bucket`/`cold_start_sequence` migration live —
-   confirm go-ahead first).
-2. Phase 1, piece 2b, part 2: the actual ranking UI on `/shows/[showId]` — replace the disabled
+1. Phase 1, piece 2b, part 2: the actual ranking UI on `/shows/[showId]` — replace the disabled
    "Start ranking" placeholder with real screens calling `getNextRankingStep`/
    `submitColdStartAnswer`/`submitComparisonAnswer` (see `website/src/lib/ranking-session/`): a
    liked/disliked/neutral picker for cold-start steps, a better/worse/neutral comparison prompt for
