@@ -3,16 +3,15 @@
 **Read this file first** — before the other docs, before doing anything else. It's the single
 "what's actually going on right now" pointer, kept short and current on purpose.
 
-Last updated: 2026-07-15 (later session). **Phase 0 algorithm + website scaffold merged to
-`main` (commit `4fa5fd6`), not yet pushed to `origin`.** The ranking algorithm (cold start,
-true binary-insertion placement, two-tier tie-break, v1 score formula) is implemented in
-`website/src/lib/ranking/` — 48 tests passing, typecheck/lint clean, independently re-verified
-(re-ran tests/typecheck/lint fresh after copying out of the build worktree, and hand-traced the
-tie-break logic through its trickiest recursive cases) before committing. The build worktree has
-been unregistered from git; its on-disk folder under `.claude/worktrees/` failed to delete (Windows
-file lock) but is harmless/gitignored — safe to delete by hand later if it's still there. Next:
-stand up Supabase + TMDB proxy + Vercel (rest of Phase 0), and decide whether to push this commit to
-`origin` now.
+Last updated: 2026-07-15 (later session). **Supabase schema + TMDB proxy merged to `main`
+(commit `39c9feb`); Vercel project imported and deployed by Kayvan.** Phase 0 is now essentially
+code-complete: ranking algorithm (`4fa5fd6`), Supabase schema with RLS (`39c9feb`), TMDB proxy
+route, and a live Vercel deployment. `website/.env.local` is filled in locally; the same four vars
+are in Vercel's dashboard. Not yet done: actually pushing `39c9feb` to `origin` (which will trigger
+the connected Supabase GitHub integration to apply the migration to the *live* Supabase project —
+flagged for a explicit go-ahead before that push, since it's the first action this project takes
+against real external infrastructure, not just git). Once pushed, worth confirming in the Supabase
+dashboard that the migration actually applied cleanly.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -21,9 +20,9 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence:**
-1. Stand up the Supabase project (Auth + schema) and prove the TMDB proxy + Next.js/Vercel deploy
-   path — the rest of `DevelopmentPlan.md` Phase 0. The ranking algorithm itself is done, reviewed,
-   and merged (see commit `4fa5fd6`).
+1. Push `main` to `origin` (triggers the live Supabase migration via the GitHub integration), then
+   confirm in the Supabase dashboard that it applied cleanly and do a smoke-test call against the
+   deployed Vercel site's TMDB proxy route with a real query. This is the last step of Phase 0.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
 (empty for now)
@@ -82,6 +81,15 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-15: Reviewed and merged the Supabase schema + TMDB proxy route to `main` (commit
+  `39c9feb`). Schema: `shows`/`episodes` (global TMDB reference data) plus per-user
+  `episode_rankings`/`episode_comparisons` with row-level security. Review consisted of reading the
+  migration SQL and every RLS policy directly, tracing the security guarantees by hand (default-deny,
+  `auth.uid()` unforgeable, no `anon` access anywhere), checking the TMDB proxy's error paths don't
+  leak the secret token, and independently re-running tests (74/74)/typecheck/lint/build fresh in
+  the committed location. Kayvan filled in `website/.env.local` himself (never shared in chat) and
+  imported the repo into Vercel (root directory `website`, env vars pasted directly into Vercel's
+  dashboard). Not yet pushed to `origin` — see Punch List Bucket 1.
 - 2026-07-15: Reviewed and merged the Phase 0 ranking algorithm + Next.js website scaffold to
   `main` (commit `4fa5fd6`). Review consisted of: reading the updated `findCommonReference`
   implementation directly and hand-tracing its logic through the chained-hop and full-exhaustion
