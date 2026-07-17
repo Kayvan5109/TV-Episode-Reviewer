@@ -429,3 +429,89 @@ these before building, don't treat them as silently settled:
 - Keyboard navigation and screen-reader labeling for the ranking controls specifically (the
   comparison/cold-start buttons are the app's core interaction, so they're the highest-value place
   to get this right, ahead of the rest of the app).
+
+## Original 5-Idea Engagement Brainstorm — Resolved (2026-07-17)
+
+The 5 engagement/growth ideas from earlier the same session (paused mid-discussion when the QA
+testing round took over) are now all resolved:
+
+1. ~~Shareable "ranking cards"~~ — **denied**. Not being pursued.
+2. **Friends/following + comparing rankings** — **confirmed, to build eventually as part of Tier B**
+   (already fully designed — see "Tier B Detailed Design — Social Layer" above).
+3. **Global/community consensus per show** — **confirmed, to build eventually as part of Tier B**
+   (the "community rank" + Discover page pieces, already in the same Tier B design above).
+4. **Personal stats & a "wrapped"-style recap** — **confirmed**. Detailed design below.
+5. **Gamification (achievements/streaks)** — **confirmed**. Detailed design below.
+
+Like Tier B, ideas 4 and 5 below are **confirmed direction, fully designed, not yet scheduled** —
+they aren't in `STATUS.md`'s Bucket 1 next-session queue, which is reserved for what's actually
+agreed to be built next. Move either into Bucket 1 when it's actually time to build it.
+
+## Personal Stats & Recap (confirmed 2026-07-17, not yet scheduled)
+
+A live, always-current personal recap page — not a once-a-year snapshot like Spotify Wrapped, which
+would need a scheduled/cron mechanism this app has no infrastructure for yet (deliberately simpler
+for v1; a dated annual snapshot is a reasonable v2 if this ever feels worth the extra machinery).
+Distinct from, but related to, Tier A item 10 ("statistics view + visualizations of a show's
+existing rankings" — per-show): this is the cross-show, whole-account version. Build them together
+if convenient, but they're separate pieces of UI over related data.
+
+**Entirely computable from data that already exists** — no new tables needed at all, unlike Tier B.
+Every stat below is a read over `episode_rankings`/`episode_comparisons`/`user_shows`, all already
+timestamped and scoped to the signed-in user via existing RLS:
+- Total episodes ranked, total shows started, total shows fully completed (`done: true` via
+  `getShowRankingDisplay`).
+- Highest-rated episode overall, across every show (not just per-show) — the single episode with
+  the highest derived score account-wide.
+- "Most contested episode" — the episode with the highest total comparison count recorded
+  (decisive + neutral combined) — a reasonable, simple proxy for "took the most back-and-forth to
+  place," without needing the more elaborate tie-break-fallback detection flagged as a Tier-A
+  ranking-confidence v2 idea.
+- A favorite show — simplest defensible definition: the show with the highest average episode
+  score among shows with at least, say, 4 ranked episodes (avoids a 1-episode show trivially "winning"
+  with its automatic 10). Confirm this definition feels right once there's real data to check it
+  against, same spirit as the score formula's own "expect to tune" framing.
+- Ranking activity over time — a simple calendar-style view of which days had ranking activity,
+  derived directly from `created_at` timestamps already on `episode_comparisons`/`episode_rankings`.
+
+**Explicitly not included**: anything like "time spent ranking" — there's no session-duration
+tracking today, and adding one just for this stat isn't worth the new event-logging infrastructure
+it would need. Stick to countable facts (comparisons made, episodes ranked, shows completed), not
+timing.
+
+**New page**: a single `/stats` (or similar) route, session-aware, no new tables, no new RLS
+policies — the simplest addition on this whole list.
+
+## Gamification: Achievements & Streaks (confirmed 2026-07-17, not yet scheduled)
+
+Scoped deliberately smaller than the external design review's original pitch (no XP, no levels, no
+profile-customization unlocks) — those only pay off once there's an audience to show status off to,
+which depends on Tier B (the social layer) actually existing and being used. Revisit XP/levels if
+Tier B ships and gets real usage; not worth building for no one to see yet.
+
+**v1 achievement set** — deliberately only things computable from a user's *own* data, nothing
+requiring cross-user comparison (no "top 1%") or curated show lists (no "completed the MCU"):
+- First ranking (ranked your first-ever episode).
+- 10 / 100 / 1,000 total comparisons made, across all shows.
+- Completed your first show (reached `done: true`).
+- Completed 5 shows.
+
+**Data model**: achievement *definitions* (id, name, description, the check itself) are plain code
+constants, not a database table — a small, fixed, hand-curated list doesn't need to be
+data-driven. One new table, `user_achievements` (`user_id`, `achievement_id`, `unlocked_at`),
+records *when* a user actually unlocked each one, so that's preserved even though every achievement
+here happens to be monotonic (can't un-complete a show). Checked lazily at read time (e.g. whenever
+the dashboard loads: compute current stats, compare against each definition, insert any
+newly-qualifying `user_achievements` rows, show a small "just unlocked!" banner for anything new)
+— deliberately **not** wired into `ranking-session`'s write path at all, so the core ranking flow
+stays exactly as simple and fast as it is today; achievement-checking is a side concern, not part of
+the hot path.
+
+**Streaks**: "ranked something every day for N days." Fully derivable from existing timestamps (does
+any `episode_comparisons`/`episode_rankings` row exist for each of the last N consecutive calendar
+days) — no new schema needed, computed live at this scale rather than cached, same reasoning Tier
+B's community aggregates use.
+
+**New surface**: a small achievements section (dashboard or its own `/achievements` page) showing
+unlocked (with the date) and locked (grayed out, with a hint of what unlocks it) achievements, plus
+a streak indicator somewhere prominent like the dashboard header.

@@ -226,6 +226,16 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-17: Resolved all 5 of the original engagement/growth ideas from earlier the same session
+  (paused mid-discussion when the QA round took over) — see `AppSpec.md`'s new "Original 5-Idea
+  Engagement Brainstorm — Resolved" section. Shareable ranking cards: **denied**, not being
+  pursued. Friends/following and community consensus: **confirmed to build eventually**, already
+  covered by Tier B's existing detailed design (no new plan needed). Personal stats/recap and
+  gamification (achievements/streaks): **confirmed**, and got their own detailed designs written up
+  fresh — see `AppSpec.md`'s "Personal Stats & Recap" and "Gamification: Achievements & Streaks"
+  sections. Both are, like Tier B, **confirmed direction and fully designed but not yet scheduled**
+  — not added to Bucket 1's next-session queue, which stays reserved for what's actually agreed to
+  build next. Design-only, nothing built this session.
 - 2026-07-17: Fully designed Tier B (the social layer) at Kayvan's request, "as detailed as needed
   for when we build those pages out later" — see `AppSpec.md`'s new "Tier B Detailed Design — Social
   Layer" section. **Design only, nothing built, not scheduled** — this is prep work for whenever
