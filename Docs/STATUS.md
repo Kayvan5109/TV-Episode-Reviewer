@@ -17,24 +17,14 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence (work in this order):**
-1. **`/login` always shows the credential form, even for an already-signed-in visitor** — found
-   2026-07-17: `src/proxy.ts` redirects a signed-in user straight to `/dashboard` if they visit
-   `/login` (deliberate, existing behavior — see its own doc comment; this is what made a persistent
-   session look like "auto-login with no prompt" when reopening the Vercel app after not having
-   signed out). Kayvan's call: session persistence itself (staying logged in across visits until you
-   explicitly sign out) is fine and expected — the fix is narrower: visiting `/login` specifically
-   should always render the form regardless of session state, not silently bounce to the dashboard.
-   Small, scoped change to `proxy.ts` (remove `/login` from the "redirect if already authenticated"
-   route set; leave `/signup`'s behavior and overall session persistence untouched). Correctness-
-   critical territory (auth/proxy) — same review rigor as the rest of auth. In progress now.
-2. **TMDB attribution** — small, quick, do early. Required attribution text somewhere in the app
+1. **TMDB attribution** — small, quick, do early. Required attribution text somewhere in the app
    (e.g. `AppHeader` or a footer) per TMDB's API terms — see `Risks.md`.
-3. **Password reset flow** — currently doesn't exist at all. `resetPasswordForEmail` + a set-new-
+2. **Password reset flow** — currently doesn't exist at all. `resetPasswordForEmail` + a set-new-
    password page. Same correctness-critical rigor as the rest of auth (read the code directly, real
    email click-through check) — this is `proxy.ts`/cookie territory again.
-4. **Privacy notice** — short static page, what's collected + the three third parties involved
+3. **Privacy notice** — short static page, what's collected + the three third parties involved
    (Supabase, TMDB, Vercel). Draft the content with Kayvan rather than inventing it.
-5. **New "rankings" view per show** — requested 2026-07-17: a page showing a show's ranked
+4. **New "rankings" view per show** — requested 2026-07-17: a page showing a show's ranked
    episodes sorted best-to-worst by score (distinct from `/shows/[showId]`'s season-ordered
    management list). Almost entirely UI — reuses the already-reviewed `getShowRankingDisplay`
    (its `ranked` array is already best-to-worst by construction, so no new sorting/persistence
@@ -43,8 +33,10 @@ unless it's small or genuinely blocking.
    data function — implementer + hands-on check, not a second deep review. In progress now.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **Remove-show and deferred show-add — still need hands-on confirmation** (2026-07-17, see
-   History); sign-out cursor and re-ranking both confirmed working 2026-07-17.
+1. **Remove-show, deferred show-add, and the `/login` fix — still need hands-on confirmation**
+   (2026-07-17, see History); sign-out cursor and re-ranking both confirmed working 2026-07-17. For
+   `/login`: confirm visiting it while already signed in now shows the form instead of bouncing to
+   `/dashboard`, and that `/signup` still redirects an already-signed-in visitor as before.
 2. **Episode-picker hands-on testing, still in progress** — out-of-order ranking, auto-updating
    scores, the post-submission auto-redirect, and refresh-mid-comparison all confirmed working.
    Sign-out, the friendlier stale-resubmission redirect, and the "Rank episodes" relabel all just
@@ -146,6 +138,15 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-17: Fixed the `/login` auto-redirect, reviewed, merged (`proxy.ts`/`proxy.test.ts`),
+  pushed. Split the route config into `PROTECTED_ROUTES` (unchanged) and a narrower
+  `REDIRECT_IF_AUTHENTICATED_ROUTES = ['/signup']` — `/login` no longer appears in any
+  redirect-away set, so it always renders its form regardless of session state; `/signup` and
+  `/dashboard`'s protection are both untouched. Confirmed `login/page.tsx`/`actions.ts` needed no
+  changes. Reviewed the diff directly (small, exactly the scoped change requested) and
+  independently re-ran tests (177/177)/typecheck/lint fresh before merging. Also kicked off the new
+  per-show "rankings" page (`/shows/[showId]/rankings`, sorted best-to-worst by score) — pure UI
+  reusing the already-reviewed `getShowRankingDisplay`, no persistence-layer changes needed.
 - 2026-07-17: Kayvan confirmed sign-out and re-ranking both work correctly. Reported a new one:
   reopening the deployed app and pressing "login" skips straight to being signed in, no credential
   prompt. Investigated `src/proxy.ts` before assuming a bug — confirmed this is deliberate, already-
