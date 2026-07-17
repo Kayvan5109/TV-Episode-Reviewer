@@ -3,13 +3,11 @@
 **Read this file first** — before the other docs, before doing anything else. It's the single
 "what's actually going on right now" pointer, kept short and current on purpose.
 
-Last updated: 2026-07-17. The ranking UI's episode-picker rebuild (see 2026-07-16 History) is live
-and being hands-on tested by Kayvan; out-of-order ranking and auto-updating scores are confirmed
-working, and a small post-submission auto-redirect gap found during that testing is now fixed,
-reviewed, merged, and pushed. **Phase 1's core ranking flow is code-complete**, still mid hands-on
-testing — not yet fully signed off. No agent is running. Next up once testing wraps: TMDB
-attribution, password reset, remove-show + re-ranking, and a privacy notice, in that order — see
-Bucket 1 below.
+Last updated: 2026-07-17. Continued hands-on testing of the episode-picker rebuild surfaced three
+more small gaps (no sign-out button, a scary error on a stale post-back resubmission, a confusing
+"Add show" label) — all three fixed, reviewed, merged, and pushed. Remove-show and re-ranking are
+now fully designed (Kayvan answered the open questions) and being built now. No agent is running.
+Next up after that: TMDB attribution, password reset, and a privacy notice — see Bucket 1 below.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -18,60 +16,33 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence (work in this order):**
-1. **Sign-out button** — found 2026-07-17: there's genuinely no way to sign out at all right now.
-   Small, no design decision needed — in progress now (a Server Action calling `signOut()` via the
-   session-aware client, plus a button in `AppHeader` since it's shared across every authenticated
-   page).
-2. **Friendlier handling of a stale post-back resubmission** — found 2026-07-17: submit a
-   comparison/cold-start answer (auto-redirects to the show page per yesterday's fix), press
-   browser back (lands on a stale cached view of the just-answered question), click the button
-   again → the submission is correctly rejected server-side (the episode's already fully placed,
-   so this is genuinely stale data, not a bug in the rejection itself) but surfaces as a raw,
-   scary-looking error instead of a benign "you're already done here, here's the show page." In
-   progress now — small, no design decision needed, purely how the existing (correct) rejection is
-   presented.
-3. **"Rank episodes" instead of "Add show"** — found 2026-07-17: Kayvan wants the search-results
-   button relabeled (it already redirects to the per-episode list post-import, so this is a label
-   change, not a flow change, as far as could be confirmed by reading the code — worth confirming
-   hands-on after the fix lands in case there's a real navigation gap that wasn't obvious from the
-   source alone). In progress now.
-4. **TMDB attribution** — small, quick, do early. Required attribution text somewhere in the app
+1. **Remove a show + re-ranking** — both confirmed wanted, reconfirmed a third time 2026-07-17 by
+   Kayvan. **Decided 2026-07-17**: removing a show deletes that user's `episode_rankings`/
+   `episode_comparisons` for its episodes too (clean slate if re-added), not just the `user_shows`
+   row. Re-ranking clears both `rank_position` *and* that episode's `episode_comparisons` history
+   (not just the position). In progress now.
+2. **TMDB attribution** — small, quick, do early. Required attribution text somewhere in the app
    (e.g. `AppHeader` or a footer) per TMDB's API terms — see `Risks.md`.
-5. **Password reset flow** — currently doesn't exist at all. `resetPasswordForEmail` + a set-new-
+3. **Password reset flow** — currently doesn't exist at all. `resetPasswordForEmail` + a set-new-
    password page. Same correctness-critical rigor as the rest of auth (read the code directly, real
    email click-through check) — this is `proxy.ts`/cookie territory again.
-6. **Remove a show + re-ranking** — both confirmed wanted, reconfirmed a third time 2026-07-17 by
-   Kayvan (both still missing entirely). Design questions posed back to Kayvan 2026-07-17 (see
-   Deviations/History) — waiting on his answer before building. See `DevelopmentPlan.md`'s Phase 1
-   section for the full framing.
-7. **Privacy notice** — short static page, what's collected + the three third parties involved
+4. **Privacy notice** — short static page, what's collected + the three third parties involved
    (Supabase, TMDB, Vercel). Draft the content with Kayvan rather than inventing it.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
 1. **Episode-picker hands-on testing, still in progress** — out-of-order ranking, auto-updating
-   scores, the post-submission auto-redirect, and refresh-mid-comparison all confirmed working
-   (2026-07-17). Still to check: sign-out/back-in mid-ranking (blocked on Bucket 1 item 1 existing
-   at all), the small-show (<4 episodes) done case (see Bucket 4 — deliberately not chasing exact
-   score precision here, just checking it doesn't crash/misbehave), two shows ranked concurrently,
-   and a real tie-break chain. See `Testing.md` for the running checklist; log results here.
+   scores, the post-submission auto-redirect, and refresh-mid-comparison all confirmed working.
+   Sign-out, the friendlier stale-resubmission redirect, and the "Rank episodes" relabel all just
+   landed and still need their own hands-on confirmation. Still to check: sign-out/back-in
+   mid-ranking, the small-show (<4 episodes) done case (see Bucket 4 — deliberately not chasing
+   exact score precision here, just checking it doesn't crash/misbehave), two shows ranked
+   concurrently, and a real tie-break chain. See `Testing.md` for the running checklist; log
+   results here.
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
-1. **Remove-show data retention** — posed to Kayvan 2026-07-17: does removing a show delete that
-   user's `episode_rankings`/`episode_comparisons` too (clean slate if re-added), or just the
-   `user_shows` row (instant restore if re-added)?
-2. **Re-ranking scope** — posed to Kayvan 2026-07-17, with a recommendation: clear both
-   `rank_position` *and* that episode's `episode_comparisons` history, not just `rank_position`.
-   Reasoning: if old comparisons stay, the replay comparator (`makeReplayComparator`) would just
-   answer from the stale history instead of ever asking the user again for any pair they'd already
-   compared before — which defeats the actual point of re-ranking (the user's opinion changed).
-3. **Episode count in TMDB search results** — Kayvan wants total episode count shown under each
-   show's title in `/shows/search`'s live results. TMDB's `/search/tv` endpoint doesn't return an
-   episode count (only `/tv/{id}` "show details" does — confirmed by reading
-   `website/src/lib/tmdb/types.ts`'s existing `TmdbTvSearchResult` vs. `TmdbShowDetails` shapes),
-   so showing it in *search* results specifically would mean one extra TMDB call per result, for
-   every debounced keystroke-triggered search — real added latency and TMDB rate-limit exposure
-   that doesn't exist today. Posed back to Kayvan rather than building something slow/fragile
-   unilaterally.
+(empty for now — all three questions posed 2026-07-17 are resolved: remove-show and re-ranking's
+scope are decided, see Bucket 1 item 6; episode count in search is explicitly not being built, see
+Bucket 4.)
 
 **Bucket 4 — Backlog, logged, not being chased:**
 1. Shared test-fixture format to keep the TypeScript (website) and Swift (iOS) ranking-algorithm
@@ -101,6 +72,11 @@ unless it's small or genuinely blocking.
    liked/disliked/neutral produced scores 10/8.7/7.4. Kayvan's explicit call: not worth chasing,
    this kind of edge case isn't the point of the tool. Logged so it doesn't get silently "fixed"
    later without remembering it was deliberately deprioritized.
+8. **Episode count in TMDB search results** — decided 2026-07-17: not being built. TMDB's
+   `/search/tv` doesn't return an episode count (only `/tv/{id}` "show details" does), so showing
+   it in live search would mean an extra TMDB call per result on every debounced keystroke search —
+   Kayvan chose to keep search fast over having this, given episode count is already visible once a
+   show's been added.
 
 **Bucket 5 — Rework flagged for a later phase, not being worked now:**
 (empty for now)
@@ -148,6 +124,20 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-17: Fixed all three gaps from the same-day testing round, via three parallel implementer
+  agents (worktrees), reviewed, merged, and pushed: (1) sign-out — new `signOut` Server Action
+  (`website/src/app/actions.ts`) wired into `AppHeader`, matching the existing login/signup
+  session-aware-client pattern exactly; (2) the stale post-back resubmission — both Server Actions
+  in `rank/[episodeId]/actions.ts` now check `getNextStepForEpisode` in their catch blocks and
+  redirect to the show page when the rejection was simply because the episode's already fully
+  ranked, falling through to the original error for anything else; (3) the button relabel —
+  "Add show"/"Go to show →" in the search results are now "Rank episodes"/"Rank episodes →"
+  (confirmed via direct code read that the destination was already correct — this was purely a
+  copy fix). Reviewed each diff directly and independently re-ran tests (170/170)/typecheck/
+  lint/build fresh after each merge before proceeding to the next. Also resolved all three
+  questions posed earlier the same session: remove-show deletes ranking data, re-ranking clears
+  comparison history too, episode count in search is explicitly not being built (see Bucket 3/4).
+  An implementer agent for remove-show + re-ranking is being dispatched next.
 - 2026-07-17: Further hands-on testing round. Confirmed working: refresh mid-comparison (no
   duplication). Found: no sign-out button exists at all; a stale post-back resubmission surfaces a
   raw error instead of a friendly "already done" redirect (the underlying rejection itself is
