@@ -9,7 +9,12 @@
  *    token, users get silently logged out. This is the one place with full read/write access to
  *    both the request and the response, so it's mandatory, not optional.
  * 2. Optimistic route protection: redirect signed-out users away from `/dashboard`, and redirect
- *    signed-in users away from `/login` and `/signup`. This is a fast, cookie-only check (no
+ *    signed-in users away from `/signup` (there's no reason for an already-authenticated visitor to
+ *    create a second account). `/login` is deliberately *not* redirected away from here — it always
+ *    renders its credential form, even for a visitor who already has a valid session, so that
+ *    switching accounts (or re-authenticating for any other reason) never requires signing out
+ *    first. Submitting the login form while already signed in is harmless: `signInWithPassword`
+ *    just re-establishes/replaces the existing session. This is a fast, cookie-only check (no
  *    database round-trip beyond Supabase's own token validation) — the dashboard page itself does
  *    its own authoritative check too (see `src/app/dashboard/page.tsx`), since Proxy running on
  *    every route is only ever a first line of defense, not the only one (Next.js's authentication
@@ -24,7 +29,10 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
 const PROTECTED_ROUTES = ['/dashboard'];
-const LOGGED_OUT_ONLY_ROUTES = ['/login', '/signup'];
+// Routes that redirect an already-authenticated visitor away (to `/dashboard`) rather than
+// rendering. `/login` is intentionally excluded — see job 2 in the top-of-file doc comment for why
+// it always renders its form regardless of session state.
+const REDIRECT_IF_AUTHENTICATED_ROUTES = ['/signup'];
 
 /**
  * Handles the `?code=<uuid>` query param Supabase's *default/built-in* email provider's stock
@@ -136,13 +144,15 @@ export async function proxy(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
   const isProtectedRoute = PROTECTED_ROUTES.some((route) => pathname.startsWith(route));
-  const isLoggedOutOnlyRoute = LOGGED_OUT_ONLY_ROUTES.some((route) => pathname.startsWith(route));
+  const isRedirectIfAuthenticatedRoute = REDIRECT_IF_AUTHENTICATED_ROUTES.some((route) =>
+    pathname.startsWith(route)
+  );
 
   if (isProtectedRoute && !user) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  if (isLoggedOutOnlyRoute && user) {
+  if (isRedirectIfAuthenticatedRoute && user) {
     return NextResponse.redirect(new URL('/dashboard', request.url));
   }
 

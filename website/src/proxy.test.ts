@@ -106,7 +106,7 @@ describe('proxy', () => {
     });
   });
 
-  describe('session refresh / route protection (no `code` param — must keep working unchanged)', () => {
+  describe('session refresh / route protection (no `code` param)', () => {
     it('does not attempt a code exchange when there is no code param', async () => {
       await proxy(requestFor('/'));
 
@@ -122,12 +122,12 @@ describe('proxy', () => {
       expect(response.headers.get('location')).toBe('http://localhost/login');
     });
 
-    it('redirects signed-in users away from /login', async () => {
+    it('lets a signed-in user through to /login without redirecting (re-authenticating never requires signing out first)', async () => {
       getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
 
       const response = await proxy(requestFor('/login'));
 
-      expect(response.headers.get('location')).toBe('http://localhost/dashboard');
+      expect(response.headers.get('location')).toBeNull();
     });
 
     it('redirects signed-in users away from /signup', async () => {
