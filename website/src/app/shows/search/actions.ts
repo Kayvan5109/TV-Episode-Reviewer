@@ -8,7 +8,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/serverSession';
 export type AddShowFormState = { error: string } | undefined;
 
 /**
- * Server Action backing each "Add show" button in `ShowSearchForm`. Bound with a specific
+ * Server Action backing each "Rank episodes" button in `ShowSearchForm`. Bound with a specific
  * `tmdbShowId` per result via `Function.prototype.bind` (the documented way to pass an extra,
  * server-trusted argument to a Server Action — see `next/dist/docs/01-app/02-guides/forms.md`),
  * so the client only ever picks *which* TMDB show, never supplies anything written to the DB.
