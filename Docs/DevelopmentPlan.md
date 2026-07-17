@@ -105,13 +105,79 @@ is a tunable constant, not a fixed law — expect to adjust it, and possibly the
 once this is actually being used. Flag any of this back up for a rethink once real usage makes it
 feel off.
 
+### Decided 2026-07-17, not yet built: small shows skip cold-start bucketing after episode 1
+
+Real hands-on testing surfaced a sharp observation: a 3-episode show, all three ranked "neutral"
+during cold start, produced three visibly different scores (7.4 / 8.7 / 10.0) — because
+same-bucket cold-start episodes are ordered by recency (see the "arbitrary, undiscussed" judgment
+call logged in `STATUS.md`'s Deviations from 2026-07-15), so "equally neutral" episodes still end
+up with very different scores. Kayvan's instinct (skip cold start for small shows, go straight to
+real pairwise comparison) is correct but needed one refinement: a naive "skip cold start entirely"
+would mean a show's very first episode gets inserted via `addComparativeEpisode` against an *empty*
+ranked list — which asks the user nothing at all (see `placeEpisodeComparatively` in
+`comparativePlacement.ts`: an empty `ranked` array means the `while` loop never runs, so the
+episode is just spliced in at position 0 with zero comparisons made). That would leave episode 1
+with no recorded opinion whatsoever — worse than today, not better.
+
+**Decided mechanics**: for a show whose *total* episode count is below `COLD_START_THRESHOLD`,
+episode 1 still gets a real cold-start question (liked/disliked/neutral — so it's never
+un-opinioned), and every episode after that goes straight to real pairwise comparative placement
+instead of cold-start bucketing. Concretely: `isColdStart` (and the guard checks inside
+`addColdStartEpisode`/`addComparativeEpisode`) need to stop comparing against the flat
+`COLD_START_THRESHOLD` constant and instead compare against an **effective threshold**:
+
+```
+effectiveColdStartThreshold(totalShowEpisodeCount) =
+  totalShowEpisodeCount < COLD_START_THRESHOLD ? 1 : COLD_START_THRESHOLD
+```
+
+For a normal-size show (≥4 total episodes), this is unchanged (`4`, current behavior). For a show
+with 1-3 total episodes, this becomes `1` — only the first-ever episode goes through cold start;
+every subsequent one is compared for real. This is worth noting explicitly: it doesn't fully
+eliminate different scores for two "neutral" judgments — even a real pairwise "neutral" comparison
+still gets a specific *adjacent* rank position, not a shared/tied score (see `resolveTie`'s
+fallback in `comparativePlacement.ts` — the whole ranking system is built around strict total
+ordering with no concept of a tied rank, everywhere, not just in cold start). This change shrinks
+the problem to only where a genuine pairwise comparison says "neutral," rather than it happening
+automatically for an entire same-bucket group. Going further (letting genuinely tied comparisons
+share a score) was explicitly discussed and declined for now — a materially bigger change to the
+scoring model, logged here but not scheduled.
+
+**Known implementation cost** (this is why it needs the full implementer + independent-reviewer
+rigor `ProcessAndRoles.md` calls out for the ranking algorithm specifically, not just a normal
+implementer pass): `isColdStart`, `addColdStartEpisode`, and `addComparativeEpisode`
+(`@/lib/ranking/engine.ts`) currently take a `ShowRankingState` with no notion of the show's total
+episode count — only `coldStart.length + ranked.length` (episodes *ranked so far*), which isn't
+enough to compute the effective threshold above. Their signatures need to grow a
+`totalShowEpisodeCount: number` parameter, which ripples into every call site in
+`ranking-session/session.ts` (`deriveNextStep`, `getNextStepForEpisode`, `submitColdStartAnswer`,
+`getShowRankingDisplay`, etc. — `loadShowRankingState` already has `episodeIdsInOrder.length`
+available to pass through). Needs new test coverage in `engine.test.ts`/`engine.e2e.test.ts` and
+`ranking-session/session.test.ts` proving the small-show path end to end (episode 1 cold-start
+judged, episode 2 gets a real comparison against episode 1, episode 3 gets comparative placement
+too) alongside confirming normal-size-show behavior is completely unchanged.
+
+### Open discussion, not scheduled: repeatedly comparing against the same episode
+
+Also raised 2026-07-17: with a modest number of episodes ranked (14, in the case tested),
+comparisons kept landing on the same reference episode. This is expected, not a bug — binary-
+insertion search always starts a new placement by comparing against the *current midpoint* of the
+ranked list, so whichever episode sits near the middle gets used far more often than any other
+single one, by construction (it's what makes the search `O(log n)` instead of `O(n)`). It should
+naturally feel less repetitive as a show grows, since the specific episode occupying "the middle"
+keeps shifting as more get inserted — Kayvan's own read matched this. A real mitigation
+(randomizing which nearby episode serves as the pivot instead of always the exact midpoint) is
+possible but trades away predictability and adds real comparisons for a fairly subjective feel
+improvement, touching the most heavily-tested part of the app. Not being pursued unless it's still
+a problem once a show has more episodes ranked — revisit only if raised again.
+
 ### Other open ideas (lower priority, not blocking Phase 0)
 
-- **Re-ranking**: if a user's opinion of an old episode changes, can they re-rank it, and does that
-  ripple through other episodes' scores?
-- **Live/autocomplete show search**: the `/shows/search` page (Phase 1 piece 2a) requires an
-  explicit submit rather than searching as you type. Reasonable UX improvement, deliberately not
-  built in Phase 1 (which explicitly scoped out visual/UX polish) — candidate for Phase 2.
+- ~~Re-ranking~~ — **resolved and built 2026-07-17**: clears both the episode's rank position and
+  its comparison history, then drops the user straight back into ranking it. See `STATUS.md`
+  History.
+- ~~Live/autocomplete show search~~ — **resolved and built 2026-07-16**: `/shows/search` now
+  searches live/debounced as you type. See `STATUS.md` History.
 - **Cross-show ranking**: is ranking strictly within a single show, or could episodes ever be
   compared across different shows? (Current concept assumes strictly within-show.)
 - ~~Liked/disliked/neutral-only episodes joining the comparison pool~~ — **resolved 2026-07-15**:

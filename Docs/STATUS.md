@@ -3,13 +3,13 @@
 **Read this file first** — before the other docs, before doing anything else. It's the single
 "what's actually going on right now" pointer, kept short and current on purpose.
 
-Last updated: 2026-07-17. Remove-show, re-ranking, the sign-out cursor bug, the premature
-"added to my shows" bug, the `/login` auto-redirect, and a new per-show rankings view
-(`/shows/[showId]/rankings`, sorted best-to-worst) are all built, reviewed, merged, and pushed.
-**Everything requested today is now in code** — ready for a fresh, thorough hands-on testing pass
-(see Bucket 2). Also mid-discussion with Kayvan on 5 engagement/growth feature ideas, presented one
-at a time — see History. No agent is running. Next up once testing wraps: TMDB attribution,
-password reset, and a privacy notice — see Bucket 1 below.
+Last updated: 2026-07-17. **Clean deliberate stop, for session budget (65%).** A large hands-on
+testing round confirmed most of the day's work (remove-show, re-ranking, the sign-out cursor fix,
+deferred show-add, the `/login` fix, the new rankings page) is working correctly — see History for
+the full trail. Four new, confirmed-wanted pieces of work came out of that round and were discussed
+and decided, but deliberately **not started** this session to avoid running out mid-task — see
+Bucket 1 below for the full ordered plan, written so a fresh session can execute it directly. No
+agent is running.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -17,35 +17,75 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 [ProcessAndRoles.md](ProcessAndRoles.md#punch-list-triage). Default is "log it, don't chase it"
 unless it's small or genuinely blocking.
 
-**Bucket 1 — Blocking / next in sequence (work in this order):**
-1. **TMDB attribution** — small, quick, do early. Required attribution text somewhere in the app
-   (e.g. `AppHeader` or a footer) per TMDB's API terms — see `Risks.md`.
-2. **Password reset flow** — currently doesn't exist at all. `resetPasswordForEmail` + a set-new-
+**Bucket 1 — Blocking / next in sequence (work in this order). All four numbered items below were
+decided 2026-07-17 (see History) — none were started; this is the literal next-session plan:**
+
+1. **Cold-start refinement: small shows skip bucketing after episode 1.** Do this one first, with a
+   full session's budget available — it's the biggest and most correctness-critical item here, and
+   the one most likely to need real back-and-forth if something doesn't check out. Full design
+   already written up in `DevelopmentPlan.md`'s Discussion section
+   ("Decided 2026-07-17, not yet built: small shows skip cold-start bucketing after episode 1") —
+   read that section in full before starting, it has the exact mechanics
+   (`effectiveColdStartThreshold`), the reasoning, and the known implementation cost (signature
+   changes to `isColdStart`/`addColdStartEpisode`/`addComparativeEpisode` in
+   `@/lib/ranking/engine.ts`, rippling into every call site in `ranking-session/session.ts`). This
+   touches the ranking algorithm itself — per `ProcessAndRoles.md`, that gets the full
+   implementer-agent-then-independent-reviewer-agent treatment, not just a PM read-through like most
+   of today's other work. Needs real new test coverage (small-show end-to-end case) alongside proof
+   that normal-size-show behavior is completely unchanged. Hands-on check after: a 1-3 episode show
+   should ask a real comparison for episode 2 onward, not another liked/disliked/neutral bucket.
+2. **Search Shows nav link + episode-ranked progress counter** — two small, independent, no-design-
+   decision-needed UI additions, bundle into one agent:
+   - Add a "Search Shows" link to `AppHeader`, to the left of "Dashboard", going straight to
+     `/shows/search`.
+   - On `/shows/[showId]`, add a progress counter near the top (something like "17% (14/84)
+     episodes ranked", styled to fit the page, not literally that raw string) — decide during
+     implementation whether "ranked" for this counter means only fully-scored episodes
+     (`display.ranked`) or also cold-start-judged-but-not-yet-placed ones
+     (`display.ranked.length + display.coldStartPending.length`); the latter is closer to "the user
+     has given an opinion on it," which is probably what a progress counter should mean.
+3. **Season poster art in the comparison screen** — TMDB's per-season endpoint
+   (`/tv/{id}/season/{season_number}`, already called during import for episode data) includes a
+   season-level `poster_path` sibling to its `episodes` array — this likely doesn't need a *new*
+   TMDB call, just capturing a field from a response already being fetched. Needs: a new nullable
+   column (e.g. `episodes.season_poster_url` — simplest given this schema has no separate `seasons`
+   table, matching its existing pattern of keeping `season_number` a plain column on `episodes`
+   rather than a relation), updated import logic to populate it, and the comparison screen
+   (`rank/[episodeId]/page.tsx`/`ComparisonPrompt.tsx`) showing each side's season poster next to
+   its episode label. Purely additive (new nullable column, no behavior change to existing data) —
+   implementer + PM review, not the full algorithm-level rigor of item 1.
+4. **Genres on the show page** — TMDB's `/tv/{series_id}` show-details endpoint includes a
+   `genres: [{id, name}]` array; nothing genre-related is stored today. Needs a new column on
+   `shows` (a `text[]` of genre names is simplest — this app doesn't need genre-level relational
+   querying yet, just display, per Kayvan's own "groundwork for later" framing), updated import
+   logic, and display on `/shows/[showId]`. Explicitly *not* wiring up any sorting/filtering yet —
+   that's future work once actually designed. Purely additive — implementer + PM review.
+5. **TMDB attribution** — small, quick. Required attribution text somewhere in the app (e.g.
+   `AppHeader` or a footer) per TMDB's API terms — see `Risks.md`.
+6. **Password reset flow** — currently doesn't exist at all. `resetPasswordForEmail` + a set-new-
    password page. Same correctness-critical rigor as the rest of auth (read the code directly, real
    email click-through check) — this is `proxy.ts`/cookie territory again.
-3. **Privacy notice** — short static page, what's collected + the three third parties involved
+7. **Privacy notice** — short static page, what's collected + the three third parties involved
    (Supabase, TMDB, Vercel). Draft the content with Kayvan rather than inventing it.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **Remove-show, deferred show-add, the `/login` fix, and the new rankings page — all need
-   hands-on confirmation** (2026-07-17, see History); sign-out cursor and re-ranking both confirmed
-   working 2026-07-17. For `/login`: confirm visiting it while already signed in now shows the form
-   instead of bouncing to `/dashboard`, and that `/signup` still redirects an already-signed-in
-   visitor as before. For the rankings page (`/shows/[showId]/rankings`): confirm the best-to-worst
-   order and scores look right, and that the "still being placed / not ranked yet" note makes sense
-   for a show that isn't fully done.
-2. **Episode-picker hands-on testing, still in progress** — out-of-order ranking, auto-updating
-   scores, the post-submission auto-redirect, and refresh-mid-comparison all confirmed working.
-   Sign-out, the friendlier stale-resubmission redirect, and the "Rank episodes" relabel all just
-   landed and still need their own hands-on confirmation. Still to check: sign-out/back-in
-   mid-ranking, the small-show (<4 episodes) done case (see Bucket 4 — deliberately not chasing
-   exact score precision here, just checking it doesn't crash/misbehave), two shows ranked
-   concurrently, and a real tie-break chain. See `Testing.md` for the running checklist; log
-   results here.
+1. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
+   list (auth, search/import, dashboard, show detail page, the rankings page, cold start,
+   comparative placement, re-ranking, removing a show all confirmed working end to end). What's
+   genuinely still untested/unconfirmed, carried forward rather than chased right now:
+   - A real tie-break chain wasn't explicitly exercised/confirmed (deliberately answering "about the
+     same" and getting a sensible follow-up against a *different* episode).
+   - Two shows ranked concurrently (nothing bleeding between them).
+   - A quick look-and-feel pass on a narrow/phone-width window, and whether the ranking mechanic
+     feels explained enough to a first-time user.
+   - Direct-URL edge cases: visiting an already-ranked episode's rank URL directly.
+   These are all low-priority, not blocking — pick up naturally during normal use rather than a
+   dedicated pass.
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
-(empty for now — all three questions posed 2026-07-17 are resolved: remove-show and re-ranking are
-built (see Bucket 2 item 1); episode count in search is explicitly not being built, see Bucket 4.)
+(empty for now — every question posed 2026-07-17 is resolved: remove-show/re-ranking's scope, the
+cold-start small-show fix's design (see Bucket 1 item 1 and `DevelopmentPlan.md`), poster art and
+genres both confirmed "build it," and episode count in search explicitly declined — see Bucket 4.)
 
 **Bucket 4 — Backlog, logged, not being chased:**
 1. Shared test-fixture format to keep the TypeScript (website) and Swift (iOS) ranking-algorithm
@@ -71,16 +111,25 @@ built (see Bucket 2 item 1); episode count in search is explicitly not being bui
    you. Consider a lightweight free-tier setup (e.g. Sentry) before wider testing. Flagged 2026-07-16.
 6. **Visual design** — still zero design polish, bare Tailwind defaults throughout. Flagged
    2026-07-16 as a real gap before wider testing, deliberately deferred past piece 2b.
-7. **Small-show exact score precision** — found 2026-07-17: a 3-episode show ranked
-   liked/disliked/neutral produced scores 10/8.7/7.4. Kayvan's explicit call: not worth chasing,
-   this kind of edge case isn't the point of the tool. Logged so it doesn't get silently "fixed"
-   later without remembering it was deliberately deprioritized.
-8. **Episode count in TMDB search results** — decided 2026-07-17: not being built. TMDB's
+7. ~~Small-show exact score precision~~ — **superseded 2026-07-17**: the specific 3-episode
+   all-neutral example (scores 10/8.7/7.4) led to a real, decided fix — see Bucket 1 item 1 and
+   `DevelopmentPlan.md`'s Discussion section. That fix substantially shrinks this class of issue but
+   doesn't fully eliminate it (a genuine pairwise "neutral" comparison still breaks the tie to a
+   specific adjacent position, everywhere in the app, not just in cold start) — going further
+   (real tied scores) was discussed and explicitly declined as a bigger, not-currently-worthwhile
+   change to the core scoring model.
+8. **Repeatedly comparing against the same reference episode** — raised 2026-07-17 (with 14
+   episodes ranked, comparisons kept landing on the same episode). Confirmed expected, not a bug —
+   inherent to binary-insertion search always starting from the current midpoint; should lessen
+   naturally as a show grows. A real mitigation (randomizing the pivot) was discussed and declined
+   for now given the cost/benefit — see `DevelopmentPlan.md`'s Discussion section, "Open discussion,
+   not scheduled." Revisit only if it's still bothering Kayvan once shows have more episodes ranked.
+9. **Episode count in TMDB search results** — decided 2026-07-17: not being built. TMDB's
    `/search/tv` doesn't return an episode count (only `/tv/{id}` "show details" does), so showing
    it in live search would mean an extra TMDB call per result on every debounced keystroke search —
    Kayvan chose to keep search fast over having this, given episode count is already visible once a
    show's been added.
-9. **A less-silent message on a stale post-back resubmission** — raised 2026-07-17. Right now a
+10. **A less-silent message on a stale post-back resubmission** — raised 2026-07-17. Right now a
    stale resubmission (browser back to an already-answered question, submitting again) silently
    redirects to the show page with no explanation, even if the user's second click was a genuinely
    different answer than their first — discussed with Kayvan and agreed this is the *correct*
@@ -135,6 +184,41 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-17: Large hands-on testing round via a full QA checklist (an artifact — see prior
+  entries) covering essentially every feature built to date. Confirmed working end to end: the
+  full auth flow including the `/login` fix and `/signup` still redirecting, show search/import
+  and the deferred-add fix, the dashboard, the show detail page (including "Remove show" and
+  "Re-rank" controls), the new rankings page, cold start (including picking any episode and correct
+  threshold-crossing), comparative placement, re-ranking (including that new questions feel fresh),
+  and removing a show (including re-adding starting fresh, and removing a never-ranked show working
+  cleanly). Genuinely nothing broken found. Four new, real requests came out of this round, each
+  discussed and decided rather than built blind:
+  1. A 3-episode all-neutral show producing very different scores (10/8.7/7.4) led to a real design
+     decision — small shows (below `COLD_START_THRESHOLD` total episodes) will skip cold-start
+     bucketing after episode 1 and go straight to real pairwise comparison. Full mechanics written
+     up in `DevelopmentPlan.md`'s Discussion section, including a real gap caught before it could
+     become a bug: a naive "skip cold start entirely" would leave a show's first episode with zero
+     recorded opinion (comparative placement against an empty list asks nothing). Also discussed
+     and explicitly declined going further (real tied scores in the scoring model) as bigger than
+     currently worthwhile.
+  2. A related but separate observation (repeatedly comparing against the same reference episode
+     with a modest episode count) was confirmed as expected binary-search behavior, not a bug — see
+     `DevelopmentPlan.md`'s "Open discussion, not scheduled" for the full reasoning; not being
+     pursued unless it resurfaces.
+  3. Season poster art in the comparison screen, and genres on the show page — both confirmed
+     wanted and scoped (both need schema additions + updated TMDB import logic; posters likely need
+     no *new* TMDB call since season-level poster data should already be present in the
+     already-fetched per-season response).
+  4. Two small no-design-decision UI additions: a "Search Shows" nav link, and an episode-ranked
+     progress counter on the show page.
+  Deliberately stopped here rather than starting any of these four, per Kayvan's explicit call at
+  65% session usage — he wants all four done in a single focused next session rather than started
+  now and possibly left mid-task. Full ordered plan (cold-start fix first, since it's the biggest
+  and needs the fullest algorithm-level review rigor; then the quick UI pair; then posters/genres;
+  then the pre-existing TMDB attribution/password reset/privacy notice queue) written into Bucket 1
+  above, detailed enough for a fresh session to execute directly. Also did a small consistency
+  sweep on `DevelopmentPlan.md`'s "Other open ideas" list — re-ranking and live search were both
+  marked resolved there but had gone stale (built and already confirmed working days ago).
 - 2026-07-17: Added a new `/shows/[showId]/rankings` page — a show's ranked episodes sorted
   best-to-worst by score, distinct from `/shows/[showId]`'s season-ordered management list.
   Reviewed and merged (`website/src/app/shows/[showId]/rankings/page.tsx`, plus a link from the
