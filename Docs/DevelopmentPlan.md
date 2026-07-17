@@ -28,7 +28,7 @@ to an account (email signup), shared between the website and the iOS app via one
 This is the app's core mechanic and the main thing Phase 0 exists to prove out. Current shared
 understanding, most-resolved-first:
 
-1. **Cold start**: for a show with fewer than 4 ranked episodes (i.e. the first 3), a newly-ranked
+1. **Cold start**: for a show with fewer than 4 ranked episodes (i.e. the first 4), a newly-ranked
    episode just gets a coarse bucket: **liked**, **disliked**, or **neutral** — three buckets, to
    match Beli, not a binary liked/disliked choice (decided 2026-07-15; reconfirmed 2026-07-15 after
    a brief mix-up in a later write-up implied only two buckets — the three-bucket version is what's
@@ -382,9 +382,10 @@ entries once there's code to have bugs in).
    exact curve/constants will need real tuning once there's an app to test it in.
 2. ~~Tie-break "common comparison episode" selection~~ — **resolved 2026-07-15**: two-tier rule
    (decisive-relationship-first, then plain-closest-in-rank fallback). See "Ranking Algorithm" above.
-3. ~~Cold-start → comparative-mode threshold~~ — **resolved 2026-07-15**: exactly 3 cold-start
-   episodes, the 4th is the first comparative one. Still a Phase-2 candidate for retuning once
-   there's real usage, but no longer a placeholder range.
+3. ~~Cold-start → comparative-mode threshold~~ — **resolved 2026-07-15**: exactly 4 cold-start
+   episodes, the 5th is the first comparative one (corrected 2026-07-17 — this entry previously said
+   3/4th, an off-by-one that didn't match `COLD_START_THRESHOLD = 4`'s actual behavior). Still a
+   Phase-2 candidate for retuning once there's real usage, but no longer a placeholder range.
 4. **Backend vendor choice (Supabase) is Claude's pick, not independently reviewed.** Kayvan said
    "let me pick" for the stack, but choosing a specific third-party vendor for accounts/data is a
    real dependency worth a second look — logged as a Deviation Awaiting Review in `STATUS.md`.

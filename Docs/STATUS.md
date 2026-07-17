@@ -3,16 +3,19 @@
 **Read this file first** — before the other docs, before doing anything else. It's the single
 "what's actually going on right now" pointer, kept short and current on purpose.
 
-Last updated: 2026-07-17. **Clean deliberate stop, for session budget.** A large hands-on testing
-round confirmed most of the day's work is working correctly — see History for the full trail. Four
-confirmed-wanted items came out of that round (cold-start refinement, nav link + progress counter,
-season posters, genres) and got designed/decided but deliberately not started, to avoid running out
-mid-task. Since then, a separate design-review document (from another Claude session) got read and
-triaged into three tiers with Kayvan; "Tier A" (5 small, self-contained ideas — keyboard shortcuts,
-a ranking-confidence signal, stats/visualizations, a richer comparison screen, collections) is now
-also decided and queued, explicitly *after* the four items above. The Elo/Glicko algorithm swap the
-review proposed was explicitly declined (see `DevelopmentPlan.md`). Bucket 1 below is the complete,
-literal next-session plan, in order. No agent is running.
+Last updated: 2026-07-17. **Clean deliberate stop, for session budget (80%).** No code was written
+after the mid-session stop below — everything since then has been planning/design, safe to pick up
+cold. In order: (1) a large hands-on testing round confirmed most of the day's work is working
+correctly (see History) and surfaced 4 new confirmed-wanted items (cold-start refinement, nav link +
+progress counter, season posters, genres) — designed/decided but deliberately not started, to avoid
+running out mid-task; (2) a separate design-review document (from another Claude session) got read
+and triaged into three tiers — "Tier A" (5 small ideas) is decided and queued *after* item (1)'s four
+items, not ahead of them; the proposed Elo/Glicko algorithm swap was explicitly declined (see
+`DevelopmentPlan.md`); (3) Tier B (the social layer — profiles, following, community rank, taste
+similarity, comments, shareable collections) got a full, detailed, buildable design at Kayvan's
+request — see `AppSpec.md`'s "Tier B Detailed Design," **still not scheduled or committed to being
+built**, design-only. Bucket 1 below is the complete, literal next-session plan for what *is*
+queued, in order. No agent is running.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -20,8 +23,10 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 [ProcessAndRoles.md](ProcessAndRoles.md#punch-list-triage). Default is "log it, don't chase it"
 unless it's small or genuinely blocking.
 
-**Bucket 1 — Blocking / next in sequence (work in this order). All four numbered items below were
-decided 2026-07-17 (see History) — none were started; this is the literal next-session plan:**
+**Bucket 1 — Blocking / next in sequence (work in this order). Every item below was decided
+2026-07-17 (see History) — none were started; this is the literal next-session plan, in two parts:
+items 1-7 first (from the day's hands-on testing round), then items 8-12 ("Tier A," from a separate
+design review, deliberately queued after, not ahead of, items 1-7):**
 
 1. **Cold-start refinement: small shows skip bucketing after episode 1.** Do this one first, with a
    full session's budget available — it's the biggest and most correctness-critical item here, and
@@ -93,6 +98,13 @@ decided 2026-07-17 (see History) — none were started; this is the literal next
     Episodes"). Independent of the rest of this batch, can slot in anywhere. Keep to private-only
     for now — a *shareable* version needs public-link infrastructure that doesn't exist yet (see
     the Tier B note in `AppSpec.md`).
+13. **Per-show progress bar on the dashboard** — added 2026-07-17: each show in "My Shows" gets a
+    progress indicator (episodes ranked so far) right on the dashboard list itself, not just on the
+    show's own page (item 2 above is the per-show-page counter; this is the dashboard-list version —
+    related but distinct, both worth building). Overlaps an idea already sitting in `AppSpec.md`'s
+    original brainstorm list ("Poster art + progress indicator per show" on the dashboard) — same
+    underlying data (`getShowRankingDisplay` per show), just surfaced one level up. Purely additive,
+    no design decision needed.
 
 Dark mode + per-show accent theming (also proposed in the same review) is **deliberately not in
 this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of the visual-design pass
