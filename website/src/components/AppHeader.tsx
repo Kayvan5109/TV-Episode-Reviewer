@@ -26,7 +26,7 @@ export function AppHeader() {
           Dashboard
         </Link>
         <form action={signOut}>
-          <button type="submit" className="text-sm underline underline-offset-2">
+          <button type="submit" className="cursor-pointer text-sm underline underline-offset-2">
             Sign out
           </button>
         </form>

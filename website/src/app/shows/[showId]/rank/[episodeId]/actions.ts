@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation';
 import type { ColdStartBucket } from '@/lib/ranking/types';
 import { getNextStepForEpisode, submitColdStartAnswer, submitComparisonAnswer } from '@/lib/ranking-session';
 import type { ComparisonResult, EpisodeId } from '@/lib/ranking-session';
+import { createSupabaseServerClient } from '@/lib/supabase/serverSession';
 
 /**
  * Result shape both actions below return: `undefined` on success (the caller just re-renders with
@@ -14,6 +15,46 @@ import type { ComparisonResult, EpisodeId } from '@/lib/ranking-session';
  * got signed out mid-session).
  */
 export type RankingActionResult = { error: string } | undefined;
+
+/**
+ * Marks `showId` as "added to my shows" for the signed-in user — called only after a ranking
+ * answer has actually been recorded (see `submitColdStart`/`submitComparison` below), which is
+ * the moment this app now considers a show genuinely "added" rather than merely imported/viewed
+ * (previously `user_shows` was written the moment a show was imported via `addShow` in
+ * `src/app/shows/search/actions.ts`, which hands-on testing found meant clicking "Rank episodes"
+ * and navigating away without ranking anything still left the show marked as added).
+ *
+ * Same `{ onConflict: 'user_id,show_id', ignoreDuplicates: true }` upsert `addShow` used to use —
+ * still safe/idempotent to call on every successful ranking submission, not just the first.
+ * Deliberately never throws: a `user_shows` write failing here must not mask or override the
+ * ranking answer's own success, which already happened by the time this runs — so failures are
+ * just logged.
+ */
+async function markShowAsAdded(showId: string): Promise<void> {
+  try {
+    const supabase = await createSupabaseServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return;
+    }
+
+    const { error } = await supabase
+      .from('user_shows')
+      .upsert(
+        { user_id: user.id, show_id: showId },
+        { onConflict: 'user_id,show_id', ignoreDuplicates: true }
+      );
+
+    if (error) {
+      console.error(`Failed to mark show ${showId} as added for user ${user.id}:`, error.message);
+    }
+  } catch (error) {
+    console.error(`Failed to mark show ${showId} as added:`, error);
+  }
+}
 
 /**
  * Thin wrapper around `submitColdStartAnswer`: catches thrown errors into a plain return value the
@@ -58,6 +99,10 @@ export async function submitColdStart(
     };
   }
 
+  // The write succeeded — this show now genuinely counts as "added to my shows". See
+  // `markShowAsAdded`'s doc comment for why this replaced writing `user_shows` from `addShow`.
+  await markShowAsAdded(showId);
+
   if (step.type === 'alreadyRanked') {
     redirect(`/shows/${showId}`);
   }
@@ -94,6 +139,10 @@ export async function submitComparison(
       error: error instanceof Error ? error.message : 'Failed to submit comparison answer.',
     };
   }
+
+  // The write succeeded — this show now genuinely counts as "added to my shows". See
+  // `markShowAsAdded`'s doc comment for why this replaced writing `user_shows` from `addShow`.
+  await markShowAsAdded(showId);
 
   if (step.type === 'alreadyRanked') {
     redirect(`/shows/${showId}`);
