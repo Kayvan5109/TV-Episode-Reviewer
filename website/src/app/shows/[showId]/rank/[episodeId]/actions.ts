@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
 import type { ColdStartBucket } from '@/lib/ranking/types';
-import { submitColdStartAnswer, submitComparisonAnswer } from '@/lib/ranking-session';
+import { getNextStepForEpisode, submitColdStartAnswer, submitComparisonAnswer } from '@/lib/ranking-session';
 import type { ComparisonResult, EpisodeId } from '@/lib/ranking-session';
 
 /**
@@ -42,6 +42,17 @@ export async function submitColdStart(
   try {
     step = await submitColdStartAnswer(showId, episodeId, bucket);
   } catch (error) {
+    // A stale page (e.g. the user pressed back after already submitting this episode's answer)
+    // can resubmit against an episode that's now fully ranked. `submitColdStartAnswer` correctly
+    // rejects that as an error, but from the user's point of view it's not a failure at all — just
+    // send them on to the show page like the success path already does for 'alreadyRanked'. Any
+    // other thrown error (a real bug, or this recheck itself failing) falls through to the
+    // original error below, unchanged.
+    const current = await getNextStepForEpisode(showId, episodeId).catch(() => null);
+    if (current?.type === 'alreadyRanked') {
+      redirect(`/shows/${showId}`);
+    }
+
     return {
       error: error instanceof Error ? error.message : 'Failed to submit cold-start answer.',
     };
@@ -69,6 +80,16 @@ export async function submitComparison(
   try {
     step = await submitComparisonAnswer(showId, subjectId, referenceId, result);
   } catch (error) {
+    // Same stale-resubmission case as `submitColdStart` above: a back-button page can resubmit a
+    // comparison for a subject that's already fully ranked. `submitComparisonAnswer` correctly
+    // rejects that (the pending step it finds no longer matches `referenceId`), but it's a benign
+    // "you're already done here" situation, not a real error — redirect instead of showing it. Any
+    // other thrown error (including this recheck itself failing) falls through unchanged.
+    const current = await getNextStepForEpisode(showId, subjectId).catch(() => null);
+    if (current?.type === 'alreadyRanked') {
+      redirect(`/shows/${showId}`);
+    }
+
     return {
       error: error instanceof Error ? error.message : 'Failed to submit comparison answer.',
     };
