@@ -21,12 +21,23 @@ unless it's small or genuinely blocking.
    `episode_comparisons` for its episodes too (clean slate if re-added), not just the `user_shows`
    row. Re-ranking clears both `rank_position` *and* that episode's `episode_comparisons` history
    (not just the position). In progress now.
-2. **TMDB attribution** — small, quick, do early. Required attribution text somewhere in the app
+2. **Sign-out button missing pointer cursor on hover** — found 2026-07-17: unlike the "Dashboard"
+   link, the button doesn't show a hand/pointer cursor (a native `<button>` vs. `<a>` CSS default
+   difference). Small, no design decision needed — in progress now.
+3. **Show gets added to "my shows" before any episode is actually ranked** — found 2026-07-17:
+   clicking "Rank episodes" imports the show *and* inserts the `user_shows` row immediately, so
+   just viewing a show's page and backing out (without ranking anything) still leaves it "added."
+   Kayvan's call: it should only count as added once the user has actually submitted a real
+   ranking answer. Fix: move the `user_shows` insert from `addShow` (search results) to the first
+   successful `submitColdStartAnswer`/`submitComparisonAnswer` call for that show, at the
+   `rank/[episodeId]` Server Action layer (not inside `ranking-session` itself, which stays scoped
+   to `episode_rankings`/`episode_comparisons` only). In progress now.
+4. **TMDB attribution** — small, quick, do early. Required attribution text somewhere in the app
    (e.g. `AppHeader` or a footer) per TMDB's API terms — see `Risks.md`.
-3. **Password reset flow** — currently doesn't exist at all. `resetPasswordForEmail` + a set-new-
+5. **Password reset flow** — currently doesn't exist at all. `resetPasswordForEmail` + a set-new-
    password page. Same correctness-critical rigor as the rest of auth (read the code directly, real
    email click-through check) — this is `proxy.ts`/cookie territory again.
-4. **Privacy notice** — short static page, what's collected + the three third parties involved
+6. **Privacy notice** — short static page, what's collected + the three third parties involved
    (Supabase, TMDB, Vercel). Draft the content with Kayvan rather than inventing it.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
@@ -77,6 +88,14 @@ Bucket 4.)
    it in live search would mean an extra TMDB call per result on every debounced keystroke search —
    Kayvan chose to keep search fast over having this, given episode count is already visible once a
    show's been added.
+9. **A less-silent message on a stale post-back resubmission** — raised 2026-07-17. Right now a
+   stale resubmission (browser back to an already-answered question, submitting again) silently
+   redirects to the show page with no explanation, even if the user's second click was a genuinely
+   different answer than their first — discussed with Kayvan and agreed this is the *correct*
+   behavior (a stale page shouldn't be trusted to write a change, and the deliberate way to change
+   an already-recorded answer is the re-ranking feature, not an accidental stale resubmit), but a
+   brief "this was already ranked, nothing changed" message instead of a silent redirect would be a
+   nice small polish. Not urgent enough to build now.
 
 **Bucket 5 — Rework flagged for a later phase, not being worked now:**
 (empty for now)
@@ -124,6 +143,14 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-17: Kayvan hands-on tested the sign-out/stale-resubmit/rename fixes. Found two more real
+  gaps (sign-out button's missing pointer cursor; a show gets added to "my shows" merely by
+  clicking "Rank episodes," before any actual ranking happens — both triaged to Bucket 1, an
+  implementer agent dispatched). Discussed the stale-resubmission redirect's behavior when the
+  second click is a genuinely *different* answer than the first: agreed with Kayvan that silently
+  discarding it and redirecting is correct (a stale page shouldn't be trusted to apply a write —
+  the deliberate way to change an already-recorded answer is re-ranking, not an accidental stale
+  resubmit), logged a possible small polish (a less-silent message) to Bucket 4, not building now.
 - 2026-07-17: Fixed all three gaps from the same-day testing round, via three parallel implementer
   agents (worktrees), reviewed, merged, and pushed: (1) sign-out — new `signOut` Server Action
   (`website/src/app/actions.ts`) wired into `AppHeader`, matching the existing login/signup
