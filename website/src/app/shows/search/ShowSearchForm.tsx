@@ -182,7 +182,7 @@ export function ShowSearchForm() {
                   href={`/shows/${result.showId}`}
                   className="whitespace-nowrap rounded border border-black/20 px-3 py-1.5 text-sm dark:border-white/30"
                 >
-                  Go to show →
+                  Rank episodes →
                 </Link>
               ) : (
                 <AddShowButton tmdbShowId={result.tmdbShowId} />
