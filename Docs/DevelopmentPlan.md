@@ -205,7 +205,10 @@ restore. Re-ranking clears both `rank_position` *and* that episode's `episode_co
 not just its position — keeping old comparisons would mean the replay comparator
 (`makeReplayComparator`) just answers from stale history instead of ever asking again about a pair
 already compared, which would defeat the actual point of re-ranking (the user's opinion changed).
-Building now.
+**Built and carefully reviewed 2026-07-17** (see `STATUS.md` History for the full review trail —
+this got extra scrutiny given it deletes user data) — a confirm-gated "Remove show" button and a
+confirm-gated per-episode "Re-rank" button are both live on `/shows/[showId]`. Pending Kayvan's
+hands-on check.
 
 **Next session's plan (after that lands and gets its hands-on check) — work in this order:**
 

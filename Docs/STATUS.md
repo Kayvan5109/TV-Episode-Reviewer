@@ -3,11 +3,12 @@
 **Read this file first** — before the other docs, before doing anything else. It's the single
 "what's actually going on right now" pointer, kept short and current on purpose.
 
-Last updated: 2026-07-17. Continued hands-on testing of the episode-picker rebuild surfaced three
-more small gaps (no sign-out button, a scary error on a stale post-back resubmission, a confusing
-"Add show" label) — all three fixed, reviewed, merged, and pushed. Remove-show and re-ranking are
-now fully designed (Kayvan answered the open questions) and being built now. No agent is running.
-Next up after that: TMDB attribution, password reset, and a privacy notice — see Bucket 1 below.
+Last updated: 2026-07-17. Remove-show and re-ranking are built, carefully reviewed (data-destructive
+work — every delete query traced by hand for cross-user/cross-show safety), verified, merged, and
+pushed. The sign-out cursor bug and the premature "added to my shows" bug are also fixed, merged,
+and pushed. **All of today's hands-on-testing findings are now addressed** except the still-open
+episode-picker testing checklist (Bucket 2) — ready for a fresh round of hands-on testing. No agent
+is running. Next up: TMDB attribution, password reset, and a privacy notice — see Bucket 1 below.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -16,32 +17,21 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence (work in this order):**
-1. **Remove a show + re-ranking** — both confirmed wanted, reconfirmed a third time 2026-07-17 by
-   Kayvan. **Decided 2026-07-17**: removing a show deletes that user's `episode_rankings`/
-   `episode_comparisons` for its episodes too (clean slate if re-added), not just the `user_shows`
-   row. Re-ranking clears both `rank_position` *and* that episode's `episode_comparisons` history
-   (not just the position). In progress now.
-2. **Sign-out button missing pointer cursor on hover** — found 2026-07-17: unlike the "Dashboard"
-   link, the button doesn't show a hand/pointer cursor (a native `<button>` vs. `<a>` CSS default
-   difference). Small, no design decision needed — in progress now.
-3. **Show gets added to "my shows" before any episode is actually ranked** — found 2026-07-17:
-   clicking "Rank episodes" imports the show *and* inserts the `user_shows` row immediately, so
-   just viewing a show's page and backing out (without ranking anything) still leaves it "added."
-   Kayvan's call: it should only count as added once the user has actually submitted a real
-   ranking answer. Fix: move the `user_shows` insert from `addShow` (search results) to the first
-   successful `submitColdStartAnswer`/`submitComparisonAnswer` call for that show, at the
-   `rank/[episodeId]` Server Action layer (not inside `ranking-session` itself, which stays scoped
-   to `episode_rankings`/`episode_comparisons` only). In progress now.
-4. **TMDB attribution** — small, quick, do early. Required attribution text somewhere in the app
+1. **TMDB attribution** — small, quick, do early. Required attribution text somewhere in the app
    (e.g. `AppHeader` or a footer) per TMDB's API terms — see `Risks.md`.
-5. **Password reset flow** — currently doesn't exist at all. `resetPasswordForEmail` + a set-new-
+2. **Password reset flow** — currently doesn't exist at all. `resetPasswordForEmail` + a set-new-
    password page. Same correctness-critical rigor as the rest of auth (read the code directly, real
    email click-through check) — this is `proxy.ts`/cookie territory again.
-6. **Privacy notice** — short static page, what's collected + the three third parties involved
+3. **Privacy notice** — short static page, what's collected + the three third parties involved
    (Supabase, TMDB, Vercel). Draft the content with Kayvan rather than inventing it.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **Episode-picker hands-on testing, still in progress** — out-of-order ranking, auto-updating
+1. **Remove-show, re-ranking, sign-out cursor, and deferred show-add — all built, need hands-on
+   confirmation** (2026-07-17, see History): removing a show, re-ranking a specific episode
+   (including that it drops you straight back into ranking that episode), the sign-out button's
+   cursor, and that a show only appears in "my shows" after an actual ranking submission (not
+   merely viewing/importing it).
+2. **Episode-picker hands-on testing, still in progress** — out-of-order ranking, auto-updating
    scores, the post-submission auto-redirect, and refresh-mid-comparison all confirmed working.
    Sign-out, the friendlier stale-resubmission redirect, and the "Rank episodes" relabel all just
    landed and still need their own hands-on confirmation. Still to check: sign-out/back-in
@@ -51,9 +41,8 @@ unless it's small or genuinely blocking.
    results here.
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
-(empty for now — all three questions posed 2026-07-17 are resolved: remove-show and re-ranking's
-scope are decided, see Bucket 1 item 6; episode count in search is explicitly not being built, see
-Bucket 4.)
+(empty for now — all three questions posed 2026-07-17 are resolved: remove-show and re-ranking are
+built (see Bucket 2 item 1); episode count in search is explicitly not being built, see Bucket 4.)
 
 **Bucket 4 — Backlog, logged, not being chased:**
 1. Shared test-fixture format to keep the TypeScript (website) and Swift (iOS) ranking-algorithm
@@ -143,6 +132,26 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-17: Built and merged remove-show, re-ranking, the sign-out cursor fix, and the deferred
+  show-add fix — two implementer agents (worktrees) in parallel, both reviewed and merged
+  (`1fed732`, merging the remove-show/re-rank branch and the cursor/deferred-add branch), pushed.
+  **Remove-show/re-ranking got unusually careful review given it deletes user data**: read every
+  new function in `ranking-session/session.ts` (`deleteShowRankingData`, `resetEpisodeRanking`, the
+  shared `deleteComparisonsInvolving` helper) line by line, traced every delete query's exact table/
+  filter columns by hand to confirm none could ever touch another user's or another show's rows,
+  confirmed `resetEpisodeRanking`'s cold-start-only-episode edge case and the
+  below-`COLD_START_THRESHOLD`-reversion consequence both behave correctly, and found (then fixed
+  directly rather than sending back) one inaccurate doc comment claiming `/shows/[showId]` would
+  404 after removal — it doesn't, it just shows everything as unranked, corrected the comment to
+  say so. Independently re-ran tests (177/177 after both merges)/typecheck/lint/build fresh in the
+  final merged location. New UI: a confirm-gated "Remove show" button on `/shows/[showId]`, and a
+  confirm-gated "Re-rank" button next to each ranked episode's score, both naming the specific
+  show/episode in their confirmation message rather than a generic "are you sure?". Separately: the
+  sign-out button now shows a pointer cursor on hover (matching the Dashboard link), and a show no
+  longer counts as "added to my shows" merely by clicking "Rank episodes" — that now happens the
+  first time a ranking answer is actually submitted (`markShowAsAdded`, called from
+  `submitColdStart`/`submitComparison`), fixing a bug where viewing a show and backing out without
+  ranking anything still left it stuck as added. Not yet hands-on tested — see Bucket 2.
 - 2026-07-17: Kayvan hands-on tested the sign-out/stale-resubmit/rename fixes. Found two more real
   gaps (sign-out button's missing pointer cursor; a show gets added to "my shows" merely by
   clicking "Rank episodes," before any actual ranking happens — both triaged to Bucket 1, an
