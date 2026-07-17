@@ -54,23 +54,11 @@ export async function addShow(
     };
   }
 
-  // Per-user "I've added this show" record — written with the session-aware client (respects
-  // RLS as this user), never the service-role client. `ignoreDuplicates` (ON CONFLICT DO NOTHING)
-  // rather than a merge-on-conflict upsert: there's nothing to update on a re-add (no mutable
-  // columns), and `user_shows`'s RLS policies (see
-  // supabase/migrations/20260715010000_user_shows.sql) deliberately have no `update` policy, so a
-  // DO UPDATE variant would fail RLS the second time the same show is added — DO NOTHING only
-  // needs the `insert` policy, which exists.
-  const { error: userShowError } = await supabase
-    .from('user_shows')
-    .upsert(
-      { user_id: user.id, show_id: showId },
-      { onConflict: 'user_id,show_id', ignoreDuplicates: true }
-    );
-
-  if (userShowError) {
-    return { error: `Show was imported, but couldn't add it to your list: ${userShowError.message}` };
-  }
-
+  // Deliberately does NOT write a `user_shows` row here: merely importing/viewing a show
+  // shouldn't count as "added to my shows" (hands-on testing found clicking "Rank episodes" and
+  // then navigating away without ranking anything still left the show marked as added). That
+  // per-user "I've added this show" record is written instead the first time a ranking answer is
+  // actually submitted for one of this show's episodes — see `submitColdStart`/`submitComparison`
+  // in `src/app/shows/[showId]/rank/[episodeId]/actions.ts`.
   redirect(`/shows/${showId}`);
 }
