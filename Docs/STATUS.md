@@ -3,13 +3,16 @@
 **Read this file first** — before the other docs, before doing anything else. It's the single
 "what's actually going on right now" pointer, kept short and current on purpose.
 
-Last updated: 2026-07-17. **Clean deliberate stop, for session budget (65%).** A large hands-on
-testing round confirmed most of the day's work (remove-show, re-ranking, the sign-out cursor fix,
-deferred show-add, the `/login` fix, the new rankings page) is working correctly — see History for
-the full trail. Four new, confirmed-wanted pieces of work came out of that round and were discussed
-and decided, but deliberately **not started** this session to avoid running out mid-task — see
-Bucket 1 below for the full ordered plan, written so a fresh session can execute it directly. No
-agent is running.
+Last updated: 2026-07-17. **Clean deliberate stop, for session budget.** A large hands-on testing
+round confirmed most of the day's work is working correctly — see History for the full trail. Four
+confirmed-wanted items came out of that round (cold-start refinement, nav link + progress counter,
+season posters, genres) and got designed/decided but deliberately not started, to avoid running out
+mid-task. Since then, a separate design-review document (from another Claude session) got read and
+triaged into three tiers with Kayvan; "Tier A" (5 small, self-contained ideas — keyboard shortcuts,
+a ranking-confidence signal, stats/visualizations, a richer comparison screen, collections) is now
+also decided and queued, explicitly *after* the four items above. The Elo/Glicko algorithm swap the
+review proposed was explicitly declined (see `DevelopmentPlan.md`). Bucket 1 below is the complete,
+literal next-session plan, in order. No agent is running.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -67,6 +70,33 @@ decided 2026-07-17 (see History) — none were started; this is the literal next
    email click-through check) — this is `proxy.ts`/cookie territory again.
 7. **Privacy notice** — short static page, what's collected + the three third parties involved
    (Supabase, TMDB, Vercel). Draft the content with Kayvan rather than inventing it.
+
+**Then, "Tier A" — a small batch pulled from an external design review, decided 2026-07-17, queued
+*after* everything above** (see `AppSpec.md`'s "External Design Review — Triage" and
+`DevelopmentPlan.md`'s Discussion section for the full reasoning behind each):
+
+8. **Keyboard shortcuts** on the cold-start and comparison screens (e.g. arrow keys or number keys
+   for liked/disliked/neutral and better/worse/about-the-same) — small, no design decision needed.
+9. **Ranking confidence** ("your Breaking Bad rankings are 87% stable") — the strongest idea from
+   the review. Concrete v1 formula already written up in `DevelopmentPlan.md` (decisive-comparison
+   count relative to `log2(showEpisodeCount)`, no schema changes needed) — read that before
+   building, it also documents a known v1 limitation (doesn't yet detect tie-break-fallback
+   placements) that's deliberately not being solved yet.
+10. **Statistics view + alternate visualizations** of a show's existing rankings (e.g. a tier list,
+    heatmap, or season timeline) — sequence after item 9, since "most/least confident episode" is a
+    natural stat once confidence exists. Purely additive over data `getShowRankingDisplay` already
+    computes; no new persistence logic.
+11. **Richer comparison screen**: episode synopsis + cast shown alongside each side. Needs a bit
+    more TMDB plumbing than the others (episode-level synopsis and cast credits aren't imported
+    today) — scope this properly before starting rather than assuming it's as small as item 8.
+12. **Collections** — user-created private lists of episodes across shows (e.g. "Best Pilot
+    Episodes"). Independent of the rest of this batch, can slot in anywhere. Keep to private-only
+    for now — a *shareable* version needs public-link infrastructure that doesn't exist yet (see
+    the Tier B note in `AppSpec.md`).
+
+Dark mode + per-show accent theming (also proposed in the same review) is **deliberately not in
+this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of the visual-design pass
+in Bucket 4, rather than being done piecemeal now.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
 1. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
@@ -184,6 +214,27 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-17: Kayvan had a separate Claude session produce a large, ambitious product/design
+  document (dark mode + per-show theming, a full nav/discover/statistics/notifications surface,
+  community features, gamification, an Elo/Glicko ranking-algorithm swap, a long "future features"
+  wishlist) and asked to read it and jointly triage it. Read in full and organized into three
+  tiers rather than reacting to each of the ~80 individual ideas one at a time: **Tier A** (small,
+  self-contained, no new architecture — keyboard shortcuts, a ranking-confidence signal,
+  statistics/visualizations, a richer comparison screen, collections), **Tier B** (real features,
+  but all gated behind one big undecided question — does this app grow a public/social layer at
+  all — friends, community rank, discussion, shareable collections), and **Tier C** (not
+  recommended right now — the Elo/Glicko swap, most of the "future features" wishlist, mobile
+  swipe interaction, notifications/weekly-recap). Pushed back explicitly on the Elo/Glicko proposal
+  rather than deferring to the other session's authority: binary-insertion is actually the better
+  fit for ranking one person's closed, small episode set, not a lesser alternative — see
+  `DevelopmentPlan.md`'s Ranking Algorithm section for the full reasoning. Designed a concrete v1
+  "ranking confidence" formula (the review's own standout idea) that gets the same payoff without
+  the algorithm swap — see `DevelopmentPlan.md`'s Discussion section. Kayvan confirmed: Tier A
+  proceeds, queued *after* the four items already planned from the testing round (not ahead of
+  them); dark-mode/theming stays deferred with the rest of visual design rather than being pulled
+  forward. Full triage reasoning written into `AppSpec.md`'s new "External Design Review — Triage"
+  section (Tier B/C) and `STATUS.md` Bucket 1 (the actionable Tier A queue). Nothing built yet —
+  planning/triage only, per the same session-budget discipline as the entry below.
 - 2026-07-17: Large hands-on testing round via a full QA checklist (an artifact — see prior
   entries) covering essentially every feature built to date. Confirmed working end to end: the
   full auth flow including the `/login` fix and `/signup` still redirecting, show search/import

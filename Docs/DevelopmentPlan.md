@@ -60,6 +60,16 @@ understanding, most-resolved-first:
    hypothesis to be tuned through testing, not a final answer): linear, per-show only, and
    **recomputed on every insertion** — see Discussion below for the full reasoning and the current
    working formula.
+5. **Rejected alternative: Elo/Glicko-style rating** (2026-07-17). A detailed external design
+   proposal suggested replacing binary-insertion with an Elo/Glicko rating system. Declined: those
+   systems are built for a different problem — large, ongoing populations playing many repeated
+   matches, where a probabilistic strength estimate that keeps drifting is fine because there's no
+   fixed finish line. Ranking one person's closed set of ~10-20 episodes for a single show is the
+   opposite shape: a small, bounded problem where an exact, guaranteed-converging final order is
+   exactly what's wanted, and binary-insertion already delivers that in `O(log n)` comparisons with
+   a real stopping point. Same underlying reasoning as the exhaustive/fixed-sample rejection above.
+   The proposal's actually-good underlying idea — a "ranking confidence" signal — doesn't require
+   Elo at all; see Discussion below for a concrete way to compute it on top of the existing algorithm.
 
 ## Discussion — Ideas & Open Questions to Work Out Together
 
@@ -104,6 +114,34 @@ compressed spread for a handful of episodes (e.g. at N=2, worst episode ≈ 8.7,
 is a tunable constant, not a fixed law — expect to adjust it, and possibly the linear shape itself,
 once this is actually being used. Flag any of this back up for a rethink once real usage makes it
 feel off.
+
+### Direction proposed 2026-07-17, not yet built: a "ranking confidence" signal
+
+The standout idea from an external design review (2026-07-17): show users something like "your
+Breaking Bad rankings are 87% stable" — a reason to keep refining a show's rankings even after
+every episode has been placed once, without requiring the Elo/Glicko swap that was declined above.
+Fully computable from data already stored (`episode_comparisons`), no schema changes needed for a
+v1:
+
+```
+episodeConfidence(episode, showEpisodeCount) =
+  min(100%, decisiveComparisonCount(episode) / log2(showEpisodeCount) * 100%)
+
+showConfidence(show) = average of episodeConfidence(...) across every ranked episode
+```
+
+`decisiveComparisonCount` counts every non-neutral (`a_better`/`b_better`) comparison an episode has
+been part of, on either side — already directly queryable, same `episode_a_id`/`episode_b_id` "check
+both sides" pattern used throughout `ranking-session`. `log2(showEpisodeCount)` is the same
+theoretical minimum-comparisons figure the binary-insertion design itself is built around, so an
+episode that's been through roughly that many decisive comparisons reads as "well-established";
+fewer reads as "still shaky." A known, deliberate v1 simplification: this doesn't yet distinguish an
+episode placed cleanly via decisive comparisons from one that got inserted via a tie-break-exhaustion
+fallback (`resolveTie`'s `fallbackAdjacentTo` case in `comparativePlacement.ts`) — that's a real,
+somewhat arbitrary lower-confidence situation the v1 formula can't see, since the persistence layer
+doesn't currently record *how* an episode's final placement was reached, only what comparisons
+happened. Capturing that would mean a real (if small) algorithm/schema change — worth a v2 once the
+simple version is live and its rough edges are felt in practice, not before.
 
 ### Decided 2026-07-17, not yet built: small shows skip cold-start bucketing after episode 1
 

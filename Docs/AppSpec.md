@@ -135,9 +135,9 @@ a Phase/Bucket with an actual decision attached, per this project's normal triag
   (see `DevelopmentPlan.md`'s Ranking Algorithm section) can exhaust and fall back to inserting
   adjacent to the last-compared episode as a genuine-tie fallback. Surfacing that ("we couldn't
   fully place this — put it next to X") would be more honest than silently doing it.
-- **Keyboard shortcuts** for the better/worse/neutral and liked/disliked/neutral buttons (e.g. arrow
-  keys or number keys) — a power user ranking many episodes in one sitting is doing a lot of
-  repetitive clicking.
+- ~~Keyboard shortcuts~~ for the better/worse/neutral and liked/disliked/neutral buttons — **queued
+  2026-07-17** as Tier A item 1 (see `STATUS.md` Bucket 1), first in a small batch of ideas pulled
+  from a broader design review and triaged with Kayvan.
 - **A short first-time explainer** of the cold-start → comparative mechanic itself. This isn't a
   star rating or a thumbs up/down app; a first-time user has no existing mental model for "why am I
   being asked to compare two episodes instead of just rating this one," and the whole value
@@ -162,10 +162,8 @@ a Phase/Bucket with an actual decision attached, per this project's normal triag
   change to the ranking mechanic itself).
 - **Per-show or overall stats** — total episodes ranked, a favorite show, ranking activity over
   time. Low-stakes, satisfying "look what you've built" feedback.
-- **Confidence indicator on a score** — an episode placed after one cold-start judgment and no
-  comparisons is on much shakier ground than one that's been through several comparisons; surfacing
-  that distinction (even just visually) would set more honest expectations than presenting every
-  score with equal confidence.
+- ~~Confidence indicator on a score~~ — **superseded 2026-07-17** by a concrete, queued proposal
+  (Tier A item 2): see `DevelopmentPlan.md`'s Discussion section, "a 'ranking confidence' signal."
 - **"Why is this ranked here?"** — show the specific comparisons that led to an episode's current
   position (e.g. "ranked better than X, worse than Y"). Doubles as user-facing transparency and a
   debugging aid.
@@ -174,6 +172,44 @@ a Phase/Bucket with an actual decision attached, per this project's normal triag
 - **Export your data** (CSV/JSON of shows/episodes/rankings) — this is personal taste data; letting
   someone take it with them is a reasonable ask even for a personal-use app, and cheap relative to
   the value.
+
+## External Design Review — Triage (2026-07-17, not committed, not scheduled)
+
+Kayvan had a separate Claude session produce a large, ambitious product/design plan (dark mode +
+per-show accent theming, a full navigation/discover/statistics/notifications surface, community
+features, gamification, a long "future features" wishlist). Read in full and triaged together
+into three tiers. **Tier A** (small, self-contained, no new architecture) is decided and queued —
+see `STATUS.md` Bucket 1 and `DevelopmentPlan.md`'s Discussion section for the ranking-confidence
+formula specifically. The Elo/Glicko ranking-algorithm swap that plan proposed was explicitly
+declined — see `DevelopmentPlan.md`'s Ranking Algorithm section. What follows is Tier B and Tier C:
+genuinely brainstorm-stage, not decided, landing here per this section's normal rule.
+
+**Tier B — real features, all gated behind one big undecided question: does this app grow a
+public/social layer at all?** Everything below needs some notion of cross-user data that doesn't
+exist today (every table is strictly private-per-user, enforced by RLS with zero exceptions) —
+treating "build a social layer" as one deliberate decision rather than approving these piecemeal is
+itself part of the triage. Overlaps the friends/community ideas from the 5-idea engagement
+brainstorm session (2026-07-17, see `STATUS.md` History) that was paused mid-discussion:
+- Friends/following, and comparing your rankings against people you follow.
+- "Community rank" shown alongside "your rank" on an episode page, and a discover page built on
+  aggregate cross-user data (trending shows, biggest community disagreements, hidden gems).
+- A numeric "taste similarity" score between two users ("you're 94% similar to Sarah").
+- Per-episode discussion/comments.
+- Shareable collections (a named list of episodes, e.g. "Best Pilots") — the collection concept
+  itself is Tier A-adjacent (a private list needs nothing new), but *shareable* specifically needs
+  the same public-link infrastructure the shareable-ranking-cards idea from the earlier engagement
+  brainstorm would need.
+
+**Tier C — not recommended for this project right now:**
+- The Elo/Glicko algorithm swap (declined — see `DevelopmentPlan.md`).
+- Most of the plan's "Future Features" wishlist (bracket-mode tournaments, blind rankings,
+  character/villain/scene/quote/music/director rankings, live ranking during new-episode releases,
+  fantasy ranking leagues, yearly community-voted awards) — fun ideas, but far past this app's
+  current MVP scope.
+- A mobile Tinder-style swipe interaction for ranking — blocked on the basic mobile-responsive pass
+  that hasn't started yet (`STATUS.md` Bucket 4).
+- Notifications / a weekly recap digest — needs real email delivery, which is the exact custom-SMTP
+  effort this project already attempted and abandoned (`STATUS.md` Bucket 4).
 
 ### Mobile-specific (once the mobile/responsive check in `STATUS.md` Bucket 4 happens)
 - **Swipe gestures for the comparison prompt** (swipe left/right for better/worse, tap for neutral)
