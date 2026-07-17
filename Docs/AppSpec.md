@@ -200,6 +200,9 @@ brainstorm session (2026-07-17, see `STATUS.md` History) that was paused mid-dis
   the same public-link infrastructure the shareable-ranking-cards idea from the earlier engagement
   brainstorm would need.
 
+**Detailed design for all of the above, ready to build from whenever this gets scheduled: see
+"Tier B Detailed Design — Social Layer" below.**
+
 **Tier C — not recommended for this project right now:**
 - The Elo/Glicko algorithm swap (declined — see `DevelopmentPlan.md`).
 - Most of the plan's "Future Features" wishlist (bracket-mode tournaments, blind rankings,
@@ -210,6 +213,212 @@ brainstorm session (2026-07-17, see `STATUS.md` History) that was paused mid-dis
   that hasn't started yet (`STATUS.md` Bucket 4).
 - Notifications / a weekly recap digest — needs real email delivery, which is the exact custom-SMTP
   effort this project already attempted and abandoned (`STATUS.md` Bucket 4).
+
+## Tier B Detailed Design — Social Layer (2026-07-17)
+
+Full design for Tier B, at the request of Kayvan, so it's ready to build directly whenever it gets
+scheduled — **not yet scheduled or committed**; this is design work, not a Bucket 1 item. This is a
+genuine identity shift for the app: everything built through Phase 1 is strictly private-per-user
+(RLS with zero exceptions, `AppSpec.md`'s Monetization section says "personal use," no page has ever
+worked without signing in). This section assumes that shift is wanted and designs it carefully, but
+building it is still a real decision to make consciously when the time comes — likely Phase 2+ work
+(see `DevelopmentPlan.md`'s Phase 2, "the full intended feature set").
+
+Four foundational questions were resolved with Kayvan before writing this (2026-07-17), and
+everything below is designed around these answers:
+1. **Rankings are private by default; a user opts in to make them public.** No third
+   "followers-only" tier — see the Judgment Calls section below for why.
+2. **Following is one-directional, no approval required** (like Letterboxd, not Facebook).
+3. **Community-rank aggregates only ever include users whose rankings are public** — a user who
+   stays private never contributes to any aggregate, anonymized or not. One consistent rule.
+4. **Shared collections are genuinely public** — viewable by anyone with the link, no account
+   required. This is the app's first-ever unauthenticated page; see the RLS section below for how
+   that's kept narrow and safe rather than opening up broad public access.
+
+### Scope for v1
+
+**In scope:**
+- User profiles with a username and a public/private rankings-visibility toggle.
+- One-directional following.
+- Community rank (aggregate score across public users) shown next to "your rank" on an episode.
+- A taste-similarity score between two users with public rankings.
+- Flat (non-threaded) per-episode comments, with an author-set spoiler tag.
+- Collections: private by default, shareable via an unguessable link (no account needed to view).
+- A Discover page built on the same community-rank aggregate (trending, disagreements, hidden gems).
+
+**Explicitly out of scope for v1** (deliberate simplifications, not oversights):
+- A "followers-only" visibility tier — binary private/public only (see Judgment Calls).
+- Blocking/muting other users — no defensive tooling yet; revisit if this ever opens beyond a small
+  trusted circle.
+- Comment editing, threading/replies, or a reporting/moderation pipeline — delete-your-own-comment
+  is the only moderation primitive in v1.
+- A public directory or browse/search page for public profiles or shared collections — reachable
+  only via a direct username or share link, never listed anywhere. Meaningfully lower privacy risk
+  than a browsable directory, for very little lost functionality at this app's scale.
+- Any caching/materialized-view infrastructure for aggregates — computed live via a normal query at
+  read time. Fine at personal/small-friend-group scale; revisit only if it's ever actually slow.
+- Notifications/activity feed of any kind (already Tier C — needs real email delivery, an
+  already-abandoned effort this project attempted, see `STATUS.md` Bucket 4).
+
+### New data model
+
+All new tables live alongside the existing `shows`/`episodes`/`episode_rankings`/
+`episode_comparisons`/`user_shows` schema (`supabase/migrations/`) — nothing here changes any
+existing table.
+
+**`user_profiles`** — one row per user, created the first time they set a username (not at signup;
+see Judgment Calls on why this is opt-in rather than automatic).
+- `user_id` (PK, references `auth.users`)
+- `username` (unique, citext or lowercased — the public handle; `auth.users.email` must never be
+  exposed to any other user anywhere in this feature set)
+- `display_name` (nullable — falls back to `username` if unset)
+- `rankings_visibility` (`text`, `'private' | 'public'`, default `'private'`)
+- `created_at`
+
+**`follows`**
+- `follower_id`, `followee_id` (both reference `auth.users`)
+- `created_at`
+- Primary key `(follower_id, followee_id)`; check constraint `follower_id <> followee_id`
+
+**`collections`**
+- `id` (uuid PK)
+- `user_id` (owner, references `auth.users`)
+- `title`, `description` (nullable)
+- `share_token` (uuid, nullable — generated the moment the owner first clicks "share"; `null` means
+  never shared, not "shared but revoked" — see RLS below for why this is a token, not a boolean)
+- `created_at`, `updated_at`
+
+**`collection_items`**
+- `collection_id` (references `collections`), `episode_id` (references `episodes`)
+- `position` (integer — user-orderable within the collection, independent of that episode's actual
+  rank; a collection is a curated list, not a ranking)
+- `note` (text, nullable — a short "why this is here")
+- Primary key `(collection_id, episode_id)` — an episode appears at most once per collection, but
+  can appear in many different collections
+
+**`episode_comments`**
+- `id` (uuid PK)
+- `episode_id` (references `episodes`), `user_id` (author, references `auth.users`)
+- `body` (text)
+- `contains_spoilers` (boolean, default `false` — self-tagged by the author at post time)
+- `created_at`
+
+### RLS design
+
+Same posture as the rest of this app: default-deny, explicit policies only, session-aware client
+for everything user-scoped, service-role client only for the one narrow case below.
+
+- **`user_profiles`**: any authenticated user can read a row where `rankings_visibility = 'public'`,
+  or their own row regardless of visibility. A user can insert/update only their own row
+  (`user_id = auth.uid()`).
+- **`follows`**: a user can always read their own two lists (who they follow, who follows them). A
+  user can insert a row only as themselves (`follower_id = auth.uid()`) **and** only where the
+  target's `user_profiles.rankings_visibility = 'public'` — enforced in the insert policy's `with
+  check` via a subquery against `user_profiles`, not just at the UI layer. A user can delete only
+  rows where they're the follower (unfollowing). If a public user later flips back to private,
+  existing `follows` rows pointing at them are **not** automatically deleted (cheap to leave as
+  historical fact), but every *read* path for that user's rankings/profile re-checks
+  `rankings_visibility` live — so a stale `follows` row confers no actual access once someone goes
+  private. Follower/following *counts* on a public profile are fine to expose to anyone (just a
+  number); the full list of who-follows-whom stays visible only to the two people directly involved.
+- **`collections`** / **`collection_items`**: the owner (`user_id = auth.uid()` via `collections`)
+  has full CRUD. **No RLS policy grants read access to any other role at all, including `anon`** —
+  the public-link view is deliberately *not* a database-level policy. Instead, the public collection
+  page (a new route, unauthenticated) is a Server Component that takes a `share_token` from the URL
+  and looks the collection up using the **service-role client**, scoped to exactly `where
+  share_token = $1` — nothing else. This mirrors how `importShowFromTmdb` already uses the
+  service-role client for one narrow, deliberate, server-only purpose rather than writing a new
+  `anon`-role RLS policy — a genuinely new category of risk this app has never needed before (RLS
+  policies are easy to reason about because every existing one keys off `auth.uid()`, which doesn't
+  exist for anonymous requests at all). The random, unguessable `share_token` *is* the security
+  boundary here, the same trust model as a Google Docs "anyone with the link" share — not "this data
+  is public," just "this data is reachable if you have the specific secret."
+- **`episode_comments`**: any authenticated user can read any comment (posting a comment is a
+  deliberate public act, unlike ranking data — this is intentionally *not* gated by the commenter's
+  own `rankings_visibility`). Insert only as yourself; delete only your own.
+
+### Feature flows
+
+**Profiles & visibility.** A new `/settings` (or a section of an existing one) lets a user claim a
+username and flip `rankings_visibility`. Nothing else in this feature set is reachable until a
+username exists — no username means no public profile, no followability, no comment authorship
+byline beyond "you," etc. (comments still need *a* display identity even for otherwise-private
+users, so account for a fallback display name if no username is set — worth a specific product
+decision when this gets built, flagged here rather than guessed at).
+
+**Following.** A public profile page at `/u/[username]` shows a "Follow" button (hidden if the
+profile is private, or if it's your own). Following is instant, no request/accept step. The
+follower's dashboard could reasonably show a "people I follow" section — not designing that widget
+in detail here since it's presentation, not architecture.
+
+**Community rank.** Needs a genuinely new page this app doesn't have yet: a standalone episode
+detail page (today, episodes only ever appear inline in a show's list — there's no
+`/shows/[showId]/episodes/[episodeId]` route). That page shows "your rank" (existing, per-user data,
+already computed via `getShowRankingDisplay`) alongside "community rank": the average derived score
+for that episode across every user with `rankings_visibility = 'public'` who has it comparatively
+placed (`episode_rankings.rank_position is not null`). Cold-start-bucket-only placements are
+excluded from the v1 aggregate (a known simplification, consistent with this project's existing
+"don't chase small-show edge cases" stance from earlier the same session) — computed as a live SQL
+aggregate (join `episode_rankings` to a per-user episode-count subquery, apply the same linear
+score formula from `@/lib/ranking/score.ts` in SQL), not a TypeScript replay per user.
+
+**Taste similarity.** For two users who've both opted into public rankings, look at every show both
+have comparatively ranked at least 2 episodes of. For each shared episode pair on a shared show,
+check whether both users agree on which one ranks higher (a "concordant" pair) or disagree
+("discordant"). Similarity = concordant pairs ÷ total compared pairs, as a percentage — this is a
+standard rank-correlation approach (Kendall's Tau, expressed as a percentage rather than the usual
+-1..1 range), computed directly from each user's final `rank_position` values, no need to replay
+comparison history. Undefined (show "not enough shared data yet," not a number) if there's no show
+both have ranked with at least 2 shared episodes each.
+
+**Comments.** Flat list under the new episode detail page, newest first. `contains_spoilers` comments
+render blurred/collapsed behind a "Show spoiler" click. No editing — delete and repost. No reporting
+pipeline in v1 (see Scope above).
+
+**Collections.** A signed-in user manages their own collections at `/collections` (list, create,
+reorder items, add a note per item). "Share" generates a `share_token` the first time it's clicked
+(idempotent after that — re-clicking doesn't rotate the token) and produces a public URL, something
+like `/c/[shareToken]`, rendered by the service-role-backed public page described in RLS above.
+
+**Discover page.** Built entirely on the same community-rank aggregate infrastructure: "trending"
+(most `episode_rankings`/`user_shows` activity among public users recently, by `created_at`),
+"biggest community disagreements" (highest score variance across public users for an episode),
+"hidden gems" (high average community score, low public-user sample size). All read-only views over
+data the community-rank feature already needs to compute — no new write paths.
+
+### New pages/routes needed
+
+- `/settings` (or a new section of it) — username + visibility.
+- `/u/[username]` — public profile page.
+- `/shows/[showId]/episodes/[episodeId]` — new standalone episode detail page (community rank +
+  your rank + comments). Nothing today links to a single episode outside a show's list.
+- `/discover` — trending / disagreements / hidden gems.
+- `/collections` — the signed-in owner's management view.
+- `/c/[shareToken]` — the public, unauthenticated shared-collection view.
+- Search needs to grow a "people" result type (username search) alongside the existing show search.
+
+### Judgment calls flagged for review
+
+Real decisions made while designing this that weren't put in front of Kayvan individually — surface
+these before building, don't treat them as silently settled:
+1. **Binary private/public visibility, no "followers-only" tier.** Reasoned out during design: since
+   following requires no approval, a "followers-only" tier would mean anyone could grant themselves
+   access just by following — it wouldn't actually gate anything, so it would be a fake privacy
+   control. A real followers-only tier would need to change the follow model to require approval
+   (declined earlier this session in favor of the simpler one-directional model). Binary is the only
+   version of "followers-only" that's actually coherent given the follow model already chosen.
+2. **Username required before any social feature is usable at all**, rather than defaulting to
+   something derived from the account (email should never be exposed). Simple and safe, but means a
+   real onboarding step — flagged as a UX flow to design properly, not detailed here.
+3. **Taste similarity formula** (Kendall's-Tau-style concordant-pair percentage) is a defensible,
+   standard choice, but genuinely just one of several reasonable formulas — confirm it "feels right"
+   once there's real two-user data to try it against, same spirit as the score-from-position
+   formula's own "expect to tune" framing.
+4. **Comments are visible to any signed-in user regardless of the commenter's own
+   `rankings_visibility`** — treated as a deliberate public act distinct from ranking data. Worth
+   confirming this reads as intuitive rather than inconsistent once it's actually in front of users.
+5. **No moderation beyond delete-your-own-comment.** Reasonable for a small, personal/friends-scale
+   app; would need real reconsideration before ever opening this to strangers at any real scale.
 
 ### Mobile-specific (once the mobile/responsive check in `STATUS.md` Bucket 4 happens)
 - **Swipe gestures for the comparison prompt** (swipe left/right for better/worse, tap for neutral)

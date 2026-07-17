@@ -214,6 +214,24 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-17: Fully designed Tier B (the social layer) at Kayvan's request, "as detailed as needed
+  for when we build those pages out later" — see `AppSpec.md`'s new "Tier B Detailed Design — Social
+  Layer" section. **Design only, nothing built, not scheduled** — this is prep work for whenever
+  it's actually taken up (likely Phase 2+). Asked 4 foundational questions before writing anything,
+  since the answers were load-bearing for the whole design: rankings default to private with opt-in
+  sharing (not public-by-default); following is one-directional with no approval step; community-
+  rank aggregates only ever include users who've opted into public rankings (never an "anonymized
+  but still used" carve-out for private users); shared collections are genuinely public links,
+  no account needed — the app's first-ever unauthenticated page. Full design covers 5 new tables
+  (`user_profiles`, `follows`, `collections`, `collection_items`, `episode_comments`), RLS for each
+  (including a deliberate design choice: the public shared-collection page uses the service-role
+  client scoped to an exact `share_token` lookup, a Server Component trust boundary, rather than
+  writing a new `anon`-role RLS policy — a genuinely new risk category this app has never needed
+  before), a taste-similarity formula (Kendall's-Tau-style concordant-pair percentage over shared
+  ranked episodes), and 6 new pages/routes needed. 5 specific judgment calls flagged explicitly for
+  review before building (binary visibility with no followers-only tier, username-required
+  onboarding, the similarity formula being one reasonable choice among several, comments visible
+  regardless of the commenter's own privacy setting, no moderation beyond delete-your-own-comment).
 - 2026-07-17: Kayvan had a separate Claude session produce a large, ambitious product/design
   document (dark mode + per-show theming, a full nav/discover/statistics/notifications surface,
   community features, gamification, an Elo/Glicko ranking-algorithm swap, a long "future features"
