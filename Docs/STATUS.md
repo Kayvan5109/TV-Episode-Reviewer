@@ -34,6 +34,13 @@ unless it's small or genuinely blocking.
    email click-through check) — this is `proxy.ts`/cookie territory again.
 4. **Privacy notice** — short static page, what's collected + the three third parties involved
    (Supabase, TMDB, Vercel). Draft the content with Kayvan rather than inventing it.
+5. **New "rankings" view per show** — requested 2026-07-17: a page showing a show's ranked
+   episodes sorted best-to-worst by score (distinct from `/shows/[showId]`'s season-ordered
+   management list). Almost entirely UI — reuses the already-reviewed `getShowRankingDisplay`
+   (its `ranked` array is already best-to-worst by construction, so no new sorting/persistence
+   logic needed). Building as `/shows/[showId]/rankings`, linked from the existing show page (which
+   already serves as the "pick a show" step via the dashboard). Feel-based UI on an already-reviewed
+   data function — implementer + hands-on check, not a second deep review. In progress now.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
 1. **Remove-show and deferred show-add — still need hands-on confirmation** (2026-07-17, see
