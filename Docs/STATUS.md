@@ -17,20 +17,27 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence (work in this order):**
-1. **TMDB attribution** — small, quick, do early. Required attribution text somewhere in the app
+1. **`/login` always shows the credential form, even for an already-signed-in visitor** — found
+   2026-07-17: `src/proxy.ts` redirects a signed-in user straight to `/dashboard` if they visit
+   `/login` (deliberate, existing behavior — see its own doc comment; this is what made a persistent
+   session look like "auto-login with no prompt" when reopening the Vercel app after not having
+   signed out). Kayvan's call: session persistence itself (staying logged in across visits until you
+   explicitly sign out) is fine and expected — the fix is narrower: visiting `/login` specifically
+   should always render the form regardless of session state, not silently bounce to the dashboard.
+   Small, scoped change to `proxy.ts` (remove `/login` from the "redirect if already authenticated"
+   route set; leave `/signup`'s behavior and overall session persistence untouched). Correctness-
+   critical territory (auth/proxy) — same review rigor as the rest of auth. In progress now.
+2. **TMDB attribution** — small, quick, do early. Required attribution text somewhere in the app
    (e.g. `AppHeader` or a footer) per TMDB's API terms — see `Risks.md`.
-2. **Password reset flow** — currently doesn't exist at all. `resetPasswordForEmail` + a set-new-
+3. **Password reset flow** — currently doesn't exist at all. `resetPasswordForEmail` + a set-new-
    password page. Same correctness-critical rigor as the rest of auth (read the code directly, real
    email click-through check) — this is `proxy.ts`/cookie territory again.
-3. **Privacy notice** — short static page, what's collected + the three third parties involved
+4. **Privacy notice** — short static page, what's collected + the three third parties involved
    (Supabase, TMDB, Vercel). Draft the content with Kayvan rather than inventing it.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **Remove-show, re-ranking, sign-out cursor, and deferred show-add — all built, need hands-on
-   confirmation** (2026-07-17, see History): removing a show, re-ranking a specific episode
-   (including that it drops you straight back into ranking that episode), the sign-out button's
-   cursor, and that a show only appears in "my shows" after an actual ranking submission (not
-   merely viewing/importing it).
+1. **Remove-show and deferred show-add — still need hands-on confirmation** (2026-07-17, see
+   History); sign-out cursor and re-ranking both confirmed working 2026-07-17.
 2. **Episode-picker hands-on testing, still in progress** — out-of-order ranking, auto-updating
    scores, the post-submission auto-redirect, and refresh-mid-comparison all confirmed working.
    Sign-out, the friendlier stale-resubmission redirect, and the "Rank episodes" relabel all just
@@ -132,6 +139,15 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-17: Kayvan confirmed sign-out and re-ranking both work correctly. Reported a new one:
+  reopening the deployed app and pressing "login" skips straight to being signed in, no credential
+  prompt. Investigated `src/proxy.ts` before assuming a bug — confirmed this is deliberate, already-
+  reviewed "redirect an already-authenticated visitor away from /login" behavior (documented in the
+  file's own comment), not a session-not-clearing bug (Kayvan clarified: signing out first does
+  correctly show the credential form afterward). Asked what he actually wants rather than guessing
+  between two different fixes (session persistence itself vs. just `/login`'s behavior) — he wants
+  the narrower one: keep persistent sessions, but `/login` should always show the form. Fix scoped
+  and in progress — see Bucket 1 item 1.
 - 2026-07-17: Built and merged remove-show, re-ranking, the sign-out cursor fix, and the deferred
   show-add fix — two implementer agents (worktrees) in parallel, both reviewed and merged
   (`1fed732`, merging the remove-show/re-rank branch and the cursor/deferred-add branch), pushed.
