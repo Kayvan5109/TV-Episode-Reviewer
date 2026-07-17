@@ -19,27 +19,34 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence (work in this order):**
-1. **TMDB attribution** — small, quick, do early. Required attribution text somewhere in the app
+1. **Auto-redirect to the show page after finishing ranking an episode** — found 2026-07-17
+   hands-on testing; right now, once an episode reaches `'alreadyRanked'` after a submission, the
+   per-episode page just shows a message plus the "Return to show page" link, requiring a manual
+   click. Small, no design decision needed — in progress now. Scoped to *post-submission* only
+   (when a submit action's result is `'alreadyRanked'`); a direct page load of an already-ranked
+   episode's URL (e.g. a stale link) keeps showing the message + manual link, not an auto-redirect,
+   since that's a more deliberate navigation.
+2. **TMDB attribution** — small, quick, do early. Required attribution text somewhere in the app
    (e.g. `AppHeader` or a footer) per TMDB's API terms — see `Risks.md`.
-2. **Password reset flow** — currently doesn't exist at all. `resetPasswordForEmail` + a set-new-
+3. **Password reset flow** — currently doesn't exist at all. `resetPasswordForEmail` + a set-new-
    password page. Same correctness-critical rigor as the rest of auth (read the code directly, real
    email click-through check) — this is `proxy.ts`/cookie territory again.
-3. **Remove a show + re-ranking** — both confirmed wanted, neither designed yet; Kayvan's 2026-07-16
-   hands-on test independently re-surfaced wanting show removal, reconfirming this. Decide at the
-   start of the session (don't just implement a guess): does removing a show also delete that user's
+4. **Remove a show + re-ranking** — both confirmed wanted, neither designed yet; reconfirmed twice
+   now by hands-on testing (2026-07-16 for show removal, 2026-07-17 for re-ranking — Kayvan
+   specifically wants a "re-rank" button next to an episode's score in the per-episode list on
+   `/shows/[showId]`, useful placement detail for whenever this gets built). Decide at the start of
+   the session (don't just implement a guess): does removing a show also delete that user's
    `episode_rankings`/`episode_comparisons` for it, or just the `user_shows` row? Does re-ranking
    clear just `rank_position` (re-inserting via existing placement logic) or also
    `episode_comparisons` history for that episode? See `DevelopmentPlan.md`'s Phase 1 section for
    the full framing of both questions.
-4. **Privacy notice** — short static page, what's collected + the three third parties involved
+5. **Privacy notice** — short static page, what's collected + the three third parties involved
    (Supabase, TMDB, Vercel). Draft the content with Kayvan rather than inventing it.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **Episode-picker ranking UI hands-on check** — the rebuilt `/shows/[showId]` (per-episode list)
-   and `/shows/[showId]/rank/[episodeId]` (new per-episode route) need a real browser click-through
-   against live Supabase data: picking episodes out of order, a full comparison/tie-break chain, the
-   "Return to show page" link, and the always-visible current-rankings display (including the
-   small-show-never-leaves-cold-start case). Log anything found here, triaged into the right bucket.
+(empty for now — the episode-picker hands-on check is underway; out-of-order ranking and
+auto-updating scores both confirmed working 2026-07-17, see History. Testing continues — see
+`Testing.md`/STATUS.md updates as more results come in.)
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
 (empty for now — the episode-picker design that lived here is confirmed, see Bucket 1 item 1)
@@ -115,6 +122,11 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-17: Kayvan hands-on tested the episode-picker rebuild in the browser. Confirmed working:
+  out-of-order episode ranking (the whole point of the rework) and scores auto-updating as more
+  episodes get placed. Found one small gap (no auto-redirect after finishing an episode — Bucket 1
+  item 1, being fixed now) and reconfirmed wanting re-ranking with a specific UI placement detail
+  (a button next to the score — folded into the existing Bucket 1 item 4). Testing continues.
 - 2026-07-16: Built the episode-picker rebuild via an implementer agent (worktree), reviewed, and
   merged to `main` (`69c9688`, merging `d6f3f01`); not yet pushed. `ranking-session/session.ts`:
   `submitColdStartAnswer`/`submitComparisonAnswer` now validate against the specific target episode
