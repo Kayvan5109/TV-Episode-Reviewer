@@ -3,14 +3,13 @@
 **Read this file first** — before the other docs, before doing anything else. It's the single
 "what's actually going on right now" pointer, kept short and current on purpose.
 
-Last updated: 2026-07-16. The ranking UI has been through two cuts today: a first auto-advancing
-version, then — after Kayvan's hands-on test found that was the wrong interaction model — an
-episode-picker rebuild (see History), now built, reviewed, verified, and merged to `main` (not yet
-pushed — see below). **Phase 1's core ranking flow is code-complete end to end again**, this time
-letting the user pick any episode to rank in any order and see current rankings inline at any point.
-Needs Kayvan's real hands-on browser check before it's actually "done." No agent is running. Next up
-after that check: TMDB attribution, password reset, remove-show + re-ranking, and a privacy notice,
-in that order — see Bucket 1 below.
+Last updated: 2026-07-17. The ranking UI's episode-picker rebuild (see 2026-07-16 History) is live
+and being hands-on tested by Kayvan; out-of-order ranking and auto-updating scores are confirmed
+working, and a small post-submission auto-redirect gap found during that testing is now fixed,
+reviewed, merged, and pushed. **Phase 1's core ranking flow is code-complete**, still mid hands-on
+testing — not yet fully signed off. No agent is running. Next up once testing wraps: TMDB
+attribution, password reset, remove-show + re-ranking, and a privacy notice, in that order — see
+Bucket 1 below.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -19,19 +18,12 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence (work in this order):**
-1. **Auto-redirect to the show page after finishing ranking an episode** — found 2026-07-17
-   hands-on testing; right now, once an episode reaches `'alreadyRanked'` after a submission, the
-   per-episode page just shows a message plus the "Return to show page" link, requiring a manual
-   click. Small, no design decision needed — in progress now. Scoped to *post-submission* only
-   (when a submit action's result is `'alreadyRanked'`); a direct page load of an already-ranked
-   episode's URL (e.g. a stale link) keeps showing the message + manual link, not an auto-redirect,
-   since that's a more deliberate navigation.
-2. **TMDB attribution** — small, quick, do early. Required attribution text somewhere in the app
+1. **TMDB attribution** — small, quick, do early. Required attribution text somewhere in the app
    (e.g. `AppHeader` or a footer) per TMDB's API terms — see `Risks.md`.
-3. **Password reset flow** — currently doesn't exist at all. `resetPasswordForEmail` + a set-new-
+2. **Password reset flow** — currently doesn't exist at all. `resetPasswordForEmail` + a set-new-
    password page. Same correctness-critical rigor as the rest of auth (read the code directly, real
    email click-through check) — this is `proxy.ts`/cookie territory again.
-4. **Remove a show + re-ranking** — both confirmed wanted, neither designed yet; reconfirmed twice
+3. **Remove a show + re-ranking** — both confirmed wanted, neither designed yet; reconfirmed twice
    now by hands-on testing (2026-07-16 for show removal, 2026-07-17 for re-ranking — Kayvan
    specifically wants a "re-rank" button next to an episode's score in the per-episode list on
    `/shows/[showId]`, useful placement detail for whenever this gets built). Decide at the start of
@@ -40,13 +32,15 @@ unless it's small or genuinely blocking.
    clear just `rank_position` (re-inserting via existing placement logic) or also
    `episode_comparisons` history for that episode? See `DevelopmentPlan.md`'s Phase 1 section for
    the full framing of both questions.
-5. **Privacy notice** — short static page, what's collected + the three third parties involved
+4. **Privacy notice** — short static page, what's collected + the three third parties involved
    (Supabase, TMDB, Vercel). Draft the content with Kayvan rather than inventing it.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-(empty for now — the episode-picker hands-on check is underway; out-of-order ranking and
-auto-updating scores both confirmed working 2026-07-17, see History. Testing continues — see
-`Testing.md`/STATUS.md updates as more results come in.)
+1. **Episode-picker hands-on testing, still in progress** — out-of-order ranking, auto-updating
+   scores, and the post-submission auto-redirect all confirmed working so far (2026-07-17). Still
+   to check: sign-out/back-in mid-ranking, refresh mid-comparison, browser-back-then-resubmit, the
+   small-show (<4 episodes) done case, two shows ranked concurrently, and a real tie-break chain.
+   See `Testing.md` for the running checklist; log results here as they come in.
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
 (empty for now — the episode-picker design that lived here is confirmed, see Bucket 1 item 1)
@@ -122,6 +116,18 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-17: Fixed the auto-redirect gap found in same-day hands-on testing, via a small
+  implementer agent (worktree), reviewed, and merged to `main` (`8937a62`, merging `082cef9`);
+  pushed. `rank/[episodeId]/actions.ts`'s `submitColdStart`/`submitComparison` now check the
+  `TargetedRankingStep` returned by `submitColdStartAnswer`/`submitComparisonAnswer`: if it's
+  `'alreadyRanked'` (this submission fully resolved the episode's placement), redirect straight to
+  `/shows/[showId]` instead of just revalidating the same per-episode page; otherwise (more
+  cold-start/comparison questions pending for this same episode) behavior is unchanged. Direct
+  navigation to an already-ranked episode's URL still shows the static "already ranked" message,
+  deliberately not touched — confirmed `page.tsx` needed no changes since that behavior comes
+  purely from a live `getNextStepForEpisode` read, independent of the action's redirect. Reviewed
+  the diff directly (small, one file) and independently re-ran tests (170/170)/typecheck/lint/build
+  fresh in the merged location before merging.
 - 2026-07-17: Kayvan hands-on tested the episode-picker rebuild in the browser. Confirmed working:
   out-of-order episode ranking (the whole point of the rework) and scores auto-updating as more
   episodes get placed. Found one small gap (no auto-redirect after finishing an episode — Bucket 1
