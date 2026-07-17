@@ -144,6 +144,9 @@ export default async function ShowDetailPage({
               {display?.done && (
                 <p className="text-sm font-medium text-green-700 dark:text-green-400">Ranking complete</p>
               )}
+              <Link href={`/shows/${showId}/rankings`} className="text-sm underline">
+                See episodes ranked best to worst
+              </Link>
             </div>
           </div>
           <RemoveShowButton showId={showId} showTitle={showRow.title} />
