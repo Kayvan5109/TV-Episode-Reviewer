@@ -69,6 +69,43 @@ function makeReadBuilder<T extends object>(rows: readonly T[]): FakeQueryBuilder
   return builder;
 }
 
+interface FakeDeleteBuilder extends PromiseLike<{ error: null }> {
+  eq: (column: string, value: unknown) => FakeDeleteBuilder;
+  in: (column: string, values: unknown[]) => FakeDeleteBuilder;
+}
+
+/**
+ * Mirrors `makeReadBuilder`'s thenable-chain shape, but for `.delete().eq()/.in()...` — removes
+ * every row matching *all* accumulated filters from the backing array in place (splice, not
+ * reassignment) so the array reference the fake's `rankings`/`comparisons` fields point at stays
+ * live for callers that captured it before the delete (matching how a real Supabase delete affects
+ * the underlying table without the caller needing to re-fetch a new array reference).
+ */
+function makeDeleteBuilder<T extends object>(rows: T[]): FakeDeleteBuilder {
+  const filters: Array<(row: T) => boolean> = [];
+  const asRecord = (row: T) => row as unknown as Record<string, unknown>;
+  const builder: FakeDeleteBuilder = {
+    eq: (column, value) => {
+      filters.push((row) => asRecord(row)[column] === value);
+      return builder;
+    },
+    in: (column, values) => {
+      const set = new Set(values);
+      filters.push((row) => set.has(asRecord(row)[column]));
+      return builder;
+    },
+    then: (onFulfilled, onRejected) => {
+      for (let i = rows.length - 1; i >= 0; i--) {
+        if (filters.every((f) => f(rows[i]))) {
+          rows.splice(i, 1);
+        }
+      }
+      return Promise.resolve({ error: null }).then(onFulfilled, onRejected);
+    },
+  };
+  return builder;
+}
+
 class FakeSupabase {
   episodes: FakeEpisodeRow[] = [];
   rankings: FakeRankingRow[] = [];
@@ -108,6 +145,7 @@ class FakeSupabase {
           }
           return Promise.resolve({ data: null, error: null });
         },
+        delete: () => makeDeleteBuilder(this.rankings),
       };
     }
     if (table === 'episode_comparisons') {
@@ -119,6 +157,7 @@ class FakeSupabase {
           this.comparisons.push({ id, ...row });
           return Promise.resolve({ data: null, error: null });
         },
+        delete: () => makeDeleteBuilder(this.comparisons),
       };
     }
     throw new Error(`Unexpected table in test: ${table}`);
@@ -132,9 +171,11 @@ vi.mock('@/lib/supabase/serverSession', () => ({
 }));
 
 const {
+  deleteShowRankingData,
   getNextRankingStep,
   getNextStepForEpisode,
   getShowRankingDisplay,
+  resetEpisodeRanking,
   submitColdStartAnswer,
   submitComparisonAnswer,
 } = await import('./session');
@@ -517,6 +558,196 @@ describe('getShowRankingDisplay', () => {
         { episodeId: 'D', score: scoreForPosition(5, 5) },
       ],
     });
+  });
+});
+
+describe('deleteShowRankingData', () => {
+  it('deletes every ranking and comparison row (both sides) for the show\'s episodes, leaving other shows untouched', async () => {
+    seedComparativePool(1); // ranked A-D at positions 1-4, X1 unranked, all show-1
+    fake.comparisons.push({
+      id: 'seed-1',
+      user_id: 'user-1',
+      episode_a_id: 'A',
+      episode_b_id: 'B',
+      result: 'a_better',
+    });
+
+    // A different show's data must survive: same fake, a distinct show_id and episode id.
+    fake.episodes.push({ id: 'other-ep', show_id: 'show-2', season_number: 1, episode_number: 1 });
+    fake.rankings.push({
+      user_id: 'user-1',
+      episode_id: 'other-ep',
+      rank_position: 1,
+      cold_start_bucket: null,
+      cold_start_sequence: null,
+    });
+
+    await deleteShowRankingData(SHOW_ID);
+
+    expect(fake.rankings.filter((r) => r.user_id === 'user-1')).toEqual([
+      {
+        user_id: 'user-1',
+        episode_id: 'other-ep',
+        rank_position: 1,
+        cold_start_bucket: null,
+        cold_start_sequence: null,
+      },
+    ]);
+    expect(fake.comparisons).toHaveLength(0);
+  });
+
+  it('is a no-op for a show with no episodes, rather than throwing', async () => {
+    seedComparativePool(1);
+    const rankingsBefore = [...fake.rankings];
+    const comparisonsBefore = [...fake.comparisons];
+
+    await expect(deleteShowRankingData('show-with-no-episodes')).resolves.toBeUndefined();
+
+    expect(fake.rankings).toEqual(rankingsBefore);
+    expect(fake.comparisons).toEqual(comparisonsBefore);
+  });
+
+  it('only deletes the signed-in user\'s rows, never another user\'s ranking data for the same show', async () => {
+    seedComparativePool(1); // seeds user-1's rankings for A-D
+    fake.rankings.push(
+      { user_id: 'user-2', episode_id: 'A', rank_position: 1, cold_start_bucket: null, cold_start_sequence: null },
+      { user_id: 'user-2', episode_id: 'B', rank_position: 2, cold_start_bucket: null, cold_start_sequence: null }
+    );
+    fake.comparisons.push({
+      id: 'seed-u2',
+      user_id: 'user-2',
+      episode_a_id: 'A',
+      episode_b_id: 'B',
+      result: 'a_better',
+    });
+
+    await deleteShowRankingData(SHOW_ID);
+
+    expect(fake.rankings.filter((r) => r.user_id === 'user-1')).toHaveLength(0);
+    expect(fake.rankings.filter((r) => r.user_id === 'user-2')).toHaveLength(2);
+    expect(fake.comparisons.filter((c) => c.user_id === 'user-2')).toHaveLength(1);
+  });
+});
+
+describe('resetEpisodeRanking', () => {
+  /** Seeds 5 already-ranked episodes (A-E, positions 1-5) — enough that removing one still leaves the show at COLD_START_THRESHOLD, i.e. still in comparative mode, not reverted to cold start. */
+  function seedFiveRanked() {
+    const ids = ['A', 'B', 'C', 'D', 'E'];
+    fake.episodes = ids.map((id, i) => ({
+      id,
+      show_id: SHOW_ID,
+      season_number: 1,
+      episode_number: i + 1,
+    }));
+    fake.rankings = ids.map((id, i) => ({
+      user_id: 'user-1',
+      episode_id: id,
+      rank_position: i + 1,
+      cold_start_bucket: null,
+      cold_start_sequence: null,
+    }));
+    return ids;
+  }
+
+  it('clears the episode\'s rank_position, deletes every comparison touching it, and renormalizes the remaining positions', async () => {
+    seedFiveRanked();
+    // A comparison recorded against C from its original placement (decisive: C better than D) —
+    // the whole point of this test is that this does NOT survive the reset.
+    fake.comparisons.push({
+      id: 'seed-c-d',
+      user_id: 'user-1',
+      episode_a_id: 'C',
+      episode_b_id: 'D',
+      result: 'a_better',
+    });
+    // An unrelated comparison, not touching C, which must survive.
+    fake.comparisons.push({
+      id: 'seed-a-d',
+      user_id: 'user-1',
+      episode_a_id: 'A',
+      episode_b_id: 'D',
+      result: 'a_better',
+    });
+
+    await resetEpisodeRanking(SHOW_ID, 'C');
+
+    expect(fake.rankings.find((r) => r.episode_id === 'C')).toBeUndefined();
+    const positions = new Map(fake.rankings.map((r) => [r.episode_id, r.rank_position]));
+    expect(positions.get('A')).toBe(1);
+    expect(positions.get('B')).toBe(2);
+    expect(positions.get('D')).toBe(3);
+    expect(positions.get('E')).toBe(4);
+
+    // C's old comparison is gone; the unrelated one is untouched.
+    expect(fake.comparisons.find((c) => c.episode_a_id === 'C' || c.episode_b_id === 'C')).toBeUndefined();
+    expect(fake.comparisons.find((c) => c.id === 'seed-a-d')).toBeDefined();
+
+    // The whole point: the system asks a *fresh* question for C rather than instantly replaying
+    // its old (now-deleted) placement history. If the stale C-vs-D comparison had survived, replay
+    // could answer straight through to 'alreadyRanked' without ever asking again. Instead, with
+    // ranked = [A, B, D, E] (4 episodes), binary search starts at mid index 1 -> B, a genuinely new
+    // question C was never asked before (its old history only ever covered C vs D).
+    await expect(getNextStepForEpisode(SHOW_ID, 'C')).resolves.toEqual({
+      type: 'compare',
+      subject: 'C',
+      reference: 'B',
+    });
+  });
+
+  it('reverts the show to cold start for what gets placed next if the reset drops the total below COLD_START_THRESHOLD (documented, accepted consequence)', async () => {
+    seedComparativePool(1); // ranked A-D (4 total, exactly at threshold), X1 unranked
+
+    await resetEpisodeRanking(SHOW_ID, 'B');
+
+    // Total ranked-episode count just dropped to 3, below COLD_START_THRESHOLD (4) — isColdStart
+    // is purely derived from the live count, so the show is back in cold start for whatever gets
+    // placed next, B included.
+    await expect(getNextStepForEpisode(SHOW_ID, 'B')).resolves.toEqual({
+      type: 'coldStart',
+      episode: 'B',
+    });
+  });
+
+  it('throws for an episode that does not belong to the show, without deleting anything', async () => {
+    seedComparativePool(1);
+    const rankingsBefore = [...fake.rankings];
+
+    await expect(resetEpisodeRanking(SHOW_ID, 'not-an-episode')).rejects.toThrow(/does not belong to show/);
+    expect(fake.rankings).toEqual(rankingsBefore);
+  });
+
+  it('throws for an episode with no ranking data to reset, without deleting anything', async () => {
+    const { extraIds } = seedComparativePool(1); // X1 is unranked
+    const subject = extraIds[0];
+    const rankingsBefore = [...fake.rankings];
+
+    await expect(resetEpisodeRanking(SHOW_ID, subject)).rejects.toThrow(/has no ranking to reset/);
+    expect(fake.rankings).toEqual(rankingsBefore);
+  });
+
+  it('only resets the signed-in user\'s own ranking/comparison rows, never another user\'s data for the same episode', async () => {
+    seedFiveRanked();
+    fake.rankings.push({
+      user_id: 'user-2',
+      episode_id: 'C',
+      rank_position: 3,
+      cold_start_bucket: null,
+      cold_start_sequence: null,
+    });
+    fake.comparisons.push({
+      id: 'seed-u2-c-d',
+      user_id: 'user-2',
+      episode_a_id: 'C',
+      episode_b_id: 'D',
+      result: 'a_better',
+    });
+
+    await resetEpisodeRanking(SHOW_ID, 'C');
+
+    expect(fake.rankings.find((r) => r.user_id === 'user-2' && r.episode_id === 'C')).toBeDefined();
+    expect(
+      fake.comparisons.find((c) => c.user_id === 'user-2' && (c.episode_a_id === 'C' || c.episode_b_id === 'C'))
+    ).toBeDefined();
   });
 });
 

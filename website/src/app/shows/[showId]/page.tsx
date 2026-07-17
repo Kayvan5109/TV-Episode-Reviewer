@@ -6,6 +6,9 @@ import { createSupabaseServerClient } from '@/lib/supabase/serverSession';
 import { AppHeader } from '@/components/AppHeader';
 import { getShowRankingDisplay } from '@/lib/ranking-session';
 
+import { RemoveShowButton } from './RemoveShowButton';
+import { ReRankButton } from './ReRankButton';
+
 export const metadata: Metadata = {
   title: 'Show — Episode Ranker',
 };
@@ -31,6 +34,11 @@ const BUCKET_LABELS: Record<string, string> = {
   neutral: 'Neutral',
   disliked: 'Disliked',
 };
+
+/** Matches `rank/[episodeId]/page.tsx`'s own `formatEpisode` — used here for `ReRankButton`'s confirm message. */
+function formatEpisode(episode: EpisodeRow): string {
+  return `S${episode.season_number}E${episode.episode_number} — ${episode.title}`;
+}
 
 /**
  * Show detail page: a real per-episode list, grouped by season. Each row shows that episode's
@@ -116,26 +124,29 @@ export default async function ShowDetailPage({
     <>
       <AppHeader />
       <div className="flex flex-1 flex-col items-center gap-6 p-8">
-        <div className="flex w-full max-w-2xl items-center gap-4">
-          {showRow.poster_url ? (
-            // eslint-disable-next-line @next/next/no-img-element -- external TMDB CDN image.
-            <img
-              src={showRow.poster_url}
-              alt=""
-              width={92}
-              height={138}
-              className="h-[138px] w-[92px] rounded object-cover"
-            />
-          ) : null}
-          <div className="flex flex-col gap-2">
-            <h1 className="text-2xl font-semibold">{showRow.title}</h1>
-            <p className="text-sm text-black/60 dark:text-white/60">
-              {episodes.length} episode{episodes.length === 1 ? '' : 's'} imported
-            </p>
-            {display?.done && (
-              <p className="text-sm font-medium text-green-700 dark:text-green-400">Ranking complete</p>
-            )}
+        <div className="flex w-full max-w-2xl items-start justify-between gap-4">
+          <div className="flex items-center gap-4">
+            {showRow.poster_url ? (
+              // eslint-disable-next-line @next/next/no-img-element -- external TMDB CDN image.
+              <img
+                src={showRow.poster_url}
+                alt=""
+                width={92}
+                height={138}
+                className="h-[138px] w-[92px] rounded object-cover"
+              />
+            ) : null}
+            <div className="flex flex-col gap-2">
+              <h1 className="text-2xl font-semibold">{showRow.title}</h1>
+              <p className="text-sm text-black/60 dark:text-white/60">
+                {episodes.length} episode{episodes.length === 1 ? '' : 's'} imported
+              </p>
+              {display?.done && (
+                <p className="text-sm font-medium text-green-700 dark:text-green-400">Ranking complete</p>
+              )}
+            </div>
           </div>
+          <RemoveShowButton showId={showId} showTitle={showRow.title} />
         </div>
 
         {episodesError && (
@@ -171,7 +182,14 @@ export default async function ShowDetailPage({
                             <span>{episode.title}</span>
                           </span>
                           {score !== undefined ? (
-                            <span className="font-medium">{score.toFixed(1)}</span>
+                            <span className="flex items-center gap-3">
+                              <span className="font-medium">{score.toFixed(1)}</span>
+                              <ReRankButton
+                                showId={showId}
+                                episodeId={episode.id}
+                                episodeLabel={formatEpisode(episode)}
+                              />
+                            </span>
                           ) : bucket !== undefined ? (
                             <span className="rounded bg-black/5 px-2 py-1 text-xs text-black/70 dark:bg-white/10 dark:text-white/70">
                               {BUCKET_LABELS[bucket] ?? bucket}

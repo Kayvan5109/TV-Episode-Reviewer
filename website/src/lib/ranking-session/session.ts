@@ -226,6 +226,135 @@ async function deriveNextStep(
   }
 }
 
+/**
+ * Deletes every `episode_comparisons` row for `userId` that involves any of `episodeIds` on either
+ * side (`episode_a_id` or `episode_b_id`) — the same "a row could have the id of interest on either
+ * side, query both and delete both" reasoning `loadShowRankingState` already applies for reads, just
+ * as a delete instead of a select. Two separate `.in()` deletes rather than one hand-built OR filter
+ * string, matching this file's existing style. Shared between `deleteShowRankingData` (every episode
+ * of a show at once) and `resetEpisodeRanking` (a single episode) — both need exactly this.
+ */
+async function deleteComparisonsInvolving(
+  supabase: SupabaseSessionClient,
+  userId: string,
+  episodeIds: readonly EpisodeId[]
+): Promise<void> {
+  if (episodeIds.length === 0) return;
+
+  const [aSide, bSide] = await Promise.all([
+    supabase.from('episode_comparisons').delete().eq('user_id', userId).in('episode_a_id', episodeIds),
+    supabase.from('episode_comparisons').delete().eq('user_id', userId).in('episode_b_id', episodeIds),
+  ]);
+
+  if (aSide.error) {
+    throw new Error(`Failed to delete episode comparisons (episode_a_id side): ${aSide.error.message}`);
+  }
+  if (bSide.error) {
+    throw new Error(`Failed to delete episode comparisons (episode_b_id side): ${bSide.error.message}`);
+  }
+}
+
+/**
+ * Removing a show deletes the signed-in user's ranking data for it — a clean slate, not an
+ * instant-restore-on-re-add (decided mechanics; see this session's design notes / Docs/STATUS.md).
+ * Deletes every `episode_comparisons` row touching any of the show's episodes (both sides, via
+ * `deleteComparisonsInvolving`) and every `episode_rankings` row for those episodes, both scoped to
+ * this user. Deliberately does *not* touch the global `shows`/`episodes` reference tables (shared
+ * across all users, written only by the TMDB import path) and does *not* touch `user_shows` — that
+ * row isn't ranking state, it's the caller's concern (see `removeShow` in
+ * `@/app/shows/[showId]/actions.ts`, which deletes it directly, mirroring how `addShow` writes it
+ * directly rather than through this module).
+ *
+ * A show with no episodes (or no ranking data at all) is a no-op, not an error.
+ */
+export async function deleteShowRankingData(showId: string): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const userId = await requireUserId(supabase);
+
+  const { data: episodeRows, error: episodesError } = await supabase
+    .from('episodes')
+    .select('id')
+    .eq('show_id', showId);
+
+  if (episodesError) {
+    throw new Error(`Failed to load episodes for show ${showId}: ${episodesError.message}`);
+  }
+
+  const episodeIds = ((episodeRows ?? []) as { id: string }[]).map((row) => row.id);
+  if (episodeIds.length === 0) return;
+
+  await deleteComparisonsInvolving(supabase, userId, episodeIds);
+
+  const { error: rankingsError } = await supabase
+    .from('episode_rankings')
+    .delete()
+    .eq('user_id', userId)
+    .in('episode_id', episodeIds);
+
+  if (rankingsError) {
+    throw new Error(`Failed to delete episode rankings for show ${showId}: ${rankingsError.message}`);
+  }
+}
+
+/**
+ * Re-ranking an already-ranked episode clears *both* its placement (`rank_position`, or its
+ * cold-start bucket if it hasn't folded into comparative ranking yet) *and* every
+ * `episode_comparisons` row involving it — not just the position. If old comparisons stayed, the
+ * replay comparator (`makeReplayComparator`) would just answer from that stale history instead of
+ * ever asking the user again about any pair they'd already compared, which would defeat the actual
+ * point of re-ranking: the user's opinion changed, so old comparisons involving this episode are
+ * exactly the ones that might now be wrong.
+ *
+ * Deletes the episode's `episode_rankings` row entirely rather than nulling its columns out — a row
+ * that exists with everything null isn't a state `reconstructShowRankingState` was ever designed to
+ * produce. Deleting it keeps the episode indistinguishable from "never ranked at all", which is
+ * exactly the intended post-reset state: it flows straight back through `getNextStepForEpisode`'s
+ * normal unranked path (cold-start-or-compare) like any other never-touched episode.
+ *
+ * Throws if `episodeId` doesn't belong to `showId` (mirrors `getNextStepForEpisode`'s existing
+ * check) or if the episode has no ranking data to reset (mirrors `isUnranked`'s existing notion of
+ * "untouched") — re-ranking something that was never ranked isn't a meaningful operation.
+ *
+ * After deleting, reloads state fresh from DB and re-persists the remaining `ranked` list via
+ * `persistRankedPositions` to renormalize `rank_position` and close the numbering gap the deletion
+ * left behind. Not required for correctness — scores are derived from array index at read time, not
+ * the raw stored integer, so a gap wouldn't actually break anything — but it matches this file's
+ * existing "simple full-rewrite over gaps" style and keeps the DB state clean.
+ *
+ * Accepted consequence, not a bug: if this drops the show's total ranked-episode count below
+ * `COLD_START_THRESHOLD`, the show reverts to cold-start mode for whatever gets placed next
+ * (including this same re-ranked episode) — `isColdStart` is always derived from the current live
+ * count, so this is existing, correct behavior, not something new to special-case around for a
+ * personal-use app at this scale.
+ */
+export async function resetEpisodeRanking(showId: string, episodeId: EpisodeId): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const userId = await requireUserId(supabase);
+  const loaded = await loadShowRankingState(supabase, userId, showId);
+
+  if (!loaded.episodeIdsInOrder.includes(episodeId)) {
+    throw new Error(`Episode ${episodeId} does not belong to show ${showId}.`);
+  }
+  if (isUnranked(loaded, episodeId)) {
+    throw new Error(`Episode ${episodeId} has no ranking to reset.`);
+  }
+
+  await deleteComparisonsInvolving(supabase, userId, [episodeId]);
+
+  const { error: rankingError } = await supabase
+    .from('episode_rankings')
+    .delete()
+    .eq('user_id', userId)
+    .eq('episode_id', episodeId);
+
+  if (rankingError) {
+    throw new Error(`Failed to delete ranking for episode ${episodeId}: ${rankingError.message}`);
+  }
+
+  const reloaded = await loadShowRankingState(supabase, userId, showId);
+  await persistRankedPositions(supabase, userId, reloaded.state);
+}
+
 /** "What should the user be asked/shown next for this show?" See `NextRankingStep`'s doc comment. */
 export async function getNextRankingStep(showId: string): Promise<NextRankingStep> {
   const supabase = await createSupabaseServerClient();
