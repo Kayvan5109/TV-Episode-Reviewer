@@ -3,12 +3,13 @@
 **Read this file first** — before the other docs, before doing anything else. It's the single
 "what's actually going on right now" pointer, kept short and current on purpose.
 
-Last updated: 2026-07-17. Remove-show and re-ranking are built, carefully reviewed (data-destructive
-work — every delete query traced by hand for cross-user/cross-show safety), verified, merged, and
-pushed. The sign-out cursor bug and the premature "added to my shows" bug are also fixed, merged,
-and pushed. **All of today's hands-on-testing findings are now addressed** except the still-open
-episode-picker testing checklist (Bucket 2) — ready for a fresh round of hands-on testing. No agent
-is running. Next up: TMDB attribution, password reset, and a privacy notice — see Bucket 1 below.
+Last updated: 2026-07-17. Remove-show, re-ranking, the sign-out cursor bug, the premature
+"added to my shows" bug, the `/login` auto-redirect, and a new per-show rankings view
+(`/shows/[showId]/rankings`, sorted best-to-worst) are all built, reviewed, merged, and pushed.
+**Everything requested today is now in code** — ready for a fresh, thorough hands-on testing pass
+(see Bucket 2). Also mid-discussion with Kayvan on 5 engagement/growth feature ideas, presented one
+at a time — see History. No agent is running. Next up once testing wraps: TMDB attribution,
+password reset, and a privacy notice — see Bucket 1 below.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -24,19 +25,15 @@ unless it's small or genuinely blocking.
    email click-through check) — this is `proxy.ts`/cookie territory again.
 3. **Privacy notice** — short static page, what's collected + the three third parties involved
    (Supabase, TMDB, Vercel). Draft the content with Kayvan rather than inventing it.
-4. **New "rankings" view per show** — requested 2026-07-17: a page showing a show's ranked
-   episodes sorted best-to-worst by score (distinct from `/shows/[showId]`'s season-ordered
-   management list). Almost entirely UI — reuses the already-reviewed `getShowRankingDisplay`
-   (its `ranked` array is already best-to-worst by construction, so no new sorting/persistence
-   logic needed). Building as `/shows/[showId]/rankings`, linked from the existing show page (which
-   already serves as the "pick a show" step via the dashboard). Feel-based UI on an already-reviewed
-   data function — implementer + hands-on check, not a second deep review. In progress now.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **Remove-show, deferred show-add, and the `/login` fix — still need hands-on confirmation**
-   (2026-07-17, see History); sign-out cursor and re-ranking both confirmed working 2026-07-17. For
-   `/login`: confirm visiting it while already signed in now shows the form instead of bouncing to
-   `/dashboard`, and that `/signup` still redirects an already-signed-in visitor as before.
+1. **Remove-show, deferred show-add, the `/login` fix, and the new rankings page — all need
+   hands-on confirmation** (2026-07-17, see History); sign-out cursor and re-ranking both confirmed
+   working 2026-07-17. For `/login`: confirm visiting it while already signed in now shows the form
+   instead of bouncing to `/dashboard`, and that `/signup` still redirects an already-signed-in
+   visitor as before. For the rankings page (`/shows/[showId]/rankings`): confirm the best-to-worst
+   order and scores look right, and that the "still being placed / not ranked yet" note makes sense
+   for a show that isn't fully done.
 2. **Episode-picker hands-on testing, still in progress** — out-of-order ranking, auto-updating
    scores, the post-submission auto-redirect, and refresh-mid-comparison all confirmed working.
    Sign-out, the friendlier stale-resubmission redirect, and the "Rank episodes" relabel all just
@@ -138,6 +135,18 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-17: Added a new `/shows/[showId]/rankings` page — a show's ranked episodes sorted
+  best-to-worst by score, distinct from `/shows/[showId]`'s season-ordered management list.
+  Reviewed and merged (`website/src/app/shows/[showId]/rankings/page.tsx`, plus a link from the
+  main show page). Purely additive UI: reused `getShowRankingDisplay` exactly as it already
+  existed (its `ranked` array is already best-to-worst by construction), so no persistence-layer
+  changes at all — reviewed at the same level as other feel-based UI work this session (read the
+  diff, confirmed it matched the brief, independently re-ran tests/typecheck/lint/build). Also
+  started walking Kayvan through 5 ideas for making the app more engaging/fun/growth-driving, one
+  at a time per his request rather than all at once — idea 1 (shareable "ranking cards" — an
+  on-demand generated shareable image of a show's top episodes, using Next.js's built-in `next/og`
+  image generation so no new public routes or RLS changes are needed for the simplest version) was
+  presented; awaiting his reaction before presenting idea 2.
 - 2026-07-17: Fixed the `/login` auto-redirect, reviewed, merged (`proxy.ts`/`proxy.test.ts`),
   pushed. Split the route config into `PROTECTED_ROUTES` (unchanged) and a narrower
   `REDIRECT_IF_AUTHENTICATED_ROUTES = ['/signup']` — `/login` no longer appears in any
