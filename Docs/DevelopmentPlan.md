@@ -194,9 +194,20 @@ air-date-sequential ranking. Confirmed priority: build this next, ahead of the r
 queue below. **Built and reviewed 2026-07-16** (see `STATUS.md` History) — `ranking-session`'s
 `submitColdStartAnswer`/`submitComparisonAnswer` now validate against the specific target episode
 rather than requiring "next in order," and a new `getShowRankingDisplay` backs the always-visible
-current-rankings view. Pending Kayvan's hands-on check.
+current-rankings view. Further hands-on testing the same day (2026-07-17) found and got fixed three
+more small gaps (no sign-out button, a scary error on a stale post-back resubmission, a confusing
+"Add show" label) — see `STATUS.md` History for the full trail.
 
-**Next session's plan (after that hands-on check) — work in this order:**
+**Decided 2026-07-17: remove-show + re-ranking mechanics.** Both confirmed wanted (a third time,
+2026-07-17). Removing a show deletes that user's `episode_rankings`/`episode_comparisons` for its
+episodes too, not just the `user_shows` row — a clean slate if re-added later, not an instant
+restore. Re-ranking clears both `rank_position` *and* that episode's `episode_comparisons` history,
+not just its position — keeping old comparisons would mean the replay comparator
+(`makeReplayComparator`) just answers from stale history instead of ever asking again about a pair
+already compared, which would defeat the actual point of re-ranking (the user's opinion changed).
+Building now.
+
+**Next session's plan (after that lands and gets its hands-on check) — work in this order:**
 
 1. **TMDB attribution** (small, quick — do this early as an easy win). TMDB's API terms require
    visible attribution (something like "This product uses the TMDB API but is not endorsed or
@@ -208,21 +219,7 @@ current-rankings view. Pending Kayvan's hands-on check.
    a page to set a new password. Same session/cookie-handling care as the rest of auth — this touches
    the same correctness-critical territory as `/auth/confirm`/`proxy.ts`, so give it the same review
    rigor (read the actual code, don't just trust tests, and get a real email click-through check).
-3. **Remove a show, and re-ranking.** Two related asks from Kayvan:
-   - Removing a show: decide (this needs a real design decision, not just an implementation — flag
-     it back to Kayvan rather than guessing) whether removing a show from "my shows" also deletes
-     that user's `episode_rankings`/`episode_comparisons` for its episodes (clean slate if re-added
-     later) or just removes the `user_shows` row while leaving ranking data intact (instant restore
-     if re-added). Either is defensible; it wasn't decided in this session.
-   - Re-ranking: letting a user redo their judgment on an already-ranked episode. Also needs real
-     design before building — e.g. does re-ranking clear just that episode's `rank_position` (and
-     re-insert it via cold-start/comparative placement from scratch, keeping other episodes'
-     positions as a starting point) or also clear its `episode_comparisons` history (so tie-break
-     replay doesn't get anchored to stale comparisons against a judgment the user no longer holds)?
-     This was flagged as an open idea in Discussion above long before today; it's now confirmed
-     wanted, but the mechanics still need designing — do that at the start of next session before
-     writing code.
-4. **Privacy notice.** A short, honest static page describing what's collected (email/password,
+3. **Privacy notice.** A short, honest static page describing what's collected (email/password,
    show/episode preferences) and that it passes through three third parties (Supabase, TMDB,
    Vercel). Content/writing task more than a code task — draft it together with Kayvan rather than
    inventing legal-sounding text unilaterally.
