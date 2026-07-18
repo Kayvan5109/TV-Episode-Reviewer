@@ -3,16 +3,21 @@
 **Read this file first** — before the other docs, before doing anything else. It's the single
 "what's actually going on right now" pointer, kept short and current on purpose.
 
-Last updated: 2026-07-18. Built, reviewed, merged, pushed, and **hands-on confirmed working on
-Vercel** the small-show cold-start fix — Bucket 1's former item 1 is fully done (see History). Kayvan
-tested a real 3-episode show in production: episode 1 got the cold-start bucket question, episodes 2
-and 3 both got real comparative placement, exactly as designed. Now moving to the next item in the
-Bucket 1 queue (Search Shows nav link + progress counter). A real process issue surfaced mid-session
-and still needs a look — see Deviations Awaiting Review: the implementer agent's
-`isolation: "worktree"` didn't actually produce an isolated worktree (no `.git`, and its registered
-branch had zero code changes on it); the agent's edits landed directly on `main`'s working tree
-instead. No harm that time (nothing else was being edited concurrently), but worth understanding
-before the next parallel-agent dispatch — not yet investigated.
+Last updated: 2026-07-18. Same session as the cold-start fix above, continued: built, reviewed, and
+merged 4 more Bucket 1 items back to back — Search Shows nav link + progress counter, season poster
+art, TMDB attribution footer, and the password reset flow (see History for each). Only genres and
+the privacy notice are left before Tier A. **Password reset needs 3 things from Kayvan before it
+actually works in production** (not blockers on the code itself, which is merged and reviewed): (1)
+set `NEXT_PUBLIC_SITE_URL` in Vercel's dashboard (Project Settings → Environment Variables) to the
+real production domain, no trailing slash; (2) confirm that same URL is allow-listed in Supabase's
+Authentication → URL Configuration → Redirect URLs; (3) once both are set, do **one** deliberate
+real click-through test of the forgot-password email flow (free tier is rate-limited to ~2 emails/
+hour, so test once, not repeatedly) — this is the only way to confirm Supabase's stock recovery
+email actually produces the `?code=...&type=recovery` pattern the fix assumes; if it doesn't, the
+whole flow silently no-ops back to the pre-existing (already-latent) bug. **A worktree-isolation
+process issue recurred a second time this session** (now 2 of 4 agent dispatches, not 1) — see
+Deviations Awaiting Review, still not investigated, but happening often enough now that it's worth
+digging into before relying on it again for anything where a real file collision would matter.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -21,75 +26,51 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence (work in this order). Every item below was decided
-2026-07-17 (see History) — this is the literal next-session plan, in two parts: items 1-6 first
-(from the day's hands-on testing round; item 1 of that original set — the cold-start fix — is done,
-see History and Bucket 2), then items 7-11 ("Tier A," from a separate design review, deliberately
-queued after, not ahead of, items 1-6):**
+2026-07-17 (see History) — items 1, 2, 4, and 5 of the original testing-round batch are done (see
+History), leaving just the two below before Tier A:**
 
-1. **Search Shows nav link + episode-ranked progress counter** — two small, independent, no-design-
-   decision-needed UI additions, bundle into one agent:
-   - Add a "Search Shows" link to `AppHeader`, to the left of "Dashboard", going straight to
-     `/shows/search`.
-   - On `/shows/[showId]`, add a progress counter near the top (something like "17% (14/84)
-     episodes ranked", styled to fit the page, not literally that raw string) — decide during
-     implementation whether "ranked" for this counter means only fully-scored episodes
-     (`display.ranked`) or also cold-start-judged-but-not-yet-placed ones
-     (`display.ranked.length + display.coldStartPending.length`); the latter is closer to "the user
-     has given an opinion on it," which is probably what a progress counter should mean.
-2. **Season poster art in the comparison screen** — TMDB's per-season endpoint
-   (`/tv/{id}/season/{season_number}`, already called during import for episode data) includes a
-   season-level `poster_path` sibling to its `episodes` array — this likely doesn't need a *new*
-   TMDB call, just capturing a field from a response already being fetched. Needs: a new nullable
-   column (e.g. `episodes.season_poster_url` — simplest given this schema has no separate `seasons`
-   table, matching its existing pattern of keeping `season_number` a plain column on `episodes`
-   rather than a relation), updated import logic to populate it, and the comparison screen
-   (`rank/[episodeId]/page.tsx`/`ComparisonPrompt.tsx`) showing each side's season poster next to
-   its episode label. Purely additive (new nullable column, no behavior change to existing data) —
-   implementer + PM review, not the full algorithm-level rigor the cold-start fix needed.
-3. **Genres on the show page** — TMDB's `/tv/{series_id}` show-details endpoint includes a
+1. **Genres on the show page** — TMDB's `/tv/{series_id}` show-details endpoint includes a
    `genres: [{id, name}]` array; nothing genre-related is stored today. Needs a new column on
    `shows` (a `text[]` of genre names is simplest — this app doesn't need genre-level relational
    querying yet, just display, per Kayvan's own "groundwork for later" framing), updated import
    logic, and display on `/shows/[showId]`. Explicitly *not* wiring up any sorting/filtering yet —
-   that's future work once actually designed. Purely additive — implementer + PM review.
-4. **TMDB attribution** — small, quick. Required attribution text somewhere in the app (e.g.
-   `AppHeader` or a footer) per TMDB's API terms — see `Risks.md`.
-5. **Password reset flow** — currently doesn't exist at all. `resetPasswordForEmail` + a set-new-
-   password page. Same correctness-critical rigor as the rest of auth (read the code directly, real
-   email click-through check) — this is `proxy.ts`/cookie territory again.
-6. **Privacy notice** — short static page, what's collected + the three third parties involved
+   that's future work once actually designed. Purely additive — implementer + PM review. Touches the
+   same import files (`website/src/lib/shows/importShow.ts`, `website/src/lib/tmdb/{types,mappers}.ts`)
+   the just-merged season-poster work did — safe to build now that that's landed, but don't run this
+   in parallel with any other TMDB-import-touching item.
+2. **Privacy notice** — short static page, what's collected + the three third parties involved
    (Supabase, TMDB, Vercel). Draft the content with Kayvan rather than inventing it.
 
 **Then, "Tier A" — a small batch pulled from an external design review, decided 2026-07-17, queued
 *after* everything above** (see `AppSpec.md`'s "External Design Review — Triage" and
 `DevelopmentPlan.md`'s Discussion section for the full reasoning behind each):
 
-7. **Keyboard shortcuts** on the cold-start and comparison screens (e.g. arrow keys or number keys
+3. **Keyboard shortcuts** on the cold-start and comparison screens (e.g. arrow keys or number keys
    for liked/disliked/neutral and better/worse/about-the-same) — small, no design decision needed.
-8. **Ranking confidence** ("your Breaking Bad rankings are 87% stable") — the strongest idea from
+4. **Ranking confidence** ("your Breaking Bad rankings are 87% stable") — the strongest idea from
    the review. Concrete v1 formula already written up in `DevelopmentPlan.md` (decisive-comparison
    count relative to `log2(showEpisodeCount)`, no schema changes needed) — read that before
    building, it also documents a known v1 limitation (doesn't yet detect tie-break-fallback
    placements) that's deliberately not being solved yet.
-9. **Statistics view + alternate visualizations** of a show's existing rankings (e.g. a tier list,
-   heatmap, or season timeline) — sequence after item 8, since "most/least confident episode" is a
+5. **Statistics view + alternate visualizations** of a show's existing rankings (e.g. a tier list,
+   heatmap, or season timeline) — sequence after item 4, since "most/least confident episode" is a
    natural stat once confidence exists. Purely additive over data `getShowRankingDisplay` already
    computes; no new persistence logic.
-10. **Richer comparison screen**: episode synopsis + cast shown alongside each side. Needs a bit
-    more TMDB plumbing than the others (episode-level synopsis and cast credits aren't imported
-    today) — scope this properly before starting rather than assuming it's as small as item 7.
-11. **Collections** — user-created private lists of episodes across shows (e.g. "Best Pilot
-    Episodes"). Independent of the rest of this batch, can slot in anywhere. Keep to private-only
-    for now — a *shareable* version needs public-link infrastructure that doesn't exist yet (see
-    the Tier B note in `AppSpec.md`).
-12. **Per-show progress bar on the dashboard** — added 2026-07-17: each show in "My Shows" gets a
-    progress indicator (episodes ranked so far) right on the dashboard list itself, not just on the
-    show's own page (item 1 above is the per-show-page counter; this is the dashboard-list version —
-    related but distinct, both worth building). Overlaps an idea already sitting in `AppSpec.md`'s
-    original brainstorm list ("Poster art + progress indicator per show" on the dashboard) — same
-    underlying data (`getShowRankingDisplay` per show), just surfaced one level up. Purely additive,
-    no design decision needed.
-13. **"Date ranked" next to each episode's name on the show page** — added 2026-07-17. No schema
+6. **Richer comparison screen**: episode synopsis + cast shown alongside each side. Needs a bit
+   more TMDB plumbing than the others (episode-level synopsis and cast credits aren't imported
+   today) — scope this properly before starting rather than assuming it's as small as item 3.
+7. **Collections** — user-created private lists of episodes across shows (e.g. "Best Pilot
+   Episodes"). Independent of the rest of this batch, can slot in anywhere. Keep to private-only
+   for now — a *shareable* version needs public-link infrastructure that doesn't exist yet (see
+   the Tier B note in `AppSpec.md`).
+8. **Per-show progress bar on the dashboard** — added 2026-07-17: each show in "My Shows" gets a
+   progress indicator (episodes ranked so far) right on the dashboard list itself, not just on the
+   show's own page (the per-show-page counter is already built — see History 2026-07-18; this is the
+   dashboard-list version — related but distinct, both worth building). Overlaps an idea already
+   sitting in `AppSpec.md`'s original brainstorm list ("Poster art + progress indicator per show" on
+   the dashboard) — same underlying data (`getShowRankingDisplay` per show), just surfaced one level
+   up. Purely additive, no design decision needed.
+9. **"Date ranked" next to each episode's name on the show page** — added 2026-07-17. No schema
     change needed: `episode_rankings.created_at` already means exactly this — it's set once, the
     first time a row exists for that episode (its first cold-start judgment, or the day it was
     first comparatively placed), and survives untouched through later position-shuffling upserts
@@ -187,22 +168,26 @@ Solo judgment calls made mid-session that weren't slept on get logged here and s
 start of the next session for a second look — even solo, "I decided this at 11pm without thinking
 it through" is worth a deliberate re-check, not silent acceptance.
 
-- 2026-07-18: **Process issue, not a judgment call, but needs a look before the next parallel-agent
-  dispatch.** The implementer agent for the small-show cold-start fix was spawned with
-  `isolation: "worktree"`, but the resulting worktree had no `.git` at all (a plain directory copy,
-  not a registered git worktree), and the branch that *was* registered for it
-  (`worktree-agent-a0fa4db2e4cd1b7bd`) had zero code changes on it. The agent's actual edits landed
-  directly as uncommitted changes on `main`'s own working tree instead — discovered only because the
-  independent reviewer agent went looking for a branch to diff against and found none. Caught before
-  any harm (nothing else was being edited by hand at the same time, so nothing collided), and the
-  changes themselves were correct and got reviewed/committed normally — but `ProcessAndRoles.md`'s
-  explicit rule ("real code changes happen in an isolated git worktree per agent... never directly
-  against the main working tree") silently didn't hold this time. Possibly related to this
-  environment's known Windows file-lock issue with worktree cleanup (see the recurring
-  `failed to delete '.git/worktrees/agent-*'` warnings on every commit, going back to at least
-  2026-07-15) — or a separate bug in how the worktree got created in the first place. Worth actually
-  investigating next session before trusting `isolation: "worktree"` again for something where a
-  real collision would matter (e.g. genuinely parallel agents touching overlapping files).
+- 2026-07-18: **Process issue, not a judgment call, recurred a second time — now worth actually
+  investigating rather than just noting.** The implementer agent for the small-show cold-start fix
+  was spawned with `isolation: "worktree"`, but the resulting worktree had no `.git` at all (a plain
+  directory copy, not a registered git worktree), and its edits landed directly as uncommitted
+  changes on `main`'s own working tree instead. Later the same session, 3 more `isolation: "worktree"`
+  agents were dispatched (nav link/progress counter, TMDB attribution, season posters) and all 3 got
+  genuine, properly registered worktrees — but a 4th, the password-reset agent, hit the exact same
+  failure as the cold-start fix: no worktree, edits landed directly on `main`'s working tree. So it's
+  not a one-off or a single bad run — 2 of 5 `isolation: "worktree"` dispatches this session silently
+  produced no isolation at all, seemingly at random. Both times were caught only because the
+  independent reviewer agent went looking for a branch to diff against and found none; both times
+  happened to cause no actual harm (no file overlap with whatever else was running concurrently at
+  the time), but that was luck, not something the tooling guaranteed — a genuinely parallel pair of
+  agents touching overlapping files could silently corrupt each other's work under this failure mode.
+  Possibly related to this environment's known Windows file-lock issue with worktree cleanup (see the
+  recurring `failed to delete '.git/worktrees/agent-*'` warnings on every commit, going back to at
+  least 2026-07-15) — or a separate, intermittent bug in how the worktree gets created. Worth actually
+  investigating next session (e.g. always verify `git worktree list` right after dispatching, before
+  assuming isolation held) before leaning on `isolation: "worktree"` for anything where a real
+  collision would matter.
 - 2026-07-15: Implementer agent made 7 judgment calls while building the ranking-algorithm prototype
   (`website/src/lib/ranking/`), each marked `JUDGMENT CALL` in the source (now merged to `main`).
   Most-important-first:
@@ -240,6 +225,40 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-18: Same session, continued past the cold-start fix at Kayvan's request to push through
+  as much of the remaining Bucket 1 queue as budget allowed (checked in on work order first — agreed
+  to finish items 2-6 before jumping to Tier A, per the original sequencing decision). Four more
+  items built, reviewed, merged, and pushed, each via its own implementer agent:
+  1. **Search Shows nav link + episode-ranked progress counter** (`AppHeader.tsx`,
+     `shows/[showId]/page.tsx`) — feel-based UI, no open design questions, implementer agent +
+     direct PM diff review + fresh test/typecheck/lint/build re-run, no independent reviewer needed.
+  2. **TMDB attribution footer** (`app/layout.tsx`) — same treatment, trivially small.
+  3. **Season poster art on the comparison screen** — new nullable `episodes.season_poster_url`
+     column (migration `20260718000000_episode_season_poster.sql`), threaded through
+     `mapSeasonEpisode`/`importShowFromTmdb`, rendered as a thumbnail next to each side on
+     `rank/[episodeId]/page.tsx`. The implementer caught and fixed a second `mapSeasonEpisode` call
+     site (`api/tmdb/[showId]/episodes/route.ts`) that its own signature change would have silently
+     broken via `Array.map`'s `(value, index)` arity — a real bug avoided, not introduced. TMDB's
+     season-endpoint response shape (`poster_path` as a sibling to `episodes`) was confirmed from
+     the implementer's training knowledge, not a live API call — worth a sanity check once a show
+     gets re-imported for real.
+  4. **Password reset flow** (`/forgot-password`, `/reset-password`) — correctness-critical (touches
+     live `proxy.ts`), got the full implementer-then-independent-reviewer treatment. While scoping
+     this, found and fixed a real latent bug before it could ship: Supabase's stock password-recovery
+     email uses the same `?code=<uuid>` pattern as signup confirmation (just with `&type=recovery`
+     appended), so `proxy.ts`'s existing `handleCodeExchange` would have silently swallowed a
+     password-reset link into the signup-confirmation path — exchanging the code and redirecting
+     straight to `/dashboard`, logging the user in without ever prompting for a new password. Fixed
+     by branching on `type=recovery` to `/reset-password` instead, with 5 new tests proving
+     non-recovery behavior is byte-for-byte unchanged. Independent reviewer re-derived the fix by
+     hand, confirmed the anti-enumeration behavior against Supabase's own documented semantics, and
+     re-ran all checks fresh — no functional bugs found, one comment-wording fix applied directly.
+     **Needs 3 things from Kayvan before it works live** — see this file's top summary for the exact
+     steps (Vercel env var, Supabase redirect allowlist, one deliberate email click-through test).
+  All four re-verified fresh (tests/typecheck/lint/build) in the merged location before each commit,
+  matching this project's usual rigor. A process issue recurred during this batch — see Deviations
+  Awaiting Review, now a 2-of-5 pattern this session, not a one-off. Remaining before Tier A: genres
+  on the show page, and the privacy notice (needs Kayvan's input on content).
 - 2026-07-18: Kayvan hands-on tested the small-show cold-start fix on the live Vercel deployment (a
   real 3-episode show): episode 1 got the cold-start liked/disliked/neutral question, episodes 2 and
   3 both got real comparative placement, exactly as designed. **Bucket 1's former item 1 is now fully
