@@ -87,6 +87,7 @@ export async function importShowFromTmdb(tmdbShowId: number): Promise<ImportShow
         title: details.title,
         poster_url: details.posterUrl,
         genres: details.genres,
+        last_synced_at: new Date().toISOString(),
       },
       { onConflict: 'tmdb_show_id' }
     )

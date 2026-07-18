@@ -133,16 +133,20 @@ describe('importShowFromTmdb', () => {
     expect(tmdbFetch).toHaveBeenCalledWith('/tv/1396/season/2');
     expect(tmdbFetch).toHaveBeenCalledTimes(3);
 
-    // Show upserted keyed on tmdb_show_id.
+    // Show upserted keyed on tmdb_show_id, stamped with a fresh last_synced_at.
     expect(showsUpsert).toHaveBeenCalledWith(
       {
         tmdb_show_id: 1396,
         title: 'Breaking Bad',
         poster_url: 'https://image.tmdb.org/t/p/w500/abc.jpg',
         genres: ['Drama', 'Crime'],
+        last_synced_at: expect.any(String),
       },
       { onConflict: 'tmdb_show_id' }
     );
+    const [upsertPayload] = showsUpsert.mock.calls[0] as unknown as [{ last_synced_at: string }];
+    expect(new Date(upsertPayload.last_synced_at).toISOString()).toBe(upsertPayload.last_synced_at);
+    expect(Date.now() - new Date(upsertPayload.last_synced_at).getTime()).toBeLessThan(5000);
 
     // All 3 episodes across both seasons upserted keyed on tmdb_episode_id.
     expect(episodesUpsert).toHaveBeenCalledTimes(1);
@@ -231,7 +235,13 @@ describe('importShowFromTmdb', () => {
     await importShowFromTmdb(7);
 
     expect(showsUpsert).toHaveBeenCalledWith(
-      { tmdb_show_id: 7, title: 'No Genres Show', poster_url: null, genres: [] },
+      {
+        tmdb_show_id: 7,
+        title: 'No Genres Show',
+        poster_url: null,
+        genres: [],
+        last_synced_at: expect.any(String),
+      },
       { onConflict: 'tmdb_show_id' }
     );
   });

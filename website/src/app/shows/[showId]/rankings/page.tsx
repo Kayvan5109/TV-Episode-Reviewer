@@ -5,6 +5,7 @@ import { notFound, redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/serverSession';
 import { AppHeader } from '@/components/AppHeader';
 import { getShowRankingDisplay } from '@/lib/ranking-session';
+import { ensureShowSynced } from '@/lib/shows/refreshShow';
 
 export const metadata: Metadata = {
   title: 'Rankings — Episode Ranker',
@@ -16,6 +17,8 @@ export const dynamic = 'force-dynamic';
 interface ShowRow {
   id: string;
   title: string;
+  tmdb_show_id: number;
+  last_synced_at: string;
 }
 
 interface EpisodeRow {
@@ -60,7 +63,7 @@ export default async function ShowRankingsPage({
 
   const { data: show } = await supabase
     .from('shows')
-    .select('id, title')
+    .select('id, title, tmdb_show_id, last_synced_at')
     .eq('id', showId)
     .maybeSingle();
 
@@ -69,6 +72,10 @@ export default async function ShowRankingsPage({
   }
 
   const showRow = show as ShowRow;
+  await ensureShowSynced({
+    tmdbShowId: showRow.tmdb_show_id,
+    lastSyncedAt: showRow.last_synced_at,
+  });
 
   const { data: episodesData } = await supabase
     .from('episodes')

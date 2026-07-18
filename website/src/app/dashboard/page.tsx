@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 
 import { createSupabaseServerClient } from '@/lib/supabase/serverSession';
 import { AppHeader } from '@/components/AppHeader';
+import { ensureShowSynced } from '@/lib/shows/refreshShow';
 
 import { logout } from './actions';
 
@@ -21,7 +22,13 @@ export const dynamic = 'force-dynamic';
 
 interface MyShowRow {
   show_id: string;
-  shows: { id: string; title: string; poster_url: string | null } | null;
+  shows: {
+    id: string;
+    title: string;
+    poster_url: string | null;
+    tmdb_show_id: number;
+    last_synced_at: string;
+  } | null;
 }
 
 /**
@@ -48,11 +55,27 @@ export default async function DashboardPage() {
   // revalidated session above, never from client input.
   const { data: myShowsData, error: myShowsError } = await supabase
     .from('user_shows')
-    .select('show_id, shows(id, title, poster_url)')
+    .select('show_id, shows(id, title, poster_url, tmdb_show_id, last_synced_at)')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false });
 
   const myShows = (myShowsData ?? []) as unknown as MyShowRow[];
+
+  // Best-effort background refresh of every tracked show's episode list from TMDB (throttled to
+  // once per SYNC_STALE_AFTER_MS per show — see `ensureShowSynced`). This page doesn't display any
+  // episode-derived data itself, so there's nothing to re-query afterward; it just keeps `episodes`
+  // fresh for the next time the user opens one of these shows.
+  await Promise.all(
+    myShows
+      .map((row) => row.shows)
+      .filter((show): show is NonNullable<MyShowRow['shows']> => show !== null)
+      .map((show) =>
+        ensureShowSynced({
+          tmdbShowId: show.tmdb_show_id,
+          lastSyncedAt: show.last_synced_at,
+        })
+      )
+  );
 
   return (
     <>
