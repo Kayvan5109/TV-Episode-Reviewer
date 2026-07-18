@@ -84,6 +84,13 @@ checked yet (24h throttle), needs a tracked show known to have a real new episod
 That, plus whatever's next in the Tier A queue (items 1/2/4/5/8 remaining — see Punch List), is the
 natural next-session starting point.
 
+**New session, 2026-07-18 (continued same date).** Confirmed clean state, then built and merged Tier
+A item 5 (dashboard per-show progress bar, `634b9d2`) — design confirmed with Kayvan first (visual
+bar + percentage + `(X/Y)` fraction) before building. See History for full detail. Now in Bucket 2
+for hands-on check, alongside the still-untestable throttled TMDB re-sync. Remaining Tier A queue:
+items 1 (smart comparison selection), 2 (stats/visualizations), 4 (collections), 8 (episode pages).
+Deviations Awaiting Review are all still open and unactioned.
+
 ## Punch List (ranked — read this section first for "what's actually next")
 
 Every open item gets triaged into exactly one bucket the moment it surfaces, per
@@ -149,13 +156,12 @@ front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
    Episodes"). Independent of the rest of this batch, can slot in anywhere. Keep to private-only
    for now — a *shareable* version needs public-link infrastructure that doesn't exist yet (see
    the Tier B note in `AppSpec.md`).
-5. **Per-show progress bar on the dashboard** — added 2026-07-17: each show in "My Shows" gets a
-   progress indicator (episodes ranked so far) right on the dashboard list itself, not just on the
-   show's own page (the per-show-page counter is already built — see History 2026-07-18; this is the
-   dashboard-list version — related but distinct, both worth building). Overlaps an idea already
-   sitting in `AppSpec.md`'s original brainstorm list ("Poster art + progress indicator per show" on
-   the dashboard) — same underlying data (`getShowRankingDisplay` per show), just surfaced one level
-   up. Purely additive, no design decision needed.
+5. ~~**Per-show progress bar on the dashboard**~~ — **built and merged 2026-07-18** (`634b9d2`), now
+   in Bucket 2 for hands-on check. Each show in "My Shows" gets a visual progress bar (thin filled
+   track) plus `{percent}% ({rankedCount}/{total})` text, right on the dashboard list itself — design
+   confirmed with Kayvan first (visual bar, not text-only or a compact fraction), reusing the exact
+   same `getShowRankingDisplay` data and ranked/total convention as the show page's own progress
+   line, so the two can never disagree.
 6. ~~**"Date ranked" next to each episode's name on the show page**~~ — **built and merged
    2026-07-18** (`92d1bb5`), now in Bucket 2 for hands-on check. `getShowRankingDisplay` threads
    `episode_rankings.created_at` through for both ranked and cold-start-pending episodes; show page
@@ -183,7 +189,12 @@ this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of t
 in Bucket 4, rather than being done piecemeal now.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
+1. **Dashboard per-show progress bar, built 2026-07-18, not yet hands-on checked** — confirm on live
+   Vercel that each show in "My Shows" shows a sensible bar/percentage/fraction (including a show
+   with zero episodes ranked yet, one mid-cold-start, and one fully done), and that the whole row is
+   still clickable through to the show page (the progress row was added inside the existing `Link`,
+   not as a separate element).
+2. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
    design. Can't be meaningfully verified by just clicking around today (the 24h throttle means a
    freshly-imported show won't actually re-sync for a day), so the real check is patient rather than
    immediate: next time a tracked show is known to have a new episode/season on TMDB, confirm it
@@ -192,7 +203,7 @@ in Bucket 4, rather than being done piecemeal now.
    (check the `shows` table has a populated `last_synced_at` column) and that a show page still loads
    normally post-push (the added `ensureShowSynced` call is fail-open, so even a broken TMDB call
    shouldn't break the page — but confirm that's actually true live, not just in tests).
-2. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
+3. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
    list (auth, search/import, dashboard, show detail page, the rankings page, cold start,
    comparative placement, re-ranking, removing a show all confirmed working end to end). What's
    genuinely still untested/unconfirmed, carried forward rather than chased right now:
@@ -443,6 +454,24 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-18: Fresh session. Confirmed `git status`/`git log` clean and matching the prior session's
+  end state before doing anything else, per procedure. Asked Kayvan what to prioritize; chose to
+  continue the Tier A queue, then specifically item 5 (dashboard progress bar) — Kayvan asked to see
+  the design first rather than build straight away. Proposed the data source (reuse
+  `getShowRankingDisplay`, same ranked/total convention as the show page's own progress line) and
+  three visual options (bar, text-only, compact fraction) via mockups; Kayvan picked the visual bar,
+  plus wanted the `(X/Y)` fraction shown alongside the percentage (not just the bar+percent alone).
+  Built and merged via one implementer agent (worktree) — feel-based UI, no schema change, so
+  implementer + direct PM review, not the full independent-reviewer pipeline: `dashboard/page.tsx`
+  now fetches `getShowRankingDisplay` per tracked show (`Promise.all`, mirroring the existing
+  `ensureShowSynced` loop just above it) and renders a thin filled progress bar + `{percent}%
+  ({rankedCount}/{total})` under each show's title in the "My Shows" list; a show with zero episodes
+  imported yet renders no progress row at all, matching the show page's own behavior. PM reviewed the
+  full diff directly (one file, one commit, matches the scoped design exactly), verified
+  worktree isolation held cleanly this dispatch (`git worktree list` + `git status --short` both
+  clean before merging — no recurrence of the isolation bug this time), fast-forward merged
+  (`634b9d2`), re-ran tests/typecheck/lint/build fresh on `main` post-merge: 225/225 tests, clean
+  typecheck, clean lint, clean build. Pushed. Not yet hands-on tested — see Bucket 2.
 - 2026-07-18: Same session, continued, at 80% session usage, about to reset — Kayvan hands-on tested
   both of this session's remaining Bucket 2 items on live Vercel before context was lost. **All 8
   checks confirmed working, nothing broken found**: (1) the comparison screen's "Which episode did
