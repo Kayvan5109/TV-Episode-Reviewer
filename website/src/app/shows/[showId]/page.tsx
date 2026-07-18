@@ -138,9 +138,6 @@ export default async function ShowDetailPage({
             ) : null}
             <div className="flex flex-col gap-2">
               <h1 className="text-2xl font-semibold">{showRow.title}</h1>
-              <p className="text-sm text-black/60 dark:text-white/60">
-                {episodes.length} episode{episodes.length === 1 ? '' : 's'} imported
-              </p>
               {display && (
                 <p className="text-sm text-black/60 dark:text-white/60">
                   {(() => {
