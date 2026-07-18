@@ -75,11 +75,14 @@ and re-verified fresh before every merge — see History for full detail on each
    Jul 15" and "8.7 (#3)" now show on the show page; the rank screen's header now names the specific
    episode/season instead of just the show.
 
-**Session deliberately ended here at Kayvan's request** (70%+ usage) — everything above is merged to
-`main` and pushed to `origin`, nothing left uncommitted. **None of this session's 3 builds are yet
-hands-on tested** — see Bucket 2, now carrying all three plus the still-pending throttled-TMDB-resync
-check from the previous session. That's the natural next-session starting point, before picking up
-anything new from Tier A.
+**Session ended here at Kayvan's request** (80%+ usage, context reset imminent) — everything above is
+merged to `main` and pushed to `origin`, nothing left uncommitted. Before the reset, Kayvan hands-on
+tested builds 1 and 2 above (the comparison screen redesign, and rank position/date-ranked/header)
+live on Vercel: **all 8 checks confirmed working, nothing broken** — see History for the exact list.
+Both removed from Bucket 2. **Only the throttled TMDB re-sync remains untested** — genuinely can't be
+checked yet (24h throttle), needs a tracked show known to have a real new episode/season on TMDB.
+That, plus whatever's next in the Tier A queue (items 1/2/4/5/8 remaining — see Punch List), is the
+natural next-session starting point.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -180,25 +183,7 @@ this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of t
 in Bucket 4, rather than being done piecemeal now.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **Richer two-column comparison screen, built 2026-07-18, migration already applied by Kayvan,
-   not yet hands-on checked.** Was Tier A item 3. Kayvan tried the first build hands-on and
-   requested two changes, both built and merged same session (`fce46f2` — see History): (a) the
-   synopsis now also shows on the cold-start screen, not just the two-episode compare screen; (b)
-   the three-button "Better"/"I can't decide"/"Worse" control is gone — the comparison screen now
-   reads "Which episode did you like better?" and the user clicks directly on whichever episode's
-   *poster* they preferred (posterless episodes get a same-size clickable placeholder box with the
-   title in it), leaving "I can't decide" as the only remaining button. Confirm hands-on: clicking
-   each poster actually submits the right episode as the winner (not swapped), "I can't decide"
-   still works, cold-start screens now show synopsis text too, a posterless episode's placeholder
-   box is clickable, the layout still holds up on a narrow window, and no stray "Better"/"Worse"
-   buttons or "About the same" label linger anywhere.
-2. **Rank position, date-ranked, and rank-screen header, built 2026-07-18, not yet hands-on checked**
-   (`92d1bb5`). Was Tier A items 6/7 plus a direct header request. Confirm hands-on: the show page
-   shows "8.7 (#3)"-style rank next to each score and "Ranked Jul 15"-style dates next to both
-   ranked and cold-start-pending episode titles (nothing for untouched episodes), and the
-   `/shows/[showId]/rank/[episodeId]` screen's header now reads "Rank {episode} from Season {N} of
-   {show}" instead of just the show title.
-3. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
+1. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
    design. Can't be meaningfully verified by just clicking around today (the 24h throttle means a
    freshly-imported show won't actually re-sync for a day), so the real check is patient rather than
    immediate: next time a tracked show is known to have a new episode/season on TMDB, confirm it
@@ -207,7 +192,7 @@ in Bucket 4, rather than being done piecemeal now.
    (check the `shows` table has a populated `last_synced_at` column) and that a show page still loads
    normally post-push (the added `ensureShowSynced` call is fail-open, so even a broken TMDB call
    shouldn't break the page — but confirm that's actually true live, not just in tests).
-4. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
+2. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
    list (auth, search/import, dashboard, show detail page, the rankings page, cold start,
    comparative placement, re-ranking, removing a show all confirmed working end to end). What's
    genuinely still untested/unconfirmed, carried forward rather than chased right now:
@@ -458,6 +443,17 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-18: Same session, continued, at 80% session usage, about to reset — Kayvan hands-on tested
+  both of this session's remaining Bucket 2 items on live Vercel before context was lost. **All 8
+  checks confirmed working, nothing broken found**: (1) the comparison screen's "Which episode did
+  you like better?" heading, (2) clicking a poster submits the correct episode as the winner
+  (subject/reference not swapped), (3) "I can't decide" still works, (4) synopsis now shows on the
+  cold-start screen too, (5) a posterless episode's placeholder box is clickable, (6) rank position
+  ("#N") shows next to each score on the show page, (7) both ranked and cold-start-pending episodes
+  show their "Ranked {date}" text, (8) the rank screen's header correctly reads "Rank {episode} from
+  Season {N} of {show}". Both Bucket 2 items removed — fully done end to end (built, reviewed,
+  merged, pushed, hands-on confirmed). Only the throttled TMDB re-sync remains in Bucket 2, still
+  genuinely untestable until a tracked show has a real new episode/season to pick up.
 - 2026-07-18: Same session, continued, at 70% session usage — Kayvan asked for one small Tier A
   item before ending the session; offered items 5/6/7 (all flagged "small, self-contained, no design
   decision needed"), Kayvan asked to bundle items 6 (date ranked) and 7 (rank position) together
