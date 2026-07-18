@@ -96,7 +96,8 @@ front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
    already stored (`episode_comparisons` plus existing derived scores), nothing new to fetch. Tier
    lists specifically are confirmed **auto-generated only** — no manual user editing/override, decided
    2026-07-18.
-3. **Richer comparison screen — fully spec'd 2026-07-18, ready to build.** Two-column layout: the
+3. ~~**Richer comparison screen**~~ — **built and merged 2026-07-18** (`f763f5f`), now in Bucket 2
+   for the migration + hands-on check. Two-column layout: the
    episode being placed (`subject`) on the left, the episode it's being compared against
    (`reference`) on the right — replacing the current stacked layout (`rank/[episodeId]/page.tsx`'s
    `RankEpisodeStep`, where `subject` is shown alone at the top and `reference` is mentioned inline
@@ -176,7 +177,17 @@ this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of t
 in Bucket 4, rather than being done piecemeal now.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
+1. **Richer two-column comparison screen, built 2026-07-18, not yet hands-on checked.** Was Tier A
+   item 3. **Needs the new migration (`20260718030000_episode_synopsis.sql`) applied to the live
+   Supabase project before it'll show real synopsis text** — existing episodes will have
+   `synopsis is null` until their show is re-imported (same re-import-backfills-it pattern as the
+   season-poster/genres columns). Confirm hands-on: the two-column layout renders sensibly with a
+   real comparison (poster art, title, synopsis for both subject and reference), the layout holds up
+   on a narrow window (it's meant to stack vertically below a breakpoint), the middle button reads
+   "I can't decide" here specifically (not on the cold-start screen, which should still say
+   "Neutral"), and that an episode with no synopsis yet (pre-migration data) just omits that line
+   rather than showing something broken.
+2. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
    design. Can't be meaningfully verified by just clicking around today (the 24h throttle means a
    freshly-imported show won't actually re-sync for a day), so the real check is patient rather than
    immediate: next time a tracked show is known to have a new episode/season on TMDB, confirm it
@@ -185,7 +196,7 @@ in Bucket 4, rather than being done piecemeal now.
    (check the `shows` table has a populated `last_synced_at` column) and that a show page still loads
    normally post-push (the added `ensureShowSynced` call is fail-open, so even a broken TMDB call
    shouldn't break the page — but confirm that's actually true live, not just in tests).
-2. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
+3. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
    list (auth, search/import, dashboard, show detail page, the rankings page, cold start,
    comparative placement, re-ranking, removing a show all confirmed working end to end). What's
    genuinely still untested/unconfirmed, carried forward rather than chased right now:
@@ -436,6 +447,35 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-18: Same session, continued past the diagnostic/cleanup work. Built and merged Tier A item
+  3, the richer two-column comparison screen (`f763f5f`), via one implementer agent (worktree) —
+  feel-based UI + a trivial additive migration, so implementer + direct PM review, not the full
+  independent-reviewer pipeline. New `episodes.synopsis text` column
+  (`supabase/migrations/20260718030000_episode_synopsis.sql`, same nullable/no-backfill/
+  re-import-backfills-it pattern as `season_poster_url`/`genres`), threaded through
+  `TmdbSeasonEpisode`/`mapSeasonEpisode`/`EpisodeSummary`/`EpisodeInsertRow`/`toEpisodeRows` end to
+  end — required adding `overview` to `TmdbSeasonEpisode` itself first, since it turned out **not**
+  to already be captured from TMDB's response despite being in scope (a correction to this file's
+  prior assumption that it was "already fetched, just not persisted" — same TMDB call, just a
+  previously-undeclared field on the same response, so still no new network call). `rank/[episodeId]/
+  page.tsx`'s `RankEpisodeStep` now branches early on the `'compare'` step into a genuinely new
+  two-column layout (`EpisodeColumn`: poster → title → synopsis, `sm:flex-row` desktop /
+  stacked-vertical narrow, `ComparisonPrompt` between the two columns) instead of the old single-block
+  layout; the old "Compared to X, is this episode better, worse, or about the same?" sentence was
+  dropped as redundant once both episodes are visually labeled in their own columns — a judgment call
+  worth a hands-on sanity check, not pre-confirmed with Kayvan. Poster art enlarged from the old
+  60×90 thumbnail to 120×180 (implementer's own call, per the "prominent focal point" brief — not an
+  exact prescribed size). `ComparisonPrompt`'s middle button now reads "I can't decide" (comparative
+  mode only, confirmed only one real call site exists so no `mode` prop was needed);
+  `ColdStartPicker`'s own "Neutral" bucket was not touched, confirmed via diff review. One second
+  `mapSeasonEpisode` call site (`api/tmdb/[showId]/episodes/route.ts`) was checked and confirmed safe
+  (calls via an explicit arrow function, not raw `.map()`, so no arity hazard) — just needed its
+  test's expected body updated. PM reviewed the full diff directly (every changed file), rebased
+  cleanly onto two intervening `main` commits (the STATUS.md housekeeping below), re-ran
+  tests/typecheck/lint/build fresh in the rebased state before merging: 222/222 tests, clean
+  typecheck, clean lint, clean build. Fast-forward merged, pushed. **Needs the migration applied to
+  the live Supabase project before existing episodes show real synopsis text** (existing rows stay
+  `null` until their show is re-imported) — not yet hands-on tested, see Bucket 2.
 - 2026-07-18: Same session, continued. Kayvan hands-on confirmed two of Bucket 2's three pending
   items on live Vercel: the ranking confidence score displays and correctly updates as more
   comparisons get answered, and the privacy page's footer link works. Both removed from Bucket 2. The
