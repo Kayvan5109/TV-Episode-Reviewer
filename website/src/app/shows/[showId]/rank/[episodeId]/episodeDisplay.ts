@@ -13,6 +13,7 @@ export interface EpisodeDisplay {
   episode_number: number;
   title: string;
   season_poster_url: string | null;
+  still_url: string | null;
   synopsis: string | null;
 }
 

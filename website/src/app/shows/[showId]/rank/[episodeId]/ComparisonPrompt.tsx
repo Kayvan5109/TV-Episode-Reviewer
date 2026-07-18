@@ -35,6 +35,7 @@ function PosterButton({
   disabled: boolean;
   onClick: () => void;
 }) {
+  const imageUrl = episode.still_url ?? episode.season_poster_url;
   return (
     <button
       type="button"
@@ -43,10 +44,10 @@ function PosterButton({
       aria-label={`This one was better: ${formatEpisode(episode)}`}
       className="rounded transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
     >
-      {episode.season_poster_url ? (
+      {imageUrl ? (
         // eslint-disable-next-line @next/next/no-img-element -- external TMDB CDN image.
         <img
-          src={episode.season_poster_url}
+          src={imageUrl}
           alt=""
           width={120}
           height={180}

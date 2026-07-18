@@ -207,7 +207,16 @@ export default async function ShowDetailPage({
               .sort(([a], [b]) => a - b)
               .map(([seasonNumber, seasonEpisodes]) => (
                 <div key={seasonNumber} className="flex flex-col gap-2">
-                  <h2 className="text-lg font-medium">Season {seasonNumber}</h2>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-lg font-medium">Season {seasonNumber}</h2>
+                    {seasonEpisodes.every(
+                      (ep) => scoreByEpisode.has(ep.id) || bucketByEpisode.has(ep.id)
+                    ) && (
+                      <span className="rounded bg-black/5 px-2 py-1 text-xs text-black/70 dark:bg-white/10 dark:text-white/70">
+                        Complete
+                      </span>
+                    )}
+                  </div>
                   <ol className="flex flex-col gap-2">
                     {seasonEpisodes.map((episode) => {
                       const score = scoreByEpisode.get(episode.id);

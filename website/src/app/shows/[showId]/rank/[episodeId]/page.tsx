@@ -29,20 +29,23 @@ interface ShowRow {
 type EpisodeRow = EpisodeDisplay;
 
 /**
- * Season-poster art for one side of the comparison screen. Rendered larger than the show-page
- * poster (`width={92} height={138}`) — on this screen the poster is the primary visual focal
- * point of each column rather than a small thumbnail next to text, since the two columns are the
- * whole point of the comparison layout. Renders nothing for episodes with no `season_poster_url`
- * (imported before this column existed, or a season TMDB has no poster for).
+ * Episode-still art for one side of the comparison screen (falling back to the season poster when
+ * this specific episode has no still of its own — same convention as the episode detail page's
+ * `imageUrl`). Rendered larger than the show-page poster (`width={92} height={138}`) — on this
+ * screen the image is the primary visual focal point of each column rather than a small thumbnail
+ * next to text, since the two columns are the whole point of the comparison layout. Renders
+ * nothing for episodes with neither a still nor a season poster (imported before either column
+ * existed, or TMDB has no artwork for that episode/season).
  */
 function SeasonPoster({ episode }: { episode: EpisodeRow }) {
-  if (!episode.season_poster_url) {
+  const imageUrl = episode.still_url ?? episode.season_poster_url;
+  if (!imageUrl) {
     return null;
   }
   return (
     // eslint-disable-next-line @next/next/no-img-element -- external TMDB CDN image.
     <img
-      src={episode.season_poster_url}
+      src={imageUrl}
       alt=""
       width={120}
       height={180}
@@ -115,7 +118,7 @@ export default async function RankEpisodePage({
 
   const { data: episodesData, error: episodesError } = await supabase
     .from('episodes')
-    .select('id, season_number, episode_number, title, season_poster_url, synopsis')
+    .select('id, season_number, episode_number, title, season_poster_url, still_url, synopsis')
     .eq('show_id', showId)
     .order('season_number', { ascending: true })
     .order('episode_number', { ascending: true });
