@@ -48,32 +48,16 @@ deletion-failure noise (reproduces identically outside OneDrive; it's very likel
 internal handle-release race, benign), but the more serious "worktree verified real and registered,
 agent's edits still land on `main` directly" variant remains genuinely unexplained.
 
-**⚠️ THE REPO MOVED, READ THIS BEFORE DOING ANYTHING ELSE:** at Kayvan's request (he can't exclude a
-Desktop subfolder from OneDrive sync on his machine), the entire project was physically relocated
-from `C:\Users\khoob\OneDrive\Desktop\TV Episode Reviewer` to **`C:\Users\khoob\Projects\TV Episode
-Reviewer`** — verified clean (`git status`, `git log`, `git remote -v` all correct at the new path,
-`.env.local` and `node_modules` both present) before the old location was emptied. **Open this
-project from the new path from now on** (VSCode, a new Claude Code session, everything) — do not
-reuse the old OneDrive path, which is now just an empty leftover shell (harmless, safe to delete once
-nothing has it open — see below). This move surfaced a real limitation worth knowing: this exact
-session's tooling (specifically the Agent tool's `isolation: "worktree"` mechanism) turned out to be
-hardcoded to wherever the session started, and did **not** follow the mid-session relocation — a live
-test dispatch failed outright (`git rev-parse HEAD` failed, no repo at the old path anymore). An
-attempted fix (a directory junction at the old path pointing to the new one, so old-path references
-would transparently resolve) couldn't be completed either, because this same session's own live shell
-process still held the old directory open, and Windows won't let a directory be replaced while a
-process has it as its working directory. **Session deliberately ended here, at Kayvan's choice**,
-specifically to get a clean tool environment rooted at the new path rather than keep working around a
-broken one. Nothing was lost — everything at this stopping point is committed and pushed (see below).
-**Next session, starting fresh from the new path**: worth trying the junction cleanup again (no
-session should be holding the old empty directory open at that point) or just deleting the leftover
-empty `C:\Users\khoob\OneDrive\Desktop\TV Episode Reviewer` shell outright — either is fine, it's
-empty. Also worth a fresh, cold dispatch test (a trivial `isolation: "worktree"` agent, same shape as
-the diagnostic one referenced in Deviations) to confirm the Agent tool works correctly from the new
-path before resuming real build work, and — since a full fresh session is exactly the natural
-boundary for it — worth watching whether the deeper "agent wrote to `main` despite a real worktree"
-bug recurs at all in a session that never touched OneDrive, which would be genuinely new evidence
-either way.
+**The repo-move is fully resolved, 2026-07-18 (new session).** The project lives at
+`C:\Users\khoob\Projects\TV Episode Reviewer` (this file's own path confirms it) — `git status`/
+`git remote -v`/`git log` all clean and correct. The leftover empty OneDrive shell
+(`C:\Users\khoob\OneDrive\Desktop\TV Episode Reviewer`) has been deleted. The cold diagnostic dispatch
+the prior session asked for has been run: a trivial `isolation: "worktree"` agent got a real,
+registered worktree and its commit landed only on its own branch, never touching `main`'s working
+tree — clean isolation, no bug recurrence, the Agent tool is confirmed healthy from the new path. See
+History for the full account, including the caveat that one clean dispatch doesn't yet prove the
+deeper "agent wrote to `main` despite a real worktree" bug (see Deviations Awaiting Review) is fixed
+— still worth watching on every future dispatch.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -461,6 +445,29 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-18: Fresh session, opened from the new `C:\Users\khoob\Projects\TV Episode Reviewer` path
+  per the prior session's exact instructions. Confirmed the working directory, git remote, and
+  status were all correct and clean before doing anything else. Found the leftover empty OneDrive
+  shell (`C:\Users\khoob\OneDrive\Desktop\TV Episode Reviewer`) genuinely empty (`find` returned zero
+  files) and deleted it at Kayvan's confirmation (he deleted it himself after a permission-classifier
+  block on an automated `rm -rf`). Then ran the cold diagnostic dispatch the prior session asked for:
+  a trivial `isolation: "worktree"` agent (report cwd/HEAD/`git worktree list`, commit one throwaway
+  file on its own branch, nothing else). Result: **clean isolation, no bug recurrence** — real
+  registered worktree, agent's commit (`dab854e`) landed only on its own branch
+  (`worktree-agent-a2e2abff2f691a1a1`), `main`'s working tree stayed untouched (`git status --short`
+  empty immediately after). This is the first dispatch ever run in a session that never touched
+  OneDrive — one clean data point, not proof the deeper "agent wrote to `main` despite a real
+  worktree" bug is fixed, but consistent with OneDrive having been a contributing factor even though
+  the prior session's direct test only disproved it for the *deletion-failure* symptom, not this one.
+  Worth continuing to watch on every dispatch going forward rather than treating as resolved. Cleaned
+  up the diagnostic worktree/branch afterward (`git worktree remove --force`, `git branch -D`). Also
+  ran `git worktree prune` to clear stale pre-move `.git/worktrees/agent-*` metadata entries (9 of
+  them, left over from before the repo moved) — pruning itself hit the same already-root-caused benign
+  Git-for-Windows deletion-race ("Permission denied" on the physical directory, unregistration
+  succeeds) on every entry, twice in a row; left as cosmetic, not chased further. Bucket 1 is empty,
+  Tier A is next — checking with Kayvan on Bucket 2's hands-on-verification items (which need his
+  click-through on live Vercel, not something this session can do unilaterally) versus continuing
+  straight to the next Tier A build item before proceeding.
 - 2026-07-18: Same session, moved from planning to building — Kayvan said to keep the Tier A queue
   order as-is and start work. First item, keyboard shortcuts, was dispatched then cancelled moments
   later at Kayvan's request ("skip keyboard shortcuts... move to the backlog") — see Deviations for
