@@ -30,6 +30,7 @@ describe('mapSeasonEpisode', () => {
           name: 'Pilot',
           season_number: 1,
           episode_number: 1,
+          overview: 'A high school chemistry teacher turns to a life of crime.',
         },
         '/season-poster.jpg'
       )
@@ -39,6 +40,7 @@ describe('mapSeasonEpisode', () => {
       episodeNumber: 1,
       title: 'Pilot',
       seasonPosterUrl: 'https://image.tmdb.org/t/p/w500/season-poster.jpg',
+      synopsis: 'A high school chemistry teacher turns to a life of crime.',
     });
   });
 
@@ -50,6 +52,7 @@ describe('mapSeasonEpisode', () => {
           name: 'No Poster Episode',
           season_number: 1,
           episode_number: 2,
+          overview: 'Some overview.',
         },
         null
       )
@@ -59,6 +62,29 @@ describe('mapSeasonEpisode', () => {
       episodeNumber: 2,
       title: 'No Poster Episode',
       seasonPosterUrl: null,
+      synopsis: 'Some overview.',
+    });
+  });
+
+  it('leaves synopsis null when TMDB has no overview for the episode', () => {
+    expect(
+      mapSeasonEpisode(
+        {
+          id: 62087,
+          name: 'No Overview Episode',
+          season_number: 1,
+          episode_number: 3,
+          overview: null,
+        },
+        '/season-poster.jpg'
+      )
+    ).toEqual({
+      tmdbEpisodeId: 62087,
+      seasonNumber: 1,
+      episodeNumber: 3,
+      title: 'No Overview Episode',
+      seasonPosterUrl: 'https://image.tmdb.org/t/p/w500/season-poster.jpg',
+      synopsis: null,
     });
   });
 });

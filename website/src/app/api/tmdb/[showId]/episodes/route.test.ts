@@ -124,6 +124,7 @@ describe('GET /api/tmdb/[showId]/episodes', () => {
           episodeNumber: 1,
           title: 'Pilot',
           seasonPosterUrl: 'https://image.tmdb.org/t/p/w500/season1.jpg',
+          synopsis: '...',
         },
         {
           tmdbEpisodeId: 62086,
@@ -131,6 +132,7 @@ describe('GET /api/tmdb/[showId]/episodes', () => {
           episodeNumber: 2,
           title: "Cat's in the Bag...",
           seasonPosterUrl: 'https://image.tmdb.org/t/p/w500/season1.jpg',
+          synopsis: '...',
         },
       ],
     });

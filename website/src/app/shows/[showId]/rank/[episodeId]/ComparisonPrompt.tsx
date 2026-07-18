@@ -6,15 +6,22 @@ import type { ComparisonResult, EpisodeId } from '@/lib/ranking-session';
 
 import { submitComparison } from './actions';
 
+// The middle button reads "I can't decide" rather than "About the same" (contrast
+// `ColdStartPicker`'s own "Neutral" bucket, which stays as-is — that's a different judgment,
+// cold-start liked/neutral/disliked, not a comparison) — this component is only ever used in
+// comparative mode (one call site, the 'compare' step in `page.tsx`), so the label is just set
+// directly rather than threading a `mode` prop through for a distinction that doesn't exist yet.
+// The underlying `result: 'neutral'` value sent to `submitComparison` is unchanged — display label
+// only.
 const OPTIONS: { result: ComparisonResult; label: string }[] = [
   { result: 'better', label: 'Better' },
-  { result: 'neutral', label: 'About the same' },
+  { result: 'neutral', label: "I can't decide" },
   { result: 'worse', label: 'Worse' },
 ];
 
 /**
- * Comparison answer picker: three buttons ("subject" is better/worse/about the same as
- * "reference"), sharing one pending/error state — same reasoning as `ColdStartPicker`.
+ * Comparison answer picker: three buttons ("subject" is better/worse/can't-decide-vs. "reference"),
+ * sharing one pending/error state — same reasoning as `ColdStartPicker`.
  */
 export function ComparisonPrompt({
   showId,

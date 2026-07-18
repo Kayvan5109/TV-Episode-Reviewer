@@ -37,6 +37,7 @@ export interface TmdbSeasonEpisode {
   name: string;
   season_number: number;
   episode_number: number;
+  overview: string | null;
 }
 
 /**
@@ -64,6 +65,8 @@ export interface EpisodeSummary {
   // Same season poster URL duplicated onto every episode in the season — see
   // supabase/migrations/20260718000000_episode_season_poster.sql for why this isn't normalized.
   seasonPosterUrl: string | null;
+  // See supabase/migrations/20260718030000_episode_synopsis.sql.
+  synopsis: string | null;
 }
 
 /** App-facing shape for a show's details — maps to the `shows` table's columns, plus season count. */

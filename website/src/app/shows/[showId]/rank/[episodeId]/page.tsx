@@ -29,6 +29,7 @@ interface EpisodeRow {
   episode_number: number;
   title: string;
   season_poster_url: string | null;
+  synopsis: string | null;
 }
 
 function formatEpisode(episode: EpisodeRow): string {
@@ -36,10 +37,11 @@ function formatEpisode(episode: EpisodeRow): string {
 }
 
 /**
- * Small season-poster thumbnail shown next to an episode's label on the comparison screen.
- * Smaller than the show-page poster (`width={92} height={138}`) since this screen shows two
- * side by side with text — renders nothing for episodes with no `season_poster_url` (imported
- * before this column existed, or a season TMDB has no poster for).
+ * Season-poster art for one side of the comparison screen. Rendered larger than the show-page
+ * poster (`width={92} height={138}`) — on this screen the poster is the primary visual focal
+ * point of each column rather than a small thumbnail next to text, since the two columns are the
+ * whole point of the comparison layout. Renders nothing for episodes with no `season_poster_url`
+ * (imported before this column existed, or a season TMDB has no poster for).
  */
 function SeasonPoster({ episode }: { episode: EpisodeRow }) {
   if (!episode.season_poster_url) {
@@ -50,10 +52,27 @@ function SeasonPoster({ episode }: { episode: EpisodeRow }) {
     <img
       src={episode.season_poster_url}
       alt=""
-      width={60}
-      height={90}
-      className="h-[90px] w-[60px] rounded object-cover"
+      width={120}
+      height={180}
+      className="h-[180px] w-[120px] rounded object-cover"
     />
+  );
+}
+
+/**
+ * One column of the comparison layout: poster, then season/episode + title, then synopsis (if
+ * any). Shared between the `subject` (episode being placed) and `reference` (episode it's being
+ * compared against) columns — both render identically, only the data differs.
+ */
+function EpisodeColumn({ episode }: { episode: EpisodeRow }) {
+  return (
+    <div className="flex w-full max-w-xs flex-col items-center gap-2 text-center">
+      <SeasonPoster episode={episode} />
+      <p className="text-lg font-medium">{formatEpisode(episode)}</p>
+      {episode.synopsis && (
+        <p className="text-sm text-black/60 dark:text-white/60">{episode.synopsis}</p>
+      )}
+    </div>
   );
 }
 
@@ -104,7 +123,7 @@ export default async function RankEpisodePage({
 
   const { data: episodesData, error: episodesError } = await supabase
     .from('episodes')
-    .select('id, season_number, episode_number, title, season_poster_url')
+    .select('id, season_number, episode_number, title, season_poster_url, synopsis')
     .eq('show_id', showId)
     .order('season_number', { ascending: true })
     .order('episode_number', { ascending: true });
@@ -162,6 +181,26 @@ async function RankEpisodeStep({
 }) {
   const step = await getNextStepForEpisode(showId, episodeId);
 
+  // The 'compare' step gets its own two-column layout (subject vs. reference, prompt in the
+  // middle) rather than the single-subject-block-plus-content wrapper the other step types share
+  // below — the whole point of this step is showing both episodes side by side.
+  if (step.type === 'compare') {
+    const reference = episodesById.get(step.reference);
+    return (
+      <div className="flex w-full max-w-4xl flex-col items-center gap-6">
+        <div className="flex w-full flex-col items-center justify-center gap-6 sm:flex-row sm:items-start sm:gap-8">
+          <EpisodeColumn episode={episode} />
+          <ComparisonPrompt showId={showId} subjectId={episodeId} referenceId={step.reference} />
+          {reference ? (
+            <EpisodeColumn episode={reference} />
+          ) : (
+            <p className="text-sm text-black/60 dark:text-white/60">{step.reference}</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   let stepContent: ReactNode;
 
   if (step.type === 'alreadyRanked') {
@@ -170,26 +209,11 @@ async function RankEpisodeStep({
         This episode is already ranked — nothing left to do here.
       </p>
     );
-  } else if (step.type === 'coldStart') {
+  } else {
     stepContent = (
       <div className="flex w-full max-w-2xl flex-col items-center gap-4">
         <p className="text-sm text-black/60 dark:text-white/60">Did you like this episode?</p>
         <ColdStartPicker showId={showId} episodeId={episodeId} />
-      </div>
-    );
-  } else {
-    const reference = episodesById.get(step.reference);
-    const referenceLabel = reference ? formatEpisode(reference) : step.reference;
-    stepContent = (
-      <div className="flex w-full max-w-2xl flex-col items-center gap-4">
-        <div className="flex items-center justify-center gap-3">
-          {reference && <SeasonPoster episode={reference} />}
-          <p className="text-center text-lg">
-            Compared to <span className="font-medium">{referenceLabel}</span>, is this episode
-            better, worse, or about the same?
-          </p>
-        </div>
-        <ComparisonPrompt showId={showId} subjectId={episodeId} referenceId={step.reference} />
       </div>
     );
   }

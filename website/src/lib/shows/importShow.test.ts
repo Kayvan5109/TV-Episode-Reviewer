@@ -58,8 +58,16 @@ describe('toEpisodeRows', () => {
           episodeNumber: 1,
           title: 'Pilot',
           seasonPosterUrl: 'https://image.tmdb.org/t/p/w500/season1.jpg',
+          synopsis: 'A pilot episode synopsis.',
         },
-        { tmdbEpisodeId: 2, seasonNumber: 1, episodeNumber: 2, title: 'Cat', seasonPosterUrl: null },
+        {
+          tmdbEpisodeId: 2,
+          seasonNumber: 1,
+          episodeNumber: 2,
+          title: 'Cat',
+          seasonPosterUrl: null,
+          synopsis: null,
+        },
       ])
     ).toEqual([
       {
@@ -69,6 +77,7 @@ describe('toEpisodeRows', () => {
         episode_number: 1,
         title: 'Pilot',
         season_poster_url: 'https://image.tmdb.org/t/p/w500/season1.jpg',
+        synopsis: 'A pilot episode synopsis.',
       },
       {
         show_id: 'show-uuid',
@@ -77,6 +86,7 @@ describe('toEpisodeRows', () => {
         episode_number: 2,
         title: 'Cat',
         season_poster_url: null,
+        synopsis: null,
       },
     ]);
   });
@@ -111,15 +121,29 @@ describe('importShowFromTmdb', () => {
         return {
           poster_path: '/season1.jpg',
           episodes: [
-            { id: 100, name: 'Pilot', season_number: 1, episode_number: 1 },
-            { id: 101, name: 'Cat', season_number: 1, episode_number: 2 },
+            {
+              id: 100,
+              name: 'Pilot',
+              season_number: 1,
+              episode_number: 1,
+              overview: 'A high school chemistry teacher turns to a life of crime.',
+            },
+            { id: 101, name: 'Cat', season_number: 1, episode_number: 2, overview: null },
           ],
         };
       }
       if (path === '/tv/1396/season/2') {
         return {
           poster_path: null,
-          episodes: [{ id: 200, name: 'Season 2 Ep 1', season_number: 2, episode_number: 1 }],
+          episodes: [
+            {
+              id: 200,
+              name: 'Season 2 Ep 1',
+              season_number: 2,
+              episode_number: 1,
+              overview: 'Season 2 begins.',
+            },
+          ],
         };
       }
       throw new Error(`Unexpected path: ${path}`);
@@ -160,6 +184,7 @@ describe('importShowFromTmdb', () => {
         episode_number: 1,
         title: 'Pilot',
         season_poster_url: 'https://image.tmdb.org/t/p/w500/season1.jpg',
+        synopsis: 'A high school chemistry teacher turns to a life of crime.',
       },
       {
         show_id: 'show-uuid',
@@ -168,6 +193,7 @@ describe('importShowFromTmdb', () => {
         episode_number: 2,
         title: 'Cat',
         season_poster_url: 'https://image.tmdb.org/t/p/w500/season1.jpg',
+        synopsis: null,
       },
       {
         show_id: 'show-uuid',
@@ -176,6 +202,7 @@ describe('importShowFromTmdb', () => {
         episode_number: 1,
         title: 'Season 2 Ep 1',
         season_poster_url: null,
+        synopsis: 'Season 2 begins.',
       },
     ]);
 
