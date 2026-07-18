@@ -100,9 +100,14 @@ migration + hands-on check. Kayvan applied that migration same session. Then ite
 `--no-ff` since `main` had advanced with a docs-only commit in the meantime) — **all of item 8's
 sub-items are now built**, whole batch queued in Bucket 2 for one combined hands-on check. Kayvan
 also logged a new idea mid-session (per-season "completed" badge on the show page, placed as Tier A
-item 9). Remaining: Tier A items 1 (smart comparison selection), 2 (stats/visualizations), 4
-(collections), 9 (season-completed badge). Deviations Awaiting Review are all still open and
-unactioned.
+item 9). Kayvan then hands-on confirmed the whole item-8 batch working on live Vercel — removed from
+Bucket 2 — and logged two more ideas, both placed in Tier A (items 10/11): clickable episode titles
+on the comparison screen with a way back into the ranking flow, and swapping the ranking screens'
+season poster art for the episode's own still image (enabled by item 8a's new column, which Kayvan
+hadn't realized existed until seeing it on the episode page). Remaining: Tier A items 1 (smart
+comparison selection), 2 (stats/visualizations), 4 (collections), 9 (season-completed badge), 10
+(clickable comparison-screen titles), 11 (episode stills on ranking screens). Deviations Awaiting
+Review are all still open and unactioned.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -232,22 +237,38 @@ front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
    build-time call, not a design decision needing sign-off first, same as items 5/6/7). Purely
    additive: derivable entirely from data the show page already loads per episode (the same
    `scoreByEpisode`/`bucketByEpisode` maps it already builds), no schema change, no new query.
+10. **Clickable episode titles on the comparison screen, with a way back into the ranking flow** —
+    added 2026-07-18, Kayvan's idea, placed here (PM's call): builds directly on episode pages (item
+    8, just finished) and the ranking UI, same class of work as the rest of this queue. On the
+    comparison screen (`ComparisonPrompt`) and likely the cold-start screen too (`ColdStartPicker`,
+    for consistency — confirm at build time whether Kayvan wants both or just the comparison screen),
+    each episode's title becomes a link to its `/shows/[showId]/episodes/[episodeId]` detail page.
+    The real work is the return trip: the episode detail page needs a "back to ranking" link that
+    lands the user back on the exact comparison they were mid-way through, not just the show page.
+    Candidate mechanism (not yet confirmed with Kayvan, a build-time design call): thread the
+    in-progress rank flow's own subject-episode id through as a query param when linking out (e.g.
+    `?returnToRank={subjectEpisodeId}`), since `/shows/[showId]/rank/[episodeId]` already
+    recomputes "what's next" for that subject fresh on every visit (`getNextStepForEpisode` is
+    idempotent) — so linking back to that same URL naturally re-presents the same pending
+    comparison, no new state needs to be stored. Feel-based UI + navigation, not correctness-critical
+    (doesn't touch scoring/the ranking algorithm itself) — implementer + direct PM review, same
+    treatment as the rest of this queue, not the full independent-reviewer pipeline.
+11. **Show an episode's own still image instead of the season poster on the ranking screens** —
+    added 2026-07-18, Kayvan's idea (he wasn't aware `still_url` existed until seeing it on the new
+    episode pages), placed here (PM's call): trivial now that item 8(a) already added
+    `episodes.still_url` — the comparison screen's `EpisodeColumn`/cold-start's `SeasonPoster` (in
+    `rank/[episodeId]/`) currently render `season_poster_url`; swap to `still_url`, falling back to
+    `season_poster_url` when an episode has no still (same fallback convention the episode detail
+    page already established), rather than season poster art shared across every episode in the
+    season. Purely additive — no schema change, `still_url` is already selected/available wherever
+    `season_poster_url` currently is or trivially added to the same query.
 
 Dark mode + per-show accent theming (also proposed in the same review) is **deliberately not in
 this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of the visual-design pass
 in Bucket 4, rather than being done piecemeal now.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **Episode page finale badge + win/loss record + rank button + credits, built 2026-07-18, not yet
-   hands-on checked** — needs the `shows.status` migration (`20260718050000_shows_status.sql`)
-   applied to live Supabase first (existing shows stay `status is null`, and therefore never show a
-   finale badge, until re-imported) — **Kayvan applied this same session**. Confirm: a season finale
-   shows the badge (and a still-airing show's newest episode doesn't), the win/loss/tie line renders
-   correctly and is omitted for an episode with no comparisons yet, the rank/re-rank button correctly
-   reflects each of the three states (ranked, cold-start-pending, untouched), and "Directed by"/
-   "Written by"/"Starring" lines show up (each independently omitted if TMDB has no data for that
-   category, whole section omitted if the live credits fetch fails or returns nothing at all).
-2. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
+1. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
    design. Can't be meaningfully verified by just clicking around today (the 24h throttle means a
    freshly-imported show won't actually re-sync for a day), so the real check is patient rather than
    immediate: next time a tracked show is known to have a new episode/season on TMDB, confirm it
@@ -256,7 +277,7 @@ in Bucket 4, rather than being done piecemeal now.
    (check the `shows` table has a populated `last_synced_at` column) and that a show page still loads
    normally post-push (the added `ensureShowSynced` call is fail-open, so even a broken TMDB call
    shouldn't break the page — but confirm that's actually true live, not just in tests).
-3. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
+2. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
    list (auth, search/import, dashboard, show detail page, the rankings page, cold start,
    comparative placement, re-ranking, removing a show all confirmed working end to end). What's
    genuinely still untested/unconfirmed, carried forward rather than chased right now:
@@ -507,6 +528,20 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-18: Same session, continued. Kayvan hands-on confirmed the full item-8 batch (finale
+  badge, win/loss record, rank/re-rank button, credits) working on live Vercel — removed from
+  Bucket 2. Logged two more ideas, both placed in Tier A (PM's call) as items 10/11, both building
+  directly on episode pages just finished:
+  - **Item 10**: episode titles on the comparison screen (and likely cold start, for consistency)
+    become links to the episode detail page, with a way back into the exact comparison the user was
+    mid-way through — not yet built; candidate mechanism noted (a `returnToRank` query param
+    exploiting `/shows/[showId]/rank/[episodeId]`'s existing idempotent "what's next" recomputation)
+    but not yet confirmed with Kayvan, a real build-time design call.
+  - **Item 11**: swap the ranking screens' season poster art for the episode's own still image
+    (`still_url`, shipped with item 8a) — Kayvan wasn't aware that column existed until seeing it on
+    the new episode page. Trivial swap, same fallback-to-season-poster convention already
+    established.
+  Neither built yet — logged and queued, picking up next.
 - 2026-07-18: Same session, continued. Kayvan confirmed (in conversation, not yet hands-on) that the
   win/loss record is correctly per-user, not global — matching the design intent (global/aggregate
   stats are explicitly Tier B's concern, not this feature's). Applied the `shows.status` migration to
