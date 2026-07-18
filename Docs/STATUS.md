@@ -5,19 +5,17 @@
 
 Last updated: 2026-07-18. Same session as the cold-start fix above, continued: built, reviewed, and
 merged 4 more Bucket 1 items back to back — Search Shows nav link + progress counter, season poster
-art, TMDB attribution footer, and the password reset flow (see History for each). Only genres and
-the privacy notice are left before Tier A. **Password reset needs 3 things from Kayvan before it
-actually works in production** (not blockers on the code itself, which is merged and reviewed): (1)
-set `NEXT_PUBLIC_SITE_URL` in Vercel's dashboard (Project Settings → Environment Variables) to the
-real production domain, no trailing slash; (2) confirm that same URL is allow-listed in Supabase's
-Authentication → URL Configuration → Redirect URLs; (3) once both are set, do **one** deliberate
-real click-through test of the forgot-password email flow (free tier is rate-limited to ~2 emails/
-hour, so test once, not repeatedly) — this is the only way to confirm Supabase's stock recovery
-email actually produces the `?code=...&type=recovery` pattern the fix assumes; if it doesn't, the
-whole flow silently no-ops back to the pre-existing (already-latent) bug. **A worktree-isolation
-process issue recurred a second time this session** (now 2 of 4 agent dispatches, not 1) — see
-Deviations Awaiting Review, still not investigated, but happening often enough now that it's worth
-digging into before relying on it again for anything where a real file collision would matter.
+art, TMDB attribution footer, and the password reset flow (see History for each). Kayvan hands-on
+confirmed the first four on live Vercel (nav link, progress counter, attribution footer, season
+posters all working); also asked for and got one small follow-up polish (removed the now-redundant
+"N episodes imported" line from the show page, since the progress counter supersedes it). **Password
+reset deliberately deferred, not urgent**: Kayvan is the only user right now, so the 3 setup steps
+(Vercel env var, Supabase redirect allowlist, one email click-through test — still accurate, see
+History) can wait until it actually matters. Only genres and the privacy notice are left in Bucket 1
+before Tier A. **A worktree-isolation process issue recurred a second time this session** (2 of 5
+agent dispatches, not 1) — see Deviations Awaiting Review, still not investigated, but happening
+often enough now that it's worth digging into before relying on it again for anything where a real
+file collision would matter.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -225,6 +223,12 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-18: Kayvan hands-on tested the 4-item batch below on live Vercel. Confirmed working: the
+  Search Shows nav link, the progress counter, the TMDB attribution footer (visible on every page),
+  and season poster art on the comparison screen. One follow-up request, done directly (small enough
+  not to need an agent): removed the now-redundant "N episodes imported" line from the show page,
+  since the progress counter already conveys the total. Password reset explicitly deferred — not
+  urgent with a single user — its 3 setup steps stay logged above whenever it's picked back up.
 - 2026-07-18: Same session, continued past the cold-start fix at Kayvan's request to push through
   as much of the remaining Bucket 1 queue as budget allowed (checked in on work order first — agreed
   to finish items 2-6 before jumping to Tier A, per the original sequencing decision). Four more
