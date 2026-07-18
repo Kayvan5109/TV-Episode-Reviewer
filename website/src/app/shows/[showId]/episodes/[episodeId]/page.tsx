@@ -92,13 +92,24 @@ function formatAirDate(dateString: string): string {
  * view (no DB column, no caching) directly from TMDB's per-episode credits endpoint, and fail open:
  * a TMDB error just means no credits section renders, same convention `ensureShowSynced` uses
  * elsewhere in this app.
+ *
+ * Accepts an optional `returnToRank` query param (an episode id) — set by episode-title links
+ * rendered during the ranking flow (see `rank/[episodeId]/page.tsx` and `ComparisonPrompt.tsx`) so
+ * a user who clicks through to read more about an episode mid-ranking can get back to exactly the
+ * ranking step they were on. When present, renders a "Return to ranking" link to
+ * `/shows/[showId]/rank/[returnToRank]`, which recomputes that step fresh (`getNextStepForEpisode`
+ * is idempotent) — no validation of the id happens here; that route already 404s/handles it
+ * gracefully on its own.
  */
 export default async function EpisodeDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ showId: string; episodeId: string }>;
+  searchParams: Promise<{ returnToRank?: string }>;
 }) {
   const { showId, episodeId } = await params;
+  const { returnToRank } = await searchParams;
 
   const supabase = await createSupabaseServerClient();
   const {
@@ -186,9 +197,19 @@ export default async function EpisodeDetailPage({
       <AppHeader />
       <div className="flex flex-1 flex-col items-center gap-6 p-8">
         <div className="flex w-full max-w-2xl flex-col gap-6">
-          <Link href={`/shows/${showId}`} className="text-sm underline underline-offset-2">
-            ← Back to {showRow.title}
-          </Link>
+          <div className="flex flex-col gap-1">
+            <Link href={`/shows/${showId}`} className="text-sm underline underline-offset-2">
+              ← Back to {showRow.title}
+            </Link>
+            {returnToRank && (
+              <Link
+                href={`/shows/${showId}/rank/${returnToRank}`}
+                className="text-sm underline underline-offset-2"
+              >
+                ↩ Return to ranking
+              </Link>
+            )}
+          </div>
 
           {episodeError && (
             <p role="alert" className="text-sm text-red-600 dark:text-red-400">

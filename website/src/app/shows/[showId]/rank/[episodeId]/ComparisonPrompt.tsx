@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState, useTransition } from 'react';
 
 import type { ComparisonResult } from '@/lib/ranking-session';
@@ -64,24 +65,37 @@ function PosterButton({
 
 /**
  * One column of the comparison layout: clickable poster (or placeholder), then season/episode +
- * title, then synopsis (if any) — title/synopsis are plain text, not part of the click target, so
- * reading them can't cause an accidental submission (only the poster/placeholder above them is
- * clickable). Shared between the `subject` and `reference` sides; only the data and the resulting
- * `ComparisonResult` differ.
+ * title, then synopsis (if any). The poster is the click target that submits a comparison answer;
+ * the title is a *separate* link (`Link`, not a button) through to that episode's detail page, so
+ * reading it can't cause an accidental submission — they're independent elements with no nested
+ * interactivity. The title link always carries `returnToRank` set to the *subject* episode's id
+ * (`returnToRankId`), not this column's own `episode.id` — the reference side has no pending
+ * ranking step of its own to return to, only the subject does (see the doc comment on
+ * `ComparisonPrompt` below). Shared between the `subject` and `reference` sides; only the data and
+ * the resulting `ComparisonResult` differ.
  */
 function ComparisonColumn({
   episode,
+  showId,
+  returnToRankId,
   disabled,
   onPick,
 }: {
   episode: EpisodeDisplay;
+  showId: string;
+  returnToRankId: string;
   disabled: boolean;
   onPick: () => void;
 }) {
   return (
     <div className="flex w-full max-w-xs flex-col items-center gap-2 text-center">
       <PosterButton episode={episode} disabled={disabled} onClick={onPick} />
-      <p className="text-lg font-medium">{formatEpisode(episode)}</p>
+      <Link
+        href={`/shows/${showId}/episodes/${episode.id}?returnToRank=${returnToRankId}`}
+        className="text-lg font-medium underline underline-offset-2"
+      >
+        {formatEpisode(episode)}
+      </Link>
       {episode.synopsis && (
         <p className="text-sm text-black/60 dark:text-white/60">{episode.synopsis}</p>
       )}
@@ -134,6 +148,8 @@ export function ComparisonPrompt({
       <div className="flex w-full flex-col items-center justify-center gap-6 sm:flex-row sm:items-start sm:gap-8">
         <ComparisonColumn
           episode={subject}
+          showId={showId}
+          returnToRankId={subject.id}
           disabled={isPending}
           onPick={() => handlePick(resultForClickedSide('subject'))}
         />
@@ -149,6 +165,8 @@ export function ComparisonPrompt({
         </div>
         <ComparisonColumn
           episode={reference}
+          showId={showId}
+          returnToRankId={subject.id}
           disabled={isPending}
           onPick={() => handlePick(resultForClickedSide('reference'))}
         />

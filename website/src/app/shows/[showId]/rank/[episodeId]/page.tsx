@@ -58,12 +58,23 @@ function SeasonPoster({ episode }: { episode: EpisodeRow }) {
  * One column of the comparison layout: poster, then season/episode + title, then synopsis (if
  * any). Shared between the `subject` (episode being placed) and `reference` (episode it's being
  * compared against) columns — both render identically, only the data differs.
+ *
+ * The title links through to that episode's detail page, carrying `returnToRank` set to
+ * `episode.id` itself — every caller of this component passes the *subject* episode (the one
+ * currently being placed; there's no separate reference episode rendered via this component, see
+ * `ComparisonColumn` in `ComparisonPrompt.tsx` for that), so `episode.id` is always the right id to
+ * return to.
  */
-function EpisodeColumn({ episode }: { episode: EpisodeRow }) {
+function EpisodeColumn({ episode, showId }: { episode: EpisodeRow; showId: string }) {
   return (
     <div className="flex w-full max-w-xs flex-col items-center gap-2 text-center">
       <SeasonPoster episode={episode} />
-      <p className="text-lg font-medium">{formatEpisode(episode)}</p>
+      <Link
+        href={`/shows/${showId}/episodes/${episode.id}?returnToRank=${episode.id}`}
+        className="text-lg font-medium underline underline-offset-2"
+      >
+        {formatEpisode(episode)}
+      </Link>
       {episode.synopsis && (
         <p className="text-sm text-black/60 dark:text-white/60">{episode.synopsis}</p>
       )}
@@ -196,7 +207,7 @@ async function RankEpisodeStep({
           // click-to-answer UI at all; just show what we do know and let the user bail out via the
           // "Return to show page" link the page always renders.
           <>
-            <EpisodeColumn episode={episode} />
+            <EpisodeColumn episode={episode} showId={showId} />
             <p className="text-sm text-black/60 dark:text-white/60">
               Couldn&apos;t load the comparison episode ({step.reference}).
             </p>
@@ -228,7 +239,7 @@ async function RankEpisodeStep({
       {/* Full poster+title+synopsis column, not just a small poster+title — Kayvan wants the
           synopsis visible while cold-ranking the first few episodes too, not only on the
           two-episode compare screen. Harmless for the rare 'alreadyRanked' stale-link case too. */}
-      <EpisodeColumn episode={episode} />
+      <EpisodeColumn episode={episode} showId={showId} />
       {stepContent}
     </div>
   );
