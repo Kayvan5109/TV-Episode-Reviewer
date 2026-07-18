@@ -135,9 +135,9 @@ a Phase/Bucket with an actual decision attached, per this project's normal triag
   (see `DevelopmentPlan.md`'s Ranking Algorithm section) can exhaust and fall back to inserting
   adjacent to the last-compared episode as a genuine-tie fallback. Surfacing that ("we couldn't
   fully place this — put it next to X") would be more honest than silently doing it.
-- ~~Keyboard shortcuts~~ for the better/worse/neutral and liked/disliked/neutral buttons — **queued
-  2026-07-17** as Tier A item 1 (see `STATUS.md` Bucket 1), first in a small batch of ideas pulled
-  from a broader design review and triaged with Kayvan.
+- ~~Keyboard shortcuts~~ for the better/worse/neutral and liked/disliked/neutral buttons —
+  **declined 2026-07-18**, at Kayvan's request. Was queued 2026-07-17 as Tier A item 1, moved to
+  backlog after a stopped-mid-task dispatch, then dropped outright rather than picked back up.
 - **A short first-time explainer** of the cold-start → comparative mechanic itself. This isn't a
   star rating or a thumbs up/down app; a first-time user has no existing mental model for "why am I
   being asked to compare two episodes instead of just rating this one," and the whole value
@@ -585,20 +585,20 @@ here)**
   a user's own ranked list — the point a show's ranking drops from "good" to "great"). Tier lists
   (already part of item 3) are confirmed **auto-generated only** — Kayvan explicitly declined letting
   users manually override/edit a generated tier list.
-- **Season rankings** — ranking whole seasons against each other, not just episodes within a show.
-  Feasible by reusing the existing binary-insertion engine at a different granularity (season instead
-  of episode) rather than needing new algorithm work; the real scope is a new comparison UI flow.
-  Added to `STATUS.md` Bucket 4 backlog as a real future item, not scheduled.
+- **Season rankings — redesigned 2026-07-18.** Original idea: rank whole seasons against each other
+  head-to-head, reusing the binary-insertion engine at season granularity via a new comparison UI
+  flow. Kayvan dropped that mechanism in favor of deriving a season's ranking directly from its own
+  episodes' existing rankings (e.g. average score) — no separate comparison process needed. This is
+  now almost free: `website/src/lib/ranking/stats.ts`'s `seasonAverageScores` (built for the stats
+  page's season-quality heatmap) already computes nearly this exact thing. Still in `STATUS.md`
+  Bucket 4, not scheduled, but with much smaller real scope than originally written up here.
 - **Import** (IMDb ratings, Letterboxd-style exports, TV Time, Trakt, streaming watch history) — real
   third-party integration work, one per service, each with its own auth/API shape. Added to
   `STATUS.md` Bucket 4 backlog; whenever picked up, start with one service, not all of them at once.
-- **Spoiler mode** — how far a user has watched a show, hiding titles/rankings/descriptions past that
-  point. Confirmed as a real, currently-unaddressed gap (nothing today prevents seeing a whole show's
-  ranked episode list regardless of watch progress), but deliberately **backlogged, not built now**
-  (Kayvan: "ignore for now"). Flagged for whenever it is picked up: this needs the same
-  implementer-then-independent-reviewer rigor as auth/persistence work, not a quick UI pass — a
-  spoiler-protection feature that's only partially airtight (missing one of the surfaces that could
-  leak a title/ranking) is worse than not having the feature at all, because it creates false trust.
+- **Spoiler mode — declined 2026-07-18**, at Kayvan's request. Was a confirmed real,
+  currently-unaddressed gap (nothing today prevents seeing a whole show's ranked episode list
+  regardless of watch progress) — the gap itself hasn't gone away, but Kayvan chose to drop the
+  feature idea rather than keep it queued in `STATUS.md` Bucket 4.
 
 **Reconfirmed from the first review (this list re-proposed them independently; the original
 decision stands, not silently, but re-checked and explicitly upheld)**:

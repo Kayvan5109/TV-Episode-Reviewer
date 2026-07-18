@@ -386,28 +386,27 @@ see Bucket 4.)
    an already-recorded answer is the re-ranking feature, not an accidental stale resubmit), but a
    brief "this was already ranked, nothing changed" message instead of a silent redirect would be a
    nice small polish. Not urgent enough to build now.
-11. **Season rankings** — added 2026-07-18 from the second design review (see `AppSpec.md`'s "Second
-    Design Review — Triage"). Ranking whole seasons against each other, not just episodes within a
-    show. Feasible by reusing the existing binary-insertion engine at season granularity instead of
-    episode granularity — the real scope is a new comparison UI flow, not new algorithm work. Real
-    future item, not scheduled.
+11. **Season rankings — redesigned 2026-07-18, still not scheduled.** Original idea (added
+    2026-07-18 from the second design review): rank whole seasons against each other head-to-head,
+    reusing the binary-insertion engine at season granularity via a new comparison UI flow. **Kayvan
+    dropped that mechanism**: instead, a season's ranking is simply *derived* from its own episodes'
+    existing rankings (e.g., average score) rather than a separate season-vs-season comparison
+    process. This shrinks the real remaining scope a lot — `website/src/lib/ranking/stats.ts`'s
+    `seasonAverageScores` (built for the stats page's season-quality heatmap) already computes
+    almost exactly this; a future "season rankings" view would mostly be presenting that same
+    derived data sorted/framed as a ranked list of seasons ("Season 3 is your #1 season"), not new
+    comparison infrastructure or algorithm work. Still backlogged, not picked up this session.
 12. **Import** (IMDb ratings, Letterboxd-style exports, TV Time, Trakt, streaming watch history) —
     added 2026-07-18, same source. Real third-party integration work, one per service, each with its
     own auth/API shape. Whenever picked up, start with a single service rather than all of them.
-13. **Keyboard shortcuts** on the cold-start and comparison screens — was Tier A item 1, moved here
-    2026-07-18 at Kayvan's request ("skip keyboard shortcuts... move to the backlog"), after an
-    implementer agent had been dispatched but before it produced a working result (see Deviations
-    Awaiting Review — it was stopped mid-task and left a stray partial edit that got reverted, not a
-    real implementation to build on). Still small, no design decision needed whenever it's picked up:
-    number keys 1/2/3 mapped to each picker's three buttons in display order, `ColdStartPicker` and
-    `ComparisonPrompt` respectively.
-14. **Spoiler mode** — added 2026-07-18, same source. How far a user has watched a show, hiding
-    titles/rankings/descriptions past that point. Confirmed as a real, currently-unaddressed gap
-    (nothing today prevents seeing a whole show's ranked episode list regardless of watch progress),
-    deliberately backlogged rather than built now (Kayvan: "ignore for now"). Flagged for whenever
-    it's picked up: needs the same implementer-then-independent-reviewer rigor as auth/persistence
-    work, not a quick UI pass — a spoiler-protection feature that's only partially airtight is worse
-    than not having it at all, since it creates false trust in surfaces it doesn't actually cover.
+13. ~~**Keyboard shortcuts** on the cold-start and comparison screens~~ — **declined 2026-07-18, at
+    Kayvan's request.** Was Tier A item 1, moved here 2026-07-18 (a dispatch had been stopped
+    mid-task, see Deviations Awaiting Review for what that revealed about the worktree-isolation
+    bug), then dropped outright rather than picked back up.
+14. ~~**Spoiler mode**~~ — **declined 2026-07-18, at Kayvan's request.** Was a confirmed real,
+    currently-unaddressed gap (nothing today prevents seeing a whole show's ranked episode list
+    regardless of watch progress) — the gap itself hasn't gone away, but Kayvan chose to drop the
+    feature idea rather than keep it queued.
 15. **Collections — moved here from Tier A item 4, 2026-07-18, at Kayvan's request** ("its a social
     aspect"). Previously scoped as a private-only v1 (shareable version deliberately deferred, since
     that needs public-link infrastructure that doesn't exist yet); Kayvan chose to fold the whole
