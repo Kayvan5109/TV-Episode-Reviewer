@@ -176,11 +176,19 @@ front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
    Design Review — Triage" for the full breakdown). Episodes currently only exist as list rows on the
    show page; this is a genuinely new `/shows/[showId]/episodes/[episodeId]`-style route (exact path
    TBD at build time). Build in the cheap-first order the triage laid out: (a) title/season-episode/
-   air-date/synopsis/episode-still — mostly mapping TMDB season-endpoint fields (`overview`,
-   `still_path`) the app already fetches but currently discards; (b) the season finale flag (derived,
-   not tagged — see the triage doc for the exact rule); (c) a personal win/loss record per episode
-   (free read over the existing `episode_comparisons` table); (d) director/writer/cast, which needs a
-   new per-episode TMDB credits call — do this alongside item 3 above, same underlying data gap.
+   air-date/synopsis/episode-still — **correction, 2026-07-18 (next session), verified by direct code
+   read before building**: `overview`/`synopsis` really is already fetched and persisted (shipped as
+   part of item 3), but `still_path` and `air_date` are genuinely **not** on `TmdbSeasonEpisode`
+   (`website/src/lib/tmdb/types.ts`) at all yet — same "assumed captured, actually never was" mistake
+   this file already corrected once for `overview` itself. Both need real new work: added to the type,
+   mapped in `mapSeasonEpisode`, a new migration, columns on `episode_rows` — not a pure "just persist
+   what we already have" change like `overview`/`synopsis` was; (b) the season finale flag (derived,
+   not tagged — see the triage doc for the exact rule; also needs TMDB's `status` field added to
+   `TmdbShowDetails`, which doesn't exist on that type yet either); (c) a personal win/loss record per
+   episode (free read over the existing `episode_comparisons` table); (d) director/writer/cast, which
+   needs a genuinely new per-episode TMDB credits call (confirmed nothing like this exists yet) — item
+   3 (the richer comparison screen) was originally going to piggyback on this same call but shipped
+   without it, so this is now a standalone gap, not shared work.
    IMDb/RT/Metacritic links and streaming availability are optional later phases, not v1. Average
    community ranking and rating distribution are explicitly out of scope until Tier B (the social
    layer) exists.
