@@ -105,6 +105,18 @@ design review, deliberately queued after, not ahead of, items 1-7):**
     original brainstorm list ("Poster art + progress indicator per show" on the dashboard) — same
     underlying data (`getShowRankingDisplay` per show), just surfaced one level up. Purely additive,
     no design decision needed.
+14. **"Date ranked" next to each episode's name on the show page** — added 2026-07-17. No schema
+    change needed: `episode_rankings.created_at` already means exactly this — it's set once, the
+    first time a row exists for that episode (its first cold-start judgment, or the day it was
+    first comparatively placed), and survives untouched through later position-shuffling upserts
+    (`persistRankedPositions` only ever writes `rank_position`/`cold_start_bucket`/
+    `cold_start_sequence`, never `created_at`); re-ranking deletes the row and a fresh one gets
+    created on the next judgment, so `created_at` correctly becomes the new date too. Needs:
+    `getShowRankingDisplay` to also select and return `created_at` per episode (currently only
+    returns `episodeId`/`score`/`bucket`), and the show page to render it, formatted (e.g. "Jul 15"),
+    next to the episode title — for both fully-ranked and cold-start-pending episodes (anything with
+    an `episode_rankings` row at all), not shown for untouched ones. Small, self-contained, no design
+    decision needed.
 
 Dark mode + per-show accent theming (also proposed in the same review) is **deliberately not in
 this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of the visual-design pass
