@@ -5,6 +5,7 @@ import { notFound, redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/serverSession';
 import { AppHeader } from '@/components/AppHeader';
 import { getShowRankingDisplay } from '@/lib/ranking-session';
+import { ensureShowSynced } from '@/lib/shows/refreshShow';
 
 import { RemoveShowButton } from './RemoveShowButton';
 import { ReRankButton } from './ReRankButton';
@@ -21,6 +22,8 @@ interface ShowRow {
   title: string;
   poster_url: string | null;
   genres: string[] | null;
+  tmdb_show_id: number;
+  last_synced_at: string;
 }
 
 interface EpisodeRow {
@@ -78,13 +81,19 @@ export default async function ShowDetailPage({
 
   const { data: show } = await supabase
     .from('shows')
-    .select('id, title, poster_url, genres')
+    .select('id, title, poster_url, genres, tmdb_show_id, last_synced_at')
     .eq('id', showId)
     .maybeSingle();
 
   if (!show) {
     notFound();
   }
+
+  const showRow = show as ShowRow;
+  await ensureShowSynced({
+    tmdbShowId: showRow.tmdb_show_id,
+    lastSyncedAt: showRow.last_synced_at,
+  });
 
   const { data: episodesData, error: episodesError } = await supabase
     .from('episodes')
@@ -93,7 +102,6 @@ export default async function ShowDetailPage({
     .order('season_number', { ascending: true })
     .order('episode_number', { ascending: true });
 
-  const showRow = show as ShowRow;
   const episodes = (episodesData ?? []) as EpisodeRow[];
 
   const seasons = new Map<number, EpisodeRow[]>();
