@@ -3,17 +3,16 @@
 **Read this file first** — before the other docs, before doing anything else. It's the single
 "what's actually going on right now" pointer, kept short and current on purpose.
 
-Last updated: 2026-07-18. Built and merged the small-show cold-start fix (former Bucket 1 item 1) —
-see History for the full account. Implementer agent built it, an independent reviewer agent
-fresh-eyes-confirmed it against `DevelopmentPlan.md`'s spec and re-ran all checks itself, PM applied
-the reviewer's small polish suggestions and re-verified fresh before committing directly to `main`
-(`1edff1b`). **Not yet pushed, and not yet hands-on tested in a real browser** — see Bucket 2, that's
-the literal next thing to do. A real process issue surfaced mid-session and needs a look — see
-Deviations Awaiting Review: the implementer agent's `isolation: "worktree"` didn't actually produce
-an isolated worktree (no `.git`, and its registered branch had zero code changes on it); the agent's
-edits landed directly on `main`'s working tree instead. No harm this time (nothing else was being
-edited concurrently), but worth understanding before the next parallel-agent dispatch. No agent is
-running.
+Last updated: 2026-07-18. Built, reviewed, merged, pushed, and **hands-on confirmed working on
+Vercel** the small-show cold-start fix — Bucket 1's former item 1 is fully done (see History). Kayvan
+tested a real 3-episode show in production: episode 1 got the cold-start bucket question, episodes 2
+and 3 both got real comparative placement, exactly as designed. Now moving to the next item in the
+Bucket 1 queue (Search Shows nav link + progress counter). A real process issue surfaced mid-session
+and still needs a look — see Deviations Awaiting Review: the implementer agent's
+`isolation: "worktree"` didn't actually produce an isolated worktree (no `.git`, and its registered
+branch had zero code changes on it); the agent's edits landed directly on `main`'s working tree
+instead. No harm that time (nothing else was being edited concurrently), but worth understanding
+before the next parallel-agent dispatch — not yet investigated.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -108,13 +107,7 @@ this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of t
 in Bucket 4, rather than being done piecemeal now.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **Small-show cold-start fix, built 2026-07-18, not yet hands-on tested in a real browser.** This
-   is the next thing to do. Check: a 1-3 total-episode show should ask a real
-   better/worse/about-the-same comparison for episode 2 onward, not another liked/disliked/neutral
-   bucket; episode 1 should still get the coarse bucket question. See History for what's already
-   been verified (180+ tests, typecheck, lint, build, independent agent review) — this is purely the
-   "does it actually feel right in the browser" check that automated tests can't cover.
-2. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
+1. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
    list (auth, search/import, dashboard, show detail page, the rankings page, cold start,
    comparative placement, re-ranking, removing a show all confirmed working end to end). What's
    genuinely still untested/unconfirmed, carried forward rather than chased right now:
@@ -247,6 +240,11 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-18: Kayvan hands-on tested the small-show cold-start fix on the live Vercel deployment (a
+  real 3-episode show): episode 1 got the cold-start liked/disliked/neutral question, episodes 2 and
+  3 both got real comparative placement, exactly as designed. **Bucket 1's former item 1 is now fully
+  done end to end** (built, independently reviewed, merged, pushed, hands-on confirmed in
+  production). Moving to the next Bucket 1 item (Search Shows nav link + progress counter).
 - 2026-07-18: Built and merged the small-show cold-start fix (`Docs/DevelopmentPlan.md`'s "Decided
   2026-07-17, built 2026-07-18: small shows skip cold-start bucketing after episode 1") — a show
   with fewer than `COLD_START_THRESHOLD` (4) total episodes now only cold-start-buckets its first
