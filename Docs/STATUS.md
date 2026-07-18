@@ -95,9 +95,14 @@ air-date/synopsis/still image (`7bfab1c`). Kayvan applied the migration and hand
 page working on live Vercel same session (still image, season/episode number, title, air date,
 synopsis all render correctly) — removed from Bucket 2. Kayvan then asked for sub-items (b)/(c) plus
 a rank/re-rank button in one go: built and merged (`6d0a7e0`), now in Bucket 2 for the `shows.status`
-migration + hands-on check. Remaining: item 8(d) credits (next up), plus Tier A items 1 (smart
-comparison selection), 2 (stats/visualizations), 4 (collections). Deviations Awaiting Review are all
-still open and unactioned.
+migration + hands-on check. Kayvan applied that migration same session. Then item 8(d) credits
+(director/writer/cast, a live uncached TMDB fetch) was built and merged (`1b396be`, merged with
+`--no-ff` since `main` had advanced with a docs-only commit in the meantime) — **all of item 8's
+sub-items are now built**, whole batch queued in Bucket 2 for one combined hands-on check. Kayvan
+also logged a new idea mid-session (per-season "completed" badge on the show page, placed as Tier A
+item 9). Remaining: Tier A items 1 (smart comparison selection), 2 (stats/visualizations), 4
+(collections), 9 (season-completed badge). Deviations Awaiting Review are all still open and
+unactioned.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -201,17 +206,21 @@ front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
    dispatch as (b)), now in Bucket 2 for hands-on check. New `getEpisodeComparisonRecord` in
    `@/lib/ranking-session`, a free read over the existing `episode_comparisons` table (no schema
    change); renders as "N wins, N losses, N ties" on the episode page, omitted when all-zero.
-   (d) director/writer/cast, which needs a genuinely new per-episode TMDB credits call (confirmed
-   nothing like this exists yet) — item 3 (the richer comparison screen) was originally going to
-   piggyback on this same call but shipped without it, so this is now a standalone gap, not shared
-   work. **Still unbuilt** — next up.
-   Also added, same 2026-07-18 dispatch as (b)/(c) at Kayvan's request (not from the original
+   (d) ~~director/writer/cast~~ — **built and merged 2026-07-18** (`1b396be`), now in Bucket 2 for
+   hands-on check. Genuinely new per-episode TMDB credits call — item 3 (the richer comparison
+   screen) was originally going to piggyback on this same call but shipped without it, so this ended
+   up standalone, not shared work. Fetched **live, server-side, on every page view** — no new
+   database column, no caching/persistence — via `tmdbFetch` directly from the page (a Server
+   Component, so no new API route needed either); fails open (any TMDB error just means no credits
+   section renders) matching `ensureShowSynced`'s existing convention elsewhere in this app. Renders
+   as "Directed by …" / "Written by …" / "Starring …" lines, each only when non-empty.
+   Also added, same 2026-07-18 session as (b)/(c) at Kayvan's request (not from the original
    triage): a rank/re-rank button directly on the episode detail page, mirroring the show page's
    existing per-episode status handling (score+`ReRankButton` if ranked, cold-start bucket label if
    pending, a "Rank this episode" link if untouched) rather than inventing new UI.
    IMDb/RT/Metacritic links and streaming availability are optional later phases, not v1. Average
    community ranking and rating distribution are explicitly out of scope until Tier B (the social
-   layer) exists.
+   layer) exists. **All of item 8's sub-items are now built.**
 9. **Per-season "completed" badge on the show page** — added 2026-07-18, Kayvan's idea, placed here
    (PM's call) rather than folded into item 2 (stats/visualizations): this is a simple completion
    indicator, not an analysis-style visualization, and it's cheap/self-contained like items 5/6/7
@@ -229,13 +238,15 @@ this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of t
 in Bucket 4, rather than being done piecemeal now.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **Episode page finale badge + win/loss record + rank button, built 2026-07-18, not yet hands-on
-   checked** — needs the new `shows.status` migration (`20260718050000_shows_status.sql`) applied to
-   live Supabase first (existing shows stay `status is null`, and therefore never show a finale
-   badge, until re-imported). After that: confirm a season finale shows the badge (and a
-   still-airing show's newest episode doesn't), the win/loss/tie line renders correctly and is
-   omitted for an episode with no comparisons yet, and the rank/re-rank button correctly reflects
-   each of the three states (ranked, cold-start-pending, untouched).
+1. **Episode page finale badge + win/loss record + rank button + credits, built 2026-07-18, not yet
+   hands-on checked** — needs the `shows.status` migration (`20260718050000_shows_status.sql`)
+   applied to live Supabase first (existing shows stay `status is null`, and therefore never show a
+   finale badge, until re-imported) — **Kayvan applied this same session**. Confirm: a season finale
+   shows the badge (and a still-airing show's newest episode doesn't), the win/loss/tie line renders
+   correctly and is omitted for an episode with no comparisons yet, the rank/re-rank button correctly
+   reflects each of the three states (ranked, cold-start-pending, untouched), and "Directed by"/
+   "Written by"/"Starring" lines show up (each independently omitted if TMDB has no data for that
+   category, whole section omitted if the live credits fetch fails or returns nothing at all).
 2. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
    design. Can't be meaningfully verified by just clicking around today (the 24h throttle means a
    freshly-imported show won't actually re-sync for a day), so the real check is patient rather than
@@ -496,6 +507,32 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-18: Same session, continued. Kayvan confirmed (in conversation, not yet hands-on) that the
+  win/loss record is correctly per-user, not global — matching the design intent (global/aggregate
+  stats are explicitly Tier B's concern, not this feature's). Applied the `shows.status` migration to
+  live Supabase. Logged a new idea: a per-season "completed" badge on the show page (once every
+  episode in a season has a score or cold-start bucket) — placed as Tier A item 9 rather than folded
+  into item 2 (stats/visualizations), since it's a simple completion indicator, not an analysis-style
+  visualization, and fits the queue's small/self-contained item pattern (like 5/6/7) better.
+  Then item 8(d) (director/writer/cast credits) finished building via one implementer agent
+  (worktree) dispatched earlier — genuinely new TMDB integration (a live per-episode credits call),
+  but still additive display-only work with no schema change, so implementer + direct PM review, not
+  the full independent-reviewer pipeline (`1b396be`):
+  - New TMDB types (`TmdbEpisodeCastMember`/`TmdbEpisodeCrewMember`/`TmdbEpisodeCredits`, app-facing
+    `EpisodeCredits`) and a pure `mapEpisodeCredits` (5 new tests: normal case, empty cast/crew, no
+    Director/Writer entries, cast-list truncation past 8, duplicate-director de-dup).
+  - Episode page fetches credits **live, server-side, on every page view** — no new DB column, no
+    caching — via `tmdbFetch` called directly from the page (a Server Component, so no new API route
+    needed); wrapped in try/catch, fails open to "no credits section" on any error, matching
+    `ensureShowSynced`'s existing fail-open convention elsewhere in this app.
+  - Renders "Directed by …" / "Written by …" / "Starring …" lines, each independently omitted when
+    empty, whole section omitted when the fetch fails or TMDB has nothing for any category.
+  PM reviewed the full diff directly (the mapper's exact filter/de-dup/truncation logic checked by
+  hand), verified worktree isolation held cleanly. `main` had advanced with a docs-only commit (the
+  item-9 idea log) while this ran, so a plain fast-forward wasn't possible — merged with `--no-ff`
+  instead (files didn't overlap, no conflicts), re-ran tests/typecheck/lint/build fresh on `main`
+  post-merge: 239/239 tests (5 new), clean typecheck, clean lint, clean build. Pushed. **All four
+  sub-items of Tier A item 8 are now built** — not yet hands-on tested as a whole batch, see Bucket 2.
 - 2026-07-18: Same session, continued. Kayvan asked for the remaining episode-page sub-items
   ((b) season finale flag, (c) win/loss record) plus a fourth addition not in the original triage: a
   rank/re-rank button directly on the episode page. Built and merged via one implementer agent
