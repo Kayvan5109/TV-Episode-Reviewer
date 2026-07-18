@@ -4,19 +4,19 @@
 "what's actually going on right now" pointer, kept short and current on purpose.
 
 Last updated: 2026-07-18. Same session as the cold-start fix above, continued: built, reviewed, and
-merged 5 more Bucket 1 items back to back — Search Shows nav link + progress counter, season poster
-art, TMDB attribution footer, the password reset flow, and TMDB genres on the show page (see History
-for each). Kayvan hands-on confirmed the first four on live Vercel (nav link, progress counter,
-attribution footer, season posters all working); also asked for and got one small follow-up polish
-(removed the now-redundant "N episodes imported" line from the show page, since the progress counter
-supersedes it). **Password reset deliberately deferred, not urgent**: Kayvan is the only user right
-now, so the 3 setup steps (Vercel env var, Supabase redirect allowlist, one email click-through test
-— still accurate, see History) can wait until it actually matters. Genres not yet hands-on tested —
-see Bucket 2. **Only the privacy notice is left in Bucket 1 before Tier A**, and it needs Kayvan's
-input on content rather than being delegated blind. **A worktree-isolation process issue recurred a
-third time this session** (3 of 6 agent dispatches, not 1 or 2) — see Deviations Awaiting Review,
-still not investigated, but happening often enough now (half the time) that it's worth digging into
-before relying on it again for anything where a real file collision would matter.
+merged all 6 remaining Bucket 1 items back to back — Search Shows nav link + progress counter, season
+poster art, TMDB attribution footer, the password reset flow, TMDB genres on the show page, and the
+privacy notice (see History for each). **Bucket 1 is now fully cleared — Tier A is next.** Kayvan
+hands-on confirmed on live Vercel: nav link, progress counter, attribution footer, and season posters
+all working; genres also confirmed working ("looks good"). Also did one small follow-up polish
+directly (removed the now-redundant "N episodes imported" line from the show page). The privacy
+notice's content (email/password + ranking data collected; Supabase/TMDB/Vercel as the three third
+parties) came directly from Kayvan, not invented. **Password reset deliberately deferred, not
+urgent**: Kayvan is the only user right now, so its 3 setup steps (Vercel env var, Supabase redirect
+allowlist, one email click-through test — see History) can wait until it actually matters. **A
+worktree-isolation process issue recurred a third time this session** (3 of 6 agent dispatches) — see
+Deviations Awaiting Review, still not investigated, happening often enough (half the time) to be
+worth digging into before relying on it again for anything where a real file collision would matter.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -24,43 +24,39 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 [ProcessAndRoles.md](ProcessAndRoles.md#punch-list-triage). Default is "log it, don't chase it"
 unless it's small or genuinely blocking.
 
-**Bucket 1 — Blocking / next in sequence. Every item below was decided 2026-07-17 (see History) —
-items 1, 2, 3, 4, and 5 of the original testing-round batch are all done (see History), leaving just
-the one below before Tier A:**
+**Bucket 1 — Blocking / next in sequence:**
+(empty — every item from the 2026-07-17 testing round is done, see History. "Tier A" below is next.)
 
-1. **Privacy notice** — short static page, what's collected + the three third parties involved
-   (Supabase, TMDB, Vercel). Draft the content with Kayvan rather than inventing it.
-
-**Then, "Tier A" — a small batch pulled from an external design review, decided 2026-07-17, queued
-*after* everything above** (see `AppSpec.md`'s "External Design Review — Triage" and
+**"Tier A" — a small batch pulled from an external design review, decided 2026-07-17, now the
+front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
 `DevelopmentPlan.md`'s Discussion section for the full reasoning behind each):
 
-2. **Keyboard shortcuts** on the cold-start and comparison screens (e.g. arrow keys or number keys
+1. **Keyboard shortcuts** on the cold-start and comparison screens (e.g. arrow keys or number keys
    for liked/disliked/neutral and better/worse/about-the-same) — small, no design decision needed.
-3. **Ranking confidence** ("your Breaking Bad rankings are 87% stable") — the strongest idea from
+2. **Ranking confidence** ("your Breaking Bad rankings are 87% stable") — the strongest idea from
    the review. Concrete v1 formula already written up in `DevelopmentPlan.md` (decisive-comparison
    count relative to `log2(showEpisodeCount)`, no schema changes needed) — read that before
    building, it also documents a known v1 limitation (doesn't yet detect tie-break-fallback
    placements) that's deliberately not being solved yet.
-4. **Statistics view + alternate visualizations** of a show's existing rankings (e.g. a tier list,
-   heatmap, or season timeline) — sequence after item 3, since "most/least confident episode" is a
+3. **Statistics view + alternate visualizations** of a show's existing rankings (e.g. a tier list,
+   heatmap, or season timeline) — sequence after item 2, since "most/least confident episode" is a
    natural stat once confidence exists. Purely additive over data `getShowRankingDisplay` already
    computes; no new persistence logic.
-5. **Richer comparison screen**: episode synopsis + cast shown alongside each side. Needs a bit
+4. **Richer comparison screen**: episode synopsis + cast shown alongside each side. Needs a bit
    more TMDB plumbing than the others (episode-level synopsis and cast credits aren't imported
-   today) — scope this properly before starting rather than assuming it's as small as item 2.
-6. **Collections** — user-created private lists of episodes across shows (e.g. "Best Pilot
+   today) — scope this properly before starting rather than assuming it's as small as item 1.
+5. **Collections** — user-created private lists of episodes across shows (e.g. "Best Pilot
    Episodes"). Independent of the rest of this batch, can slot in anywhere. Keep to private-only
    for now — a *shareable* version needs public-link infrastructure that doesn't exist yet (see
    the Tier B note in `AppSpec.md`).
-7. **Per-show progress bar on the dashboard** — added 2026-07-17: each show in "My Shows" gets a
+6. **Per-show progress bar on the dashboard** — added 2026-07-17: each show in "My Shows" gets a
    progress indicator (episodes ranked so far) right on the dashboard list itself, not just on the
    show's own page (the per-show-page counter is already built — see History 2026-07-18; this is the
    dashboard-list version — related but distinct, both worth building). Overlaps an idea already
    sitting in `AppSpec.md`'s original brainstorm list ("Poster art + progress indicator per show" on
    the dashboard) — same underlying data (`getShowRankingDisplay` per show), just surfaced one level
    up. Purely additive, no design decision needed.
-8. **"Date ranked" next to each episode's name on the show page** — added 2026-07-17. No schema
+7. **"Date ranked" next to each episode's name on the show page** — added 2026-07-17. No schema
     change needed: `episode_rankings.created_at` already means exactly this — it's set once, the
     first time a row exists for that episode (its first cold-start judgment, or the day it was
     first comparatively placed), and survives untouched through later position-shuffling upserts
@@ -78,11 +74,9 @@ this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of t
 in Bucket 4, rather than being done piecemeal now.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **TMDB genres on the show page, built 2026-07-18, not yet hands-on tested.** Existing shows won't
-   show genres until re-imported (the migration doesn't backfill) — check by adding a new show or
-   removing/re-adding an existing one, then confirm the genre line appears under the title and reads
-   sensibly. Also implicitly re-confirms the season-poster feature's unverified TMDB-response-shape
-   assumption, since both ride the same show-details/season-details fetch path.
+1. **Privacy notice page, built 2026-07-18, not yet hands-on checked.** Low-priority (static content
+   page, nothing functional to break) — just confirm the footer's "Privacy" link works from a
+   signed-out page too (e.g. `/login`), not only while signed in.
 2. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
    list (auth, search/import, dashboard, show detail page, the rankings page, cold start,
    comparative placement, re-ranking, removing a show all confirmed working end to end). What's
@@ -225,6 +219,14 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-18: Kayvan hands-on confirmed genres working on live Vercel ("I see the genre there. Look
+  good."). Gave the privacy notice's content directly (email/password + ranking data collected;
+  Supabase/TMDB/Vercel as the three third parties) rather than leaving it to be invented. Built
+  directly (small enough not to need an agent): new static `/privacy` page plus a "Privacy" link
+  added to the site-wide footer next to the TMDB attribution notice (so it's reachable regardless of
+  auth state, matching that notice's own reasoning). Tests/typecheck/lint/build re-run fresh
+  (198/198), `/privacy` confirmed static in the build's route table. **This was the last item in
+  Bucket 1 — the bucket is now fully cleared, "Tier A" is next.**
 - 2026-07-18: Built and merged TMDB genres on the show page (new `shows.genres text[]`, migration
   `20260718010000_shows_genres.sql`, same null-vs-empty-array pattern as the season-poster migration)
   — a comma-separated genre line now renders under the show title when present. Implementer + PM
