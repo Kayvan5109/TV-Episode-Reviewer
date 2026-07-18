@@ -82,7 +82,12 @@ export async function importShowFromTmdb(tmdbShowId: number): Promise<ImportShow
   const { data: show, error: showError } = await supabase
     .from('shows')
     .upsert(
-      { tmdb_show_id: details.tmdbShowId, title: details.title, poster_url: details.posterUrl },
+      {
+        tmdb_show_id: details.tmdbShowId,
+        title: details.title,
+        poster_url: details.posterUrl,
+        genres: details.genres,
+      },
       { onConflict: 'tmdb_show_id' }
     )
     .select('id')

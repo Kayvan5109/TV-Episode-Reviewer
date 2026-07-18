@@ -28,6 +28,7 @@ export interface TmdbShowDetails {
   name: string;
   poster_path: string | null;
   number_of_seasons: number;
+  genres: { id: number; name: string }[];
 }
 
 /** Raw shape (subset) of one episode entry from GET /tv/{series_id}/season/{season_number}. */
@@ -71,4 +72,5 @@ export interface ShowDetails {
   title: string;
   posterUrl: string | null;
   numberOfSeasons: number;
+  genres: string[];
 }

@@ -96,7 +96,16 @@ describe('importShowFromTmdb', () => {
   it('fetches show details, upserts the show, loops over every season, and upserts all episodes', async () => {
     tmdbFetch.mockImplementation(async (path: string) => {
       if (path === '/tv/1396') {
-        return { id: 1396, name: 'Breaking Bad', poster_path: '/abc.jpg', number_of_seasons: 2 };
+        return {
+          id: 1396,
+          name: 'Breaking Bad',
+          poster_path: '/abc.jpg',
+          number_of_seasons: 2,
+          genres: [
+            { id: 18, name: 'Drama' },
+            { id: 80, name: 'Crime' },
+          ],
+        };
       }
       if (path === '/tv/1396/season/1') {
         return {
@@ -126,7 +135,12 @@ describe('importShowFromTmdb', () => {
 
     // Show upserted keyed on tmdb_show_id.
     expect(showsUpsert).toHaveBeenCalledWith(
-      { tmdb_show_id: 1396, title: 'Breaking Bad', poster_url: 'https://image.tmdb.org/t/p/w500/abc.jpg' },
+      {
+        tmdb_show_id: 1396,
+        title: 'Breaking Bad',
+        poster_url: 'https://image.tmdb.org/t/p/w500/abc.jpg',
+        genres: ['Drama', 'Crime'],
+      },
       { onConflict: 'tmdb_show_id' }
     );
 
@@ -165,7 +179,13 @@ describe('importShowFromTmdb', () => {
   });
 
   it('skips the episodes upsert entirely for a show with no seasons/episodes', async () => {
-    tmdbFetch.mockResolvedValue({ id: 5, name: 'Empty Show', poster_path: null, number_of_seasons: 0 });
+    tmdbFetch.mockResolvedValue({
+      id: 5,
+      name: 'Empty Show',
+      poster_path: null,
+      number_of_seasons: 0,
+      genres: [],
+    });
 
     const result = await importShowFromTmdb(5);
 
@@ -175,7 +195,13 @@ describe('importShowFromTmdb', () => {
   });
 
   it('throws a clear error if the show upsert fails', async () => {
-    tmdbFetch.mockResolvedValue({ id: 1, name: 'X', poster_path: null, number_of_seasons: 0 });
+    tmdbFetch.mockResolvedValue({
+      id: 1,
+      name: 'X',
+      poster_path: null,
+      number_of_seasons: 0,
+      genres: [],
+    });
     showsUpsertSingle.mockResolvedValue({ data: null, error: { message: 'boom' } });
 
     await expect(importShowFromTmdb(1)).rejects.toThrow(/Failed to upsert show/);
@@ -184,12 +210,29 @@ describe('importShowFromTmdb', () => {
   it('throws a clear error if the episodes upsert fails', async () => {
     tmdbFetch.mockImplementation(async (path: string) => {
       if (path === '/tv/1') {
-        return { id: 1, name: 'X', poster_path: null, number_of_seasons: 1 };
+        return { id: 1, name: 'X', poster_path: null, number_of_seasons: 1, genres: [] };
       }
       return { episodes: [{ id: 1, name: 'Ep', season_number: 1, episode_number: 1 }] };
     });
     episodesUpsert.mockResolvedValue({ data: null, error: { message: 'dup key' } });
 
     await expect(importShowFromTmdb(1)).rejects.toThrow(/Failed to upsert episodes/);
+  });
+
+  it('upserts an empty genres array as-is, not converted to null', async () => {
+    tmdbFetch.mockResolvedValue({
+      id: 7,
+      name: 'No Genres Show',
+      poster_path: null,
+      number_of_seasons: 0,
+      genres: [],
+    });
+
+    await importShowFromTmdb(7);
+
+    expect(showsUpsert).toHaveBeenCalledWith(
+      { tmdb_show_id: 7, title: 'No Genres Show', poster_url: null, genres: [] },
+      { onConflict: 'tmdb_show_id' }
+    );
   });
 });

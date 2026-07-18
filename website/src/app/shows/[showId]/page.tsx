@@ -20,6 +20,7 @@ interface ShowRow {
   id: string;
   title: string;
   poster_url: string | null;
+  genres: string[] | null;
 }
 
 interface EpisodeRow {
@@ -77,7 +78,7 @@ export default async function ShowDetailPage({
 
   const { data: show } = await supabase
     .from('shows')
-    .select('id, title, poster_url')
+    .select('id, title, poster_url, genres')
     .eq('id', showId)
     .maybeSingle();
 
@@ -138,6 +139,9 @@ export default async function ShowDetailPage({
             ) : null}
             <div className="flex flex-col gap-2">
               <h1 className="text-2xl font-semibold">{showRow.title}</h1>
+              {showRow.genres && showRow.genres.length > 0 && (
+                <p className="text-sm text-black/60 dark:text-white/60">{showRow.genres.join(', ')}</p>
+              )}
               {display && (
                 <p className="text-sm text-black/60 dark:text-white/60">
                   {(() => {
