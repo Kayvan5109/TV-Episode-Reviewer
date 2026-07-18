@@ -176,13 +176,7 @@ this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of t
 in Bucket 4, rather than being done piecemeal now.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **Ranking confidence score + display, built 2026-07-18, not yet hands-on checked.** Was Tier A
-   item 1 (base score only — see that item for the still-unbuilt smart-comparison-selection/live-
-   framing remainder). Confirm on a real show with a mix of decisive and neutral comparisons that
-   "Your {show} rankings are N% stable" renders sensibly near the existing percent-ranked line, is
-   absent for a show with nothing comparatively ranked yet, and that the number actually moves as
-   more comparisons get answered rather than staying static.
-2. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
+1. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
    design. Can't be meaningfully verified by just clicking around today (the 24h throttle means a
    freshly-imported show won't actually re-sync for a day), so the real check is patient rather than
    immediate: next time a tracked show is known to have a new episode/season on TMDB, confirm it
@@ -191,10 +185,7 @@ in Bucket 4, rather than being done piecemeal now.
    (check the `shows` table has a populated `last_synced_at` column) and that a show page still loads
    normally post-push (the added `ensureShowSynced` call is fail-open, so even a broken TMDB call
    shouldn't break the page — but confirm that's actually true live, not just in tests).
-3. **Privacy notice page, built 2026-07-18, not yet hands-on checked.** Low-priority (static content
-   page, nothing functional to break) — just confirm the footer's "Privacy" link works from a
-   signed-out page too (e.g. `/login`), not only while signed in.
-4. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
+2. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
    list (auth, search/import, dashboard, show detail page, the rankings page, cold start,
    comparative placement, re-ranking, removing a show all confirmed working end to end). What's
    genuinely still untested/unconfirmed, carried forward rather than chased right now:
@@ -445,6 +436,11 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-18: Same session, continued. Kayvan hands-on confirmed two of Bucket 2's three pending
+  items on live Vercel: the ranking confidence score displays and correctly updates as more
+  comparisons get answered, and the privacy page's footer link works. Both removed from Bucket 2. The
+  throttled TMDB re-sync remains genuinely untestable for now (24h throttle) — still pending, not
+  chased. Moving on to continue building the Tier A queue.
 - 2026-07-18: Fresh session, opened from the new `C:\Users\khoob\Projects\TV Episode Reviewer` path
   per the prior session's exact instructions. Confirmed the working directory, git remote, and
   status were all correct and clean before doing anything else. Found the leftover empty OneDrive
