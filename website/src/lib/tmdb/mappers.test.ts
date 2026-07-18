@@ -24,17 +24,41 @@ describe('mapShowSearchResult', () => {
 describe('mapSeasonEpisode', () => {
   it('reshapes a raw TMDB season episode into the app shape', () => {
     expect(
-      mapSeasonEpisode({
-        id: 62085,
-        name: 'Pilot',
-        season_number: 1,
-        episode_number: 1,
-      })
+      mapSeasonEpisode(
+        {
+          id: 62085,
+          name: 'Pilot',
+          season_number: 1,
+          episode_number: 1,
+        },
+        '/season-poster.jpg'
+      )
     ).toEqual({
       tmdbEpisodeId: 62085,
       seasonNumber: 1,
       episodeNumber: 1,
       title: 'Pilot',
+      seasonPosterUrl: 'https://image.tmdb.org/t/p/w500/season-poster.jpg',
+    });
+  });
+
+  it('leaves seasonPosterUrl null when TMDB has no poster_path for the season', () => {
+    expect(
+      mapSeasonEpisode(
+        {
+          id: 62086,
+          name: 'No Poster Episode',
+          season_number: 1,
+          episode_number: 2,
+        },
+        null
+      )
+    ).toEqual({
+      tmdbEpisodeId: 62086,
+      seasonNumber: 1,
+      episodeNumber: 2,
+      title: 'No Poster Episode',
+      seasonPosterUrl: null,
     });
   });
 });

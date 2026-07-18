@@ -22,12 +22,22 @@ export function mapShowSearchResult(result: TmdbTvSearchResult): ShowSearchResul
   };
 }
 
-export function mapSeasonEpisode(episode: TmdbSeasonEpisode): EpisodeSummary {
+/**
+ * `seasonPosterPath` is the season-level `poster_path` from the same `TmdbSeasonResponse` this
+ * episode came from (a sibling of the response's `episodes` array, not part of `episode` itself) —
+ * every episode in a season shares it, so callers pass it once per season rather than it living on
+ * `TmdbSeasonEpisode`.
+ */
+export function mapSeasonEpisode(
+  episode: TmdbSeasonEpisode,
+  seasonPosterPath: string | null
+): EpisodeSummary {
   return {
     tmdbEpisodeId: episode.id,
     seasonNumber: episode.season_number,
     episodeNumber: episode.episode_number,
     title: episode.name,
+    seasonPosterUrl: posterUrlFromPath(seasonPosterPath),
   };
 }
 

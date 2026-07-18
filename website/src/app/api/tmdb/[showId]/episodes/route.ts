@@ -36,7 +36,9 @@ export async function GET(
 
   try {
     const data = await tmdbFetch<TmdbSeasonResponse>(`/tv/${showId}/season/${season}`);
-    return NextResponse.json({ episodes: data.episodes.map(mapSeasonEpisode) });
+    return NextResponse.json({
+      episodes: data.episodes.map((episode) => mapSeasonEpisode(episode, data.poster_path)),
+    });
   } catch (error) {
     const { status, body } = tmdbErrorBody(error);
     return NextResponse.json(body, { status });

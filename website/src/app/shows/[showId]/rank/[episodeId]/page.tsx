@@ -28,10 +28,33 @@ interface EpisodeRow {
   season_number: number;
   episode_number: number;
   title: string;
+  season_poster_url: string | null;
 }
 
 function formatEpisode(episode: EpisodeRow): string {
   return `S${episode.season_number}E${episode.episode_number} — ${episode.title}`;
+}
+
+/**
+ * Small season-poster thumbnail shown next to an episode's label on the comparison screen.
+ * Smaller than the show-page poster (`width={92} height={138}`) since this screen shows two
+ * side by side with text — renders nothing for episodes with no `season_poster_url` (imported
+ * before this column existed, or a season TMDB has no poster for).
+ */
+function SeasonPoster({ episode }: { episode: EpisodeRow }) {
+  if (!episode.season_poster_url) {
+    return null;
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- external TMDB CDN image.
+    <img
+      src={episode.season_poster_url}
+      alt=""
+      width={60}
+      height={90}
+      className="h-[90px] w-[60px] rounded object-cover"
+    />
+  );
 }
 
 /**
@@ -81,7 +104,7 @@ export default async function RankEpisodePage({
 
   const { data: episodesData, error: episodesError } = await supabase
     .from('episodes')
-    .select('id, season_number, episode_number, title')
+    .select('id, season_number, episode_number, title, season_poster_url')
     .eq('show_id', showId)
     .order('season_number', { ascending: true })
     .order('episode_number', { ascending: true });
@@ -159,10 +182,13 @@ async function RankEpisodeStep({
     const referenceLabel = reference ? formatEpisode(reference) : step.reference;
     stepContent = (
       <div className="flex w-full max-w-2xl flex-col items-center gap-4">
-        <p className="text-center text-lg">
-          Compared to <span className="font-medium">{referenceLabel}</span>, is this episode
-          better, worse, or about the same?
-        </p>
+        <div className="flex items-center justify-center gap-3">
+          {reference && <SeasonPoster episode={reference} />}
+          <p className="text-center text-lg">
+            Compared to <span className="font-medium">{referenceLabel}</span>, is this episode
+            better, worse, or about the same?
+          </p>
+        </div>
         <ComparisonPrompt showId={showId} subjectId={episodeId} referenceId={step.reference} />
       </div>
     );
@@ -170,7 +196,10 @@ async function RankEpisodeStep({
 
   return (
     <div className="flex w-full max-w-2xl flex-col items-center gap-4">
-      <p className="text-lg font-medium">{formatEpisode(episode)}</p>
+      <div className="flex items-center justify-center gap-3">
+        <SeasonPoster episode={episode} />
+        <p className="text-lg font-medium">{formatEpisode(episode)}</p>
+      </div>
       {stepContent}
     </div>
   );

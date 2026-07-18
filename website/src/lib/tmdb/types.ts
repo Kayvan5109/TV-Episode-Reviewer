@@ -38,9 +38,13 @@ export interface TmdbSeasonEpisode {
   episode_number: number;
 }
 
-/** Raw shape (subset) of the GET /tv/{series_id}/season/{season_number} response. */
+/**
+ * Raw shape (subset) of the GET /tv/{series_id}/season/{season_number} response. `poster_path` is
+ * the season's own poster (not per-episode) — a sibling field to `episodes`, not nested inside it.
+ */
 export interface TmdbSeasonResponse {
   episodes: TmdbSeasonEpisode[];
+  poster_path: string | null;
 }
 
 /** App-facing shape for a show search result — maps to the `shows` table's columns. */
@@ -56,6 +60,9 @@ export interface EpisodeSummary {
   seasonNumber: number;
   episodeNumber: number;
   title: string;
+  // Same season poster URL duplicated onto every episode in the season — see
+  // supabase/migrations/20260718000000_episode_season_poster.sql for why this isn't normalized.
+  seasonPosterUrl: string | null;
 }
 
 /** App-facing shape for a show's details — maps to the `shows` table's columns, plus season count. */

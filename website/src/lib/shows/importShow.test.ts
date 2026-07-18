@@ -52,8 +52,14 @@ describe('toEpisodeRows', () => {
   it('maps episode summaries into episodes-table insert rows for the given show id', () => {
     expect(
       toEpisodeRows('show-uuid', [
-        { tmdbEpisodeId: 1, seasonNumber: 1, episodeNumber: 1, title: 'Pilot' },
-        { tmdbEpisodeId: 2, seasonNumber: 1, episodeNumber: 2, title: 'Cat' },
+        {
+          tmdbEpisodeId: 1,
+          seasonNumber: 1,
+          episodeNumber: 1,
+          title: 'Pilot',
+          seasonPosterUrl: 'https://image.tmdb.org/t/p/w500/season1.jpg',
+        },
+        { tmdbEpisodeId: 2, seasonNumber: 1, episodeNumber: 2, title: 'Cat', seasonPosterUrl: null },
       ])
     ).toEqual([
       {
@@ -62,6 +68,7 @@ describe('toEpisodeRows', () => {
         season_number: 1,
         episode_number: 1,
         title: 'Pilot',
+        season_poster_url: 'https://image.tmdb.org/t/p/w500/season1.jpg',
       },
       {
         show_id: 'show-uuid',
@@ -69,6 +76,7 @@ describe('toEpisodeRows', () => {
         season_number: 1,
         episode_number: 2,
         title: 'Cat',
+        season_poster_url: null,
       },
     ]);
   });
@@ -92,6 +100,7 @@ describe('importShowFromTmdb', () => {
       }
       if (path === '/tv/1396/season/1') {
         return {
+          poster_path: '/season1.jpg',
           episodes: [
             { id: 100, name: 'Pilot', season_number: 1, episode_number: 1 },
             { id: 101, name: 'Cat', season_number: 1, episode_number: 2 },
@@ -100,6 +109,7 @@ describe('importShowFromTmdb', () => {
       }
       if (path === '/tv/1396/season/2') {
         return {
+          poster_path: null,
           episodes: [{ id: 200, name: 'Season 2 Ep 1', season_number: 2, episode_number: 1 }],
         };
       }
@@ -125,14 +135,29 @@ describe('importShowFromTmdb', () => {
     const [rows, options] = episodesUpsert.mock.calls[0];
     expect(options).toEqual({ onConflict: 'tmdb_episode_id' });
     expect(rows).toEqual([
-      { show_id: 'show-uuid', tmdb_episode_id: 100, season_number: 1, episode_number: 1, title: 'Pilot' },
-      { show_id: 'show-uuid', tmdb_episode_id: 101, season_number: 1, episode_number: 2, title: 'Cat' },
+      {
+        show_id: 'show-uuid',
+        tmdb_episode_id: 100,
+        season_number: 1,
+        episode_number: 1,
+        title: 'Pilot',
+        season_poster_url: 'https://image.tmdb.org/t/p/w500/season1.jpg',
+      },
+      {
+        show_id: 'show-uuid',
+        tmdb_episode_id: 101,
+        season_number: 1,
+        episode_number: 2,
+        title: 'Cat',
+        season_poster_url: 'https://image.tmdb.org/t/p/w500/season1.jpg',
+      },
       {
         show_id: 'show-uuid',
         tmdb_episode_id: 200,
         season_number: 2,
         episode_number: 1,
         title: 'Season 2 Ep 1',
+        season_poster_url: null,
       },
     ]);
 
