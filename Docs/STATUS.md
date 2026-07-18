@@ -71,14 +71,29 @@ front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
    already stored (`episode_comparisons` plus existing derived scores), nothing new to fetch. Tier
    lists specifically are confirmed **auto-generated only** — no manual user editing/override, decided
    2026-07-18.
-4. **Richer comparison screen**: episode synopsis + cast shown alongside each side. Needs a bit
-   more TMDB plumbing than the others (episode-level synopsis and cast credits aren't imported
-   today) — scope this properly before starting rather than assuming it's as small as item 1.
-   **Note added 2026-07-18**: this needs almost exactly the same TMDB plumbing gap as item 9 (episode
-   pages) below — episode-level `overview`/`still_path`/credits aren't imported today for either
-   feature. Whichever of the two gets built first should knock out most of the other's data-layer
-   work; worth building them close together rather than independently re-deriving the same plumbing
-   twice.
+4. **Richer comparison screen — fully spec'd 2026-07-18, ready to build.** Two-column layout: the
+   episode being placed (`subject`) on the left, the episode it's being compared against
+   (`reference`) on the right — replacing the current stacked layout (`rank/[episodeId]/page.tsx`'s
+   `RankEpisodeStep`, where `subject` is shown alone at the top and `reference` is mentioned inline
+   in a sentence next to a small 60x90 thumbnail). Each side, top to bottom: the episode's season
+   poster art, shown prominently (larger than the current small comparison-screen thumbnail — the
+   implementer should pick concrete dimensions that read as a real focal point, not a thumbnail;
+   confirm the look hands-on rather than matching an exact prescribed size), then season/episode
+   number + title underneath, then the episode's synopsis underneath that. The existing
+   better/worse/"about the same" control (`ComparisonPrompt`) sits between the two columns — its
+   middle button's *label* changes from "About the same" to **"I can't decide"** specifically in
+   comparative mode (the underlying `neutral` result value is unchanged, this is a display-only
+   relabel). `ColdStartPicker`'s separate "Neutral" bucket button is untouched — cold start still
+   says "Neutral," this relabel is comparative-mode-only, confirmed explicitly.
+   Cast is deliberately **not** part of this screen's v1 (Kayvan's spec doesn't include it) — stays
+   scoped to item 9 (episode pages) instead, which needs a per-episode credits call regardless.
+   Synopsis needs one new nullable column (`episodes.synopsis`, same pattern as
+   `season_poster_url`/`genres`) populated from TMDB's season-endpoint `overview` field — already
+   fetched by `importShowFromTmdb` today, just not persisted, so **no new TMDB call needed**, same
+   "map a field we already have" story as the finale flag and episode stills noted under item 9.
+   Classified as feel-based UI + a trivial additive migration (not correctness-critical) — gets the
+   same treatment as the season-poster-art work (implementer + direct PM review, hands-on check
+   after), not the full independent-reviewer pipeline.
 5. **Collections** — user-created private lists of episodes across shows (e.g. "Best Pilot
    Episodes"). Independent of the rest of this batch, can slot in anywhere. Keep to private-only
    for now — a *shareable* version needs public-link infrastructure that doesn't exist yet (see
