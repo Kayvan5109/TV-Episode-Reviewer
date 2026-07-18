@@ -44,6 +44,7 @@ export interface EpisodeInsertRow {
   season_number: number;
   episode_number: number;
   title: string;
+  season_poster_url: string | null;
 }
 
 /**
@@ -58,6 +59,7 @@ export function toEpisodeRows(showId: string, episodes: EpisodeSummary[]): Episo
     season_number: episode.seasonNumber,
     episode_number: episode.episodeNumber,
     title: episode.title,
+    season_poster_url: episode.seasonPosterUrl,
   }));
 }
 
@@ -97,7 +99,9 @@ export async function importShowFromTmdb(tmdbShowId: number): Promise<ImportShow
 
   for (const season of seasons) {
     const rawSeason = await tmdbFetch<TmdbSeasonResponse>(`/tv/${tmdbShowId}/season/${season}`);
-    allEpisodes.push(...rawSeason.episodes.map(mapSeasonEpisode));
+    allEpisodes.push(
+      ...rawSeason.episodes.map((episode) => mapSeasonEpisode(episode, rawSeason.poster_path))
+    );
   }
 
   if (allEpisodes.length > 0) {

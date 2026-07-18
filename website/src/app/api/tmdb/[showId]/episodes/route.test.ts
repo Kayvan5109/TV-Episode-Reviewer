@@ -56,6 +56,7 @@ describe('GET /api/tmdb/[showId]/episodes', () => {
       overview: '',
       id: 3572,
       season_number: 1,
+      poster_path: '/season1.jpg',
       episodes: [
         {
           id: 62085,
@@ -94,12 +95,19 @@ describe('GET /api/tmdb/[showId]/episodes', () => {
     const body = await response.json();
     expect(body).toEqual({
       episodes: [
-        { tmdbEpisodeId: 62085, seasonNumber: 1, episodeNumber: 1, title: 'Pilot' },
+        {
+          tmdbEpisodeId: 62085,
+          seasonNumber: 1,
+          episodeNumber: 1,
+          title: 'Pilot',
+          seasonPosterUrl: 'https://image.tmdb.org/t/p/w500/season1.jpg',
+        },
         {
           tmdbEpisodeId: 62086,
           seasonNumber: 1,
           episodeNumber: 2,
           title: "Cat's in the Bag...",
+          seasonPosterUrl: 'https://image.tmdb.org/t/p/w500/season1.jpg',
         },
       ],
     });
