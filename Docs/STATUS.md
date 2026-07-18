@@ -70,6 +70,22 @@ front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
     next to the episode title — for both fully-ranked and cold-start-pending episodes (anything with
     an `episode_rankings` row at all), not shown for untouched ones. Small, self-contained, no design
     decision needed.
+8. **Show each episode's numeric rank position next to its score** — added 2026-07-18, Kayvan's
+   request. E.g. "8.7 (#3)" rather than just "8.7". No schema/persistence change: `getShowRankingDisplay`
+   (`ranking-session/session.ts`) already computes this — both places it builds a `ranked` array
+   (`session.ts` lines ~485 and ~499) do `order.map((episodeId, index) => ({ ..., score:
+   scoreForPosition(index + 1, order.length) }))`; `index + 1` *is* the rank position, already
+   computed and immediately discarded. Just add a `rank: index + 1` field alongside `score` in both
+   places (and in `ShowRankingDisplay`'s type, both the `done: true` and `done: false` branches), then
+   render it in the two places scores already show: the per-episode list on `/shows/[showId]`
+   (`shows/[showId]/page.tsx`, next to the existing `score.toFixed(1)`) and the best-to-worst list on
+   `/shows/[showId]/rankings` (`shows/[showId]/rankings/page.tsx`) — check that second file's current
+   structure before assuming it needs the field added the same way, it may already imply rank via
+   list position and just need the explicit number surfaced. Cold-start-pending episodes (shown via
+   `coldStartPending`, not `ranked`) have no rank position yet — don't show one for those, same as
+   they don't show a score. Small, self-contained, no design decision needed — implementer + PM
+   review, not the full algorithm-level rigor (this is a pure display of an already-correct value,
+   not a change to how rank positions are computed).
 
 Dark mode + per-show accent theming (also proposed in the same review) is **deliberately not in
 this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of the visual-design pass
