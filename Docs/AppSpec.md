@@ -515,3 +515,145 @@ B's community aggregates use.
 **New surface**: a small achievements section (dashboard or its own `/achievements` page) showing
 unlocked (with the date) and locked (grayed out, with a hint of what unlocks it) achievements, plus
 a streak indicator somewhere prominent like the dashboard header.
+
+## Second Design Review — Triage (2026-07-18, not committed, not scheduled)
+
+Kayvan brought a second large, independently-written idea list (episode pages, an Elo/Glicko pitch,
+"smart comparison selection," spoiler mode, community/discoverability slicing, season/character
+rankings, visualization, AI features, import, and a "things I'd avoid" principles list). Went through
+it live, idea by idea, rather than triaging it unilaterally like the first review — see `STATUS.md`
+History 2026-07-18 for the session-level summary; this section is the durable record of what was
+decided. Where this list re-proposed something already decided in the first review (Elo/Glicko,
+swipe-mode ranking, notifications), the prior decision was explicitly re-confirmed, not silently
+assumed to still hold.
+
+**Decided: build (real, scoped, not yet scheduled — goes through normal Tier A/backlog triage from
+here)**
+
+- **Episode pages** — a genuinely new page (`/shows/[showId]/episodes/[episodeId]` or similar,
+  exact route TBD at build time) that doesn't exist today; episodes currently only appear as list
+  rows on the show page. Scope, cheapest-to-most-expensive:
+  - **Cheap, mostly "map data we already fetch but discard"**: title, season/episode number, air
+    date, synopsis, and an episode-level still image — TMDB's season endpoint (already called by
+    `importShowFromTmdb`) returns a per-episode `overview` and `still_path` today that the app
+    currently ignores, only pulling the season-level poster.
+  - **A season finale flag** — approved as a *derived*, not tagged, fact: an episode is a season
+    finale if it has the highest episode number in its season, and that season is definitely over —
+    either a later season already exists (`season_number < show.numberOfSeasons`) or this is the
+    last season and the show's TMDB `status` is `Ended`/`Canceled`. Deliberately never flags the
+    newest episode of a still-airing season. No new TMDB call, no new column strictly needed
+    (computable at read time from data already imported) — the general principle this established
+    (structural/derivable facts are cheap and fair game; subjective content judgments like "bottle
+    episode" need manual tagging and don't scale for a solo project) shaped several of the rejections
+    below.
+  - **A personal win/loss record per episode** — free today, a pure read over the already-existing
+    `episode_comparisons` table, no schema change.
+  - **Director/writer/cast** — needs a new per-episode TMDB credits call (not part of the season
+    response already fetched). Real but bounded scope. **Overlaps existing Tier A item 4** ("richer
+    comparison screen: episode synopsis + cast") almost exactly — same TMDB plumbing gap, same fix.
+    Whichever of the two gets built first should knock out most of the other's data-layer work.
+  - **IMDb/RT/Metacritic links and streaming availability** — real but separate scope: TMDB has an
+    IMDb id but not Rotten Tomatoes/Metacritic scores (would need a separate API or just outbound
+    search links); streaming availability needs TMDB's watch-providers endpoint, a new call type,
+    country-dependent. Treat as optional later phases of episode pages, not required for v1.
+  - **Average community ranking / rating distribution** — blocked on Tier B (community rank
+    aggregates) existing; not buildable standalone.
+- **Smart comparison selection** — asking about the pair of episodes that would most reduce ranking
+  uncertainty, instead of a plain "what's next in the search" question. Builds directly on the
+  ranking-confidence formula (Tier A item 2, see `DevelopmentPlan.md`'s Discussion section) rather
+  than requiring an algorithm swap — sequence it as a follow-on to that item, not standalone.
+  "Rivalry matchups" and "is this actually top 5" framing ideas fold into the same mechanism as UI
+  flavor, not new infra.
+- **The "wow feature"** (live "your Top 10 is 92% stable," "one comparison away from confidently
+  separating #4 and #5") — this is confidence-score + smart-comparison-selection combined with live
+  framing, not a separate feature. PM judgment call (Kayvan deferred to it explicitly): elevate this
+  to the *flagship* framing of Tier A item 2 when it's actually built, given how much Kayvan singled
+  it out as the single most exciting idea in the whole list.
+- **Tier A item 3 (statistics view) gains four concrete additions**, all cheap because they're pure
+  visualizations over data the app already stores, nothing new to fetch or compute from scratch:
+  a comparison/relationship graph (`episode_comparisons` visualized directly), a win/loss matrix
+  (every matchup, same source data), a season-quality heatmap (existing derived scores, grouped by
+  season), and a "gatekeeper episode" stat (the single biggest score gap between adjacent episodes in
+  a user's own ranked list — the point a show's ranking drops from "good" to "great"). Tier lists
+  (already part of item 3) are confirmed **auto-generated only** — Kayvan explicitly declined letting
+  users manually override/edit a generated tier list.
+- **Season rankings** — ranking whole seasons against each other, not just episodes within a show.
+  Feasible by reusing the existing binary-insertion engine at a different granularity (season instead
+  of episode) rather than needing new algorithm work; the real scope is a new comparison UI flow.
+  Added to `STATUS.md` Bucket 4 backlog as a real future item, not scheduled.
+- **Import** (IMDb ratings, Letterboxd-style exports, TV Time, Trakt, streaming watch history) — real
+  third-party integration work, one per service, each with its own auth/API shape. Added to
+  `STATUS.md` Bucket 4 backlog; whenever picked up, start with one service, not all of them at once.
+- **Spoiler mode** — how far a user has watched a show, hiding titles/rankings/descriptions past that
+  point. Confirmed as a real, currently-unaddressed gap (nothing today prevents seeing a whole show's
+  ranked episode list regardless of watch progress), but deliberately **backlogged, not built now**
+  (Kayvan: "ignore for now"). Flagged for whenever it is picked up: this needs the same
+  implementer-then-independent-reviewer rigor as auth/persistence work, not a quick UI pass — a
+  spoiler-protection feature that's only partially airtight (missing one of the surfaces that could
+  leak a title/ranking) is worse than not having the feature at all, because it creates false trust.
+
+**Reconfirmed from the first review (this list re-proposed them independently; the original
+decision stands, not silently, but re-checked and explicitly upheld)**:
+- **Elo/Glicko ranking-algorithm swap — still declined.** No new argument for it appeared in this
+  second pitch beyond restating Elo/Glicko's generic benefits, all of which the existing
+  binary-insertion-plus-confidence-score design already delivers without an approximate, never-
+  finishing rating in place of exact placement. See `DevelopmentPlan.md`'s Ranking Algorithm section.
+- **Fast/swipe ranking mode — still declined**, same Tier C reasoning as 2026-07-17.
+- **Notifications / weekly recap — still declined**, same Tier C reasoning as 2026-07-17.
+
+**Declined (new rejections from this session, with reasoning, so they're not silently re-proposed
+again later without someone re-deriving the same reasoning from scratch)**:
+- **Character rankings** (villains, relationships, deaths, monologues, plot twists) — same wall as
+  the item below: "villain," "death," "best monologue" are editorial judgments TMDB doesn't encode,
+  would need per-show manual curation to even populate the list of rankable things. Already actually
+  covered by the *first* review's Tier C ("character/villain/scene/quote/music/director rankings"),
+  just independently re-proposed here and re-declined for the same reason.
+- **Curated/canonical collections** (official "best bottle episodes," "greatest finales," "best
+  musical episodes," etc., as opposed to Tier A item 5's *private user* collections) — declined as a
+  whole category, including the subset (finale- and premiere-based collections) that the finale-flag
+  precedent would have made technically feasible; Kayvan chose to drop the entire category rather
+  than carve out the feasible slice.
+- **General episode-type/theme tagging for community-ranking slices** ("top bottle episodes," "top
+  holiday episodes," "best courtroom episodes," location/theme/quote search) — same
+  structural-vs-subjective wall: no scalable, non-manual data source. The one exception carved out is
+  the finale flag (see above), which is derivable, not tagged.
+- **Taste profile** ("you value dialogue over spectacle") — would need episode-level content-attribute
+  tagging the app has no source for; the rest of Personal Stats & Recap derives entirely from ranking
+  *position* data already available, this piece doesn't.
+- **Favorite moments** (a user's own short note per episode — distinct from the trivia/quotes idea
+  below, since this is the user's own opinion, not a claim about the show) and **trivia/quotes/best
+  screenshots/soundtrack/behind-the-scenes content** (canonical, TMDB doesn't have it, would need
+  manual curation or an LLM with real accuracy risk for something like an exact quote) — both
+  declined, the latter explicitly ("let's drop the trivia/quotes/screenshots entirely").
+- **Rewatch mode / "ranking movement over time"** — would require storing historical score/position
+  snapshots, reversing a deliberate existing design choice that scores are always derived fresh from
+  current state, never persisted as history (one source of truth, no drift risk). Declined as
+  premature for a single-user app without enough ranking history yet for "movement over time" to mean
+  anything, not declined as a bad idea forever.
+- **Episode-level recommendation engine and AI features** (summarize taste in prose, predict a rating
+  before watching, explain disagreements) — split on cost profile before declining both: a
+  recommendation engine could technically be pure statistics (similar comparison patterns) with no
+  ongoing cost, while genuine AI features need a real LLM in the loop with per-call API cost, which
+  this project's rule requires an explicit spend go-ahead for, not a wishlist triage decision. Both
+  declined for now regardless of the cost-profile difference.
+- **Discussion / comments / polls** ("theories," "analysis," "live reactions," "which ending was
+  better" polls) — would have folded into Tier B's already-designed `episode_comments`, but declined
+  outright rather than backlogged. Kayvan's stated reasoning: moderation burden — any place where
+  other users can post free-form content is an ongoing moderation responsibility for a solo developer
+  with no moderation tooling or process, not a one-time build cost. Worth remembering if Tier B
+  (comments specifically, not the rest of the social layer) is ever revisited.
+- **"Draft mode"** (mark loved/liked/okay/didn't like while actively watching, refine into a real
+  ranking later) — not rejected so much as recognized as **already effectively built**: this is
+  functionally what cold-start liked/disliked/neutral bucketing already does. Kayvan confirmed no
+  separate feature is needed ("keep as is").
+
+**Explicitly not written down as a new guardrails section**: the list's "things I'd avoid" principles
+(binary comparisons over a numeric primary scale, no ads/engagement-bait/mandatory-reviews/
+complicated-onboarding) were reviewed and found to already match this project's existing posture
+throughout — Kayvan confirmed no new document needed ("we have that covered already").
+
+**Differentiators list** (most-common-#1, most polarizing, rises most on rewatch, strongest season
+average, outperforms IMDb among fans) — not tracked as a separate initiative; each one is just a
+future query on top of infrastructure already in the backlog (Tier B for the community-aggregate
+ones, rewatch history for the rewatch one, Import for the IMDb one), worth remembering once those
+prerequisites exist rather than scheduling now.

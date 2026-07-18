@@ -72,6 +72,10 @@ understanding, most-resolved-first:
    a real stopping point. Same underlying reasoning as the exhaustive/fixed-sample rejection above.
    The proposal's actually-good underlying idea — a "ranking confidence" signal — doesn't require
    Elo at all; see Discussion below for a concrete way to compute it on top of the existing algorithm.
+   **Independently re-proposed and re-declined 2026-07-18** (a second, separately-written idea list
+   raised it again without a new argument) — see `AppSpec.md`'s "Second Design Review — Triage" for
+   the full record. Treat any *future* re-proposal the same way: re-check against this reasoning
+   rather than assuming past rejections still hold unquestioned, but this reasoning hasn't changed.
 
 ## Discussion — Ideas & Open Questions to Work Out Together
 
@@ -144,6 +148,16 @@ somewhat arbitrary lower-confidence situation the v1 formula can't see, since th
 doesn't currently record *how* an episode's final placement was reached, only what comparisons
 happened. Capturing that would mean a real (if small) algorithm/schema change — worth a v2 once the
 simple version is live and its rough edges are felt in practice, not before.
+
+**Expansion decided 2026-07-18, not yet built**: once this confidence signal exists, two more
+pieces build directly on it rather than needing separate design — full detail in `AppSpec.md`'s
+"Second Design Review — Triage": (1) **smart comparison selection** — instead of asking whatever
+comparison the binary-insertion search would ask next regardless of how informative it is, identify
+and prioritize the pending comparison that would reduce uncertainty the most; (2) framing this live
+("your Top 10 is 92% stable," "one comparison away from confidently separating #4 and #5") is the
+flagship presentation of the whole confidence feature — Kayvan singled this out as the single most
+exciting idea across both design reviews, so when this item actually gets built, lead with that
+framing rather than a plain static percentage.
 
 ### Decided 2026-07-17, built 2026-07-18: small shows skip cold-start bucketing after episode 1
 

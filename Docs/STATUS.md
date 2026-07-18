@@ -17,12 +17,24 @@ Investigated first rather than assuming: confirmed a real, previously-unflagged 
 episode list was imported from TMDB exactly once, at add-time, and never refreshed, so new
 seasons/episodes airing later were silently never picked up by either "My Shows" or the show page.
 Not in `CriticalReview.md`, not anywhere in this file's prior History — genuinely new. Built,
-reviewed, merged, and pushed a fix the same session (throttled 24h auto-resync) — see History. Tier
-A (below) and `CriticalReview.md`'s open findings are both still exactly where the last session left
-them — this session's work was additive, not a continuation of that queue. The worktree-isolation
-bug (3 of 6 dispatches producing no real isolation, previous session) is still un-investigated — see
-Deviations Awaiting Review. This session's own agent dispatches (2 of 2) both got real, registered
-worktrees — no new data point either way on root cause, just no recurrence this time.
+reviewed, merged, and pushed a fix the same session (throttled 24h auto-resync) — see History. The
+worktree-isolation bug (3 of 6 dispatches producing no real isolation, previous session) is still
+un-investigated — see Deviations Awaiting Review. This session's own agent dispatches (2 of 2) both
+got real, registered worktrees — no new data point either way on root cause, just no recurrence this
+time.
+
+Same session, continued: Kayvan brought a second large, independently-written idea list (~30 items —
+episode pages, an Elo/Glicko pitch, spoiler mode, community/discoverability slicing, season/character
+rankings, visualization, AI features, import, a "things I'd avoid" list). Went through it live,
+cluster by cluster, deciding each rather than triaging unilaterally — full durable record in
+`AppSpec.md`'s new "Second Design Review — Triage" section, with Tier A items 2/3/4 expanded and item
+9 (episode pages) added here as a result, plus 3 new Bucket 4 backlog items (season rankings, import,
+spoiler mode) and a real batch of explicit declines (character rankings, curated collections,
+episode-type/theme tagging, taste profile, favorite moments/trivia content, rewatch mode, AI
+features/recommendation engine, discussion/comments/polls, draft mode as a separate feature). Design/
+discussion only, nothing built yet — Tier A (still queued from before, now with items 2/3/4/9 having
+more scope than when originally written) and `CriticalReview.md`'s open findings are both still where
+they were; this was purely additive planning work layered on top, not a continuation into building.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -43,14 +55,30 @@ front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
    the review. Concrete v1 formula already written up in `DevelopmentPlan.md` (decisive-comparison
    count relative to `log2(showEpisodeCount)`, no schema changes needed) — read that before
    building, it also documents a known v1 limitation (doesn't yet detect tie-break-fallback
-   placements) that's deliberately not being solved yet.
+   placements) that's deliberately not being solved yet. **Expanded 2026-07-18** (second design
+   review, see `AppSpec.md`'s "Second Design Review — Triage"): this item now also covers **smart
+   comparison selection** (prioritize whichever pending comparison would reduce uncertainty the
+   most, instead of just the next comparison the search would ask anyway) and should lead with the
+   **live "you're one comparison away from confidently separating #4 and #5" framing** as the
+   flagship presentation — Kayvan's single most-wanted idea across both design reviews, build this
+   framing first rather than a plain static percentage.
 3. **Statistics view + alternate visualizations** of a show's existing rankings (e.g. a tier list,
    heatmap, or season timeline) — sequence after item 2, since "most/least confident episode" is a
    natural stat once confidence exists. Purely additive over data `getShowRankingDisplay` already
-   computes; no new persistence logic.
+   computes; no new persistence logic. **Expanded 2026-07-18**: also covers a comparison/relationship
+   graph, a win/loss matrix (every matchup), a season-quality heatmap, and a "gatekeeper episode" stat
+   (biggest score gap between adjacent ranked episodes) — all cheap, pure visualizations over data
+   already stored (`episode_comparisons` plus existing derived scores), nothing new to fetch. Tier
+   lists specifically are confirmed **auto-generated only** — no manual user editing/override, decided
+   2026-07-18.
 4. **Richer comparison screen**: episode synopsis + cast shown alongside each side. Needs a bit
    more TMDB plumbing than the others (episode-level synopsis and cast credits aren't imported
    today) — scope this properly before starting rather than assuming it's as small as item 1.
+   **Note added 2026-07-18**: this needs almost exactly the same TMDB plumbing gap as item 9 (episode
+   pages) below — episode-level `overview`/`still_path`/credits aren't imported today for either
+   feature. Whichever of the two gets built first should knock out most of the other's data-layer
+   work; worth building them close together rather than independently re-deriving the same plumbing
+   twice.
 5. **Collections** — user-created private lists of episodes across shows (e.g. "Best Pilot
    Episodes"). Independent of the rest of this batch, can slot in anywhere. Keep to private-only
    for now — a *shareable* version needs public-link infrastructure that doesn't exist yet (see
@@ -90,6 +118,18 @@ front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
    they don't show a score. Small, self-contained, no design decision needed — implementer + PM
    review, not the full algorithm-level rigor (this is a pure display of an already-correct value,
    not a change to how rank positions are computed).
+9. **Episode pages** — added 2026-07-18 from the second design review (see `AppSpec.md`'s "Second
+   Design Review — Triage" for the full breakdown). Episodes currently only exist as list rows on the
+   show page; this is a genuinely new `/shows/[showId]/episodes/[episodeId]`-style route (exact path
+   TBD at build time). Build in the cheap-first order the triage laid out: (a) title/season-episode/
+   air-date/synopsis/episode-still — mostly mapping TMDB season-endpoint fields (`overview`,
+   `still_path`) the app already fetches but currently discards; (b) the season finale flag (derived,
+   not tagged — see the triage doc for the exact rule); (c) a personal win/loss record per episode
+   (free read over the existing `episode_comparisons` table); (d) director/writer/cast, which needs a
+   new per-episode TMDB credits call — do this alongside item 4 above, same underlying data gap.
+   IMDb/RT/Metacritic links and streaming availability are optional later phases, not v1. Average
+   community ranking and rating distribution are explicitly out of scope until Tier B (the social
+   layer) exists.
 
 Dark mode + per-show accent theming (also proposed in the same review) is **deliberately not in
 this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of the visual-design pass
@@ -178,6 +218,21 @@ see Bucket 4.)
    an already-recorded answer is the re-ranking feature, not an accidental stale resubmit), but a
    brief "this was already ranked, nothing changed" message instead of a silent redirect would be a
    nice small polish. Not urgent enough to build now.
+11. **Season rankings** — added 2026-07-18 from the second design review (see `AppSpec.md`'s "Second
+    Design Review — Triage"). Ranking whole seasons against each other, not just episodes within a
+    show. Feasible by reusing the existing binary-insertion engine at season granularity instead of
+    episode granularity — the real scope is a new comparison UI flow, not new algorithm work. Real
+    future item, not scheduled.
+12. **Import** (IMDb ratings, Letterboxd-style exports, TV Time, Trakt, streaming watch history) —
+    added 2026-07-18, same source. Real third-party integration work, one per service, each with its
+    own auth/API shape. Whenever picked up, start with a single service rather than all of them.
+13. **Spoiler mode** — added 2026-07-18, same source. How far a user has watched a show, hiding
+    titles/rankings/descriptions past that point. Confirmed as a real, currently-unaddressed gap
+    (nothing today prevents seeing a whole show's ranked episode list regardless of watch progress),
+    deliberately backlogged rather than built now (Kayvan: "ignore for now"). Flagged for whenever
+    it's picked up: needs the same implementer-then-independent-reviewer rigor as auth/persistence
+    work, not a quick UI pass — a spoiler-protection feature that's only partially airtight is worse
+    than not having it at all, since it creates false trust in surfaces it doesn't actually cover.
 
 **Bucket 5 — Rework flagged for a later phase, not being worked now:**
 (empty for now)
@@ -261,6 +316,40 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-18: Same session, after the TMDB auto-refresh work below. Kayvan brought a second large
+  idea list (independently written, not the same document as the 2026-07-17 external design review)
+  and asked to go through it together — read fully, then discussed cluster by cluster rather than
+  triaged unilaterally, deciding feasibility and placement for each idea live rather than presenting
+  a finished triage. Full durable record written into `AppSpec.md`'s new "Second Design Review —
+  Triage" section (mirrors the structure of the first review's triage section). Headline outcomes:
+  - **Reconfirmed, not silently, three prior Tier C rejections this list re-proposed independently**:
+    Elo/Glicko (no new argument appeared, existing reasoning in `DevelopmentPlan.md` stands),
+    fast/swipe ranking mode, and notifications/weekly recap — all re-declined on request.
+  - **New real work added to the queue**: episode pages (a genuinely new page, doesn't exist today —
+    added as Tier A item 9), smart comparison selection + a "live stability" framing (folded into
+    Tier A item 2, the ranking-confidence work, as its flagship presentation — Kayvan's single
+    most-wanted idea across both design reviews), four cheap visualization additions plus an
+    auto-only-tier-lists decision (folded into Tier A item 3), season rankings/import/spoiler mode
+    (new Bucket 4 backlog items — spoiler mode explicitly flagged for full implementer+reviewer rigor
+    whenever it's picked up, given the trust-breaking cost of a half-covered spoiler feature).
+  - **A real number of explicit declines, each with reasoning logged** (so they're not silently
+    re-proposed later without someone re-deriving the same reasoning): character rankings and
+    curated/canonical episode collections (both hit the same wall — subjective content judgments
+    TMDB doesn't encode and that don't scale to manually tag), general episode-type/theme tagging for
+    community-ranking slices (with one deliberate exception carved out: a season-finale flag, which
+    is *derived* from data already imported, not manually tagged — feasible and added to episode
+    pages' scope), taste profile, favorite-moments notes and canonical trivia/quotes/screenshots
+    content, rewatch mode/ranking-history-over-time, AI features and episode-level recommendations
+    (split on cost profile — a stats-only recommendation engine could be free, genuine AI features
+    need real per-call spend this project's rules require an explicit go-ahead for — both declined
+    for now anyway), and discussion/comments/polls (declined specifically over ongoing moderation
+    burden for a solo developer, not a one-time build-cost concern). "Draft mode" wasn't declined so
+    much as recognized as already effectively built (cold-start liked/disliked/neutral bucketing does
+    this already). The list's own "things to avoid" principles were reviewed and found to already
+    match this project's existing posture — no new guardrails doc needed.
+  Design/discussion only, nothing built. `DevelopmentPlan.md`'s Ranking Algorithm and Discussion
+  sections got small cross-reference updates (the Elo/Glicko reaffirmation, and the confidence-signal
+  section noting its smart-selection/live-framing expansion) rather than restating any of this.
 - 2026-07-18: Kayvan opened a fresh session by asking directly how the app handles new episodes of
   tracked shows being added, and whether "My Shows" and the show page keep up with that. Investigated
   before answering: confirmed `importShowFromTmdb` (`website/src/lib/shows/importShow.ts`) only ever
