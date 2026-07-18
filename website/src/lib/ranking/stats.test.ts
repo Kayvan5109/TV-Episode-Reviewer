@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { assignTiers, findGatekeeperGap, seasonAverageScores } from './stats';
+import {
+  assignTiers,
+  buildComparisonMatrix,
+  buildSeasonTimelineOrder,
+  comparisonHistoryByEpisode,
+  findGatekeeperGap,
+  seasonAverageScores,
+} from './stats';
 
 describe('assignTiers', () => {
   it('N=5: exact quintile boundaries, one episode per tier', () => {
@@ -163,5 +170,150 @@ describe('findGatekeeperGap', () => {
   it('returns null for fewer than 2 ranked episodes', () => {
     expect(findGatekeeperGap([])).toBeNull();
     expect(findGatekeeperGap([{ episodeId: 'a', rank: 1, score: 10 }])).toBeNull();
+  });
+});
+
+describe('buildComparisonMatrix', () => {
+  it('records a clear win/loss pair, flipped correctly on the transposed cell', () => {
+    const ranked = ['a', 'b', 'c'];
+    const comparisons = [{ episodeAId: 'a', episodeBId: 'b', result: 'a_better' as const }];
+    const matrix = buildComparisonMatrix(ranked, comparisons);
+    expect(matrix[0][1]).toBe('win'); // a vs b
+    expect(matrix[1][0]).toBe('loss'); // b vs a — flipped, not also 'win'
+  });
+
+  it('records a neutral/tie pair the same both ways', () => {
+    const ranked = ['a', 'b'];
+    const comparisons = [{ episodeAId: 'a', episodeBId: 'b', result: 'neutral' as const }];
+    const matrix = buildComparisonMatrix(ranked, comparisons);
+    expect(matrix[0][1]).toBe('tie');
+    expect(matrix[1][0]).toBe('tie');
+  });
+
+  it('is null for a never-compared pair', () => {
+    const ranked = ['a', 'b', 'c'];
+    const comparisons = [{ episodeAId: 'a', episodeBId: 'b', result: 'a_better' as const }];
+    const matrix = buildComparisonMatrix(ranked, comparisons);
+    expect(matrix[0][2]).toBeNull(); // a vs c never compared
+    expect(matrix[2][0]).toBeNull();
+    expect(matrix[1][2]).toBeNull();
+  });
+
+  it('the diagonal is always null', () => {
+    const ranked = ['a', 'b', 'c'];
+    const comparisons = [
+      { episodeAId: 'a', episodeBId: 'b', result: 'a_better' as const },
+      { episodeAId: 'b', episodeBId: 'c', result: 'neutral' as const },
+    ];
+    const matrix = buildComparisonMatrix(ranked, comparisons);
+    for (let i = 0; i < ranked.length; i++) {
+      expect(matrix[i][i]).toBeNull();
+    }
+  });
+
+  it('handles the b_better case correctly (subject lost)', () => {
+    const ranked = ['a', 'b'];
+    const comparisons = [{ episodeAId: 'a', episodeBId: 'b', result: 'b_better' as const }];
+    const matrix = buildComparisonMatrix(ranked, comparisons);
+    expect(matrix[0][1]).toBe('loss'); // a lost to b
+    expect(matrix[1][0]).toBe('win'); // b beat a
+  });
+
+  it('ignores a comparison row touching an episode outside rankedEpisodeIds', () => {
+    const ranked = ['a', 'b'];
+    const comparisons = [{ episodeAId: 'a', episodeBId: 'z', result: 'a_better' as const }];
+    const matrix = buildComparisonMatrix(ranked, comparisons);
+    expect(matrix[0][1]).toBeNull();
+    expect(matrix.flat().every((cell) => cell === null)).toBe(true);
+  });
+
+  it('returns an empty matrix for an empty ranked list', () => {
+    expect(buildComparisonMatrix([], [])).toEqual([]);
+  });
+});
+
+describe('comparisonHistoryByEpisode', () => {
+  it('lists each episode\'s direct opponents and outcomes, in rank order', () => {
+    const ranked = ['a', 'b', 'c'];
+    const comparisons = [
+      { episodeAId: 'a', episodeBId: 'b', result: 'a_better' as const },
+      { episodeAId: 'a', episodeBId: 'c', result: 'b_better' as const },
+    ];
+    const matrix = buildComparisonMatrix(ranked, comparisons);
+    const history = comparisonHistoryByEpisode(ranked, matrix);
+
+    expect(history.get('a')).toEqual([
+      { opponentEpisodeId: 'b', result: 'win' },
+      { opponentEpisodeId: 'c', result: 'loss' },
+    ]);
+    expect(history.get('b')).toEqual([{ opponentEpisodeId: 'a', result: 'loss' }]);
+    expect(history.get('c')).toEqual([{ opponentEpisodeId: 'a', result: 'win' }]);
+  });
+
+  it('gives an episode with no direct comparisons an empty array, not an omitted entry', () => {
+    const ranked = ['a', 'b', 'c'];
+    const matrix = buildComparisonMatrix(ranked, []);
+    const history = comparisonHistoryByEpisode(ranked, matrix);
+    expect(history.get('c')).toEqual([]);
+    expect(history.has('c')).toBe(true);
+  });
+});
+
+describe('buildSeasonTimelineOrder', () => {
+  it('sorts by air_date when every episode has one', () => {
+    const ranked = [
+      { episodeId: 'a', score: 8 },
+      { episodeId: 'b', score: 6 },
+      { episodeId: 'c', score: 9 },
+    ];
+    const info = new Map([
+      ['a', { seasonNumber: 1, episodeNumber: 2, airDate: '2020-03-01' }],
+      ['b', { seasonNumber: 1, episodeNumber: 1, airDate: '2020-01-01' }],
+      ['c', { seasonNumber: 2, episodeNumber: 1, airDate: '2020-02-01' }],
+    ]);
+    const order = buildSeasonTimelineOrder(ranked, info);
+    expect(order.map((p) => p.episodeId)).toEqual(['b', 'c', 'a']);
+  });
+
+  it('falls back to season/episode order for an episode missing air_date', () => {
+    const ranked = [
+      { episodeId: 'a', score: 8 },
+      { episodeId: 'b', score: 6 },
+      { episodeId: 'c', score: 9 },
+    ];
+    const info = new Map([
+      ['a', { seasonNumber: 1, episodeNumber: 1, airDate: '2020-01-01' }],
+      ['b', { seasonNumber: 1, episodeNumber: 2, airDate: null }], // undated, sits between a and c
+      ['c', { seasonNumber: 2, episodeNumber: 1, airDate: '2020-03-01' }],
+    ]);
+    const order = buildSeasonTimelineOrder(ranked, info);
+    expect(order.map((p) => p.episodeId)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('sorts purely by season/episode order when nothing has an air_date', () => {
+    const ranked = [
+      { episodeId: 'a', score: 8 },
+      { episodeId: 'b', score: 6 },
+    ];
+    const info = new Map([
+      ['a', { seasonNumber: 2, episodeNumber: 1, airDate: null }],
+      ['b', { seasonNumber: 1, episodeNumber: 1, airDate: null }],
+    ]);
+    const order = buildSeasonTimelineOrder(ranked, info);
+    expect(order.map((p) => p.episodeId)).toEqual(['b', 'a']);
+  });
+
+  it('does not mutate the input array', () => {
+    const ranked = [
+      { episodeId: 'a', score: 8 },
+      { episodeId: 'b', score: 6 },
+    ];
+    const info = new Map([
+      ['a', { seasonNumber: 2, episodeNumber: 1, airDate: null }],
+      ['b', { seasonNumber: 1, episodeNumber: 1, airDate: null }],
+    ]);
+    const original = [...ranked];
+    buildSeasonTimelineOrder(ranked, info);
+    expect(ranked).toEqual(original);
   });
 });

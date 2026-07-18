@@ -133,3 +133,138 @@ export function findGatekeeperGap(
 
   return best;
 }
+
+export interface ComparisonRow {
+  episodeAId: string;
+  episodeBId: string;
+  result: 'a_better' | 'b_better' | 'neutral';
+}
+
+/** Result of a *direct*, recorded comparison from `rankedEpisodeIds[i]`'s own perspective; `null` = never directly compared. */
+export type MatrixCellResult = 'win' | 'loss' | 'tie' | null;
+
+/**
+ * N×N win/loss/tie matrix over `rankedEpisodeIds` (assumed already in rank order, best-to-worst —
+ * callers pass `display.ranked`'s order through unchanged), built purely from *direct* recorded
+ * `episode_comparisons` rows. `matrix[i][j]` is the outcome for `rankedEpisodeIds[i]` against
+ * `rankedEpisodeIds[j]`: `'win'` if `i` beat `j`, `'loss'` if `i` lost to `j`, `'tie'` for a neutral
+ * result, or `null` if the two were never directly compared. This deliberately does *not* attempt to
+ * infer a transitive result (e.g. i beat k and k beat j does not imply i beat j here) — the whole
+ * point of this matrix is to show only what was actually, directly recorded.
+ *
+ * The diagonal (`matrix[i][i]`) is always `null` — an episode was never compared against itself.
+ * Every off-diagonal pair is intentionally the mirror of its transpose: if `matrix[i][j]` is
+ * `'win'`, `matrix[j][i]` is `'loss'` (never also `'win'`), and a `'tie'` mirrors to `'tie'`.
+ *
+ * A comparison row is only applied if *both* sides are present in `rankedEpisodeIds` — a comparison
+ * touching an episode that isn't (yet, or ever) ranked has no cell to occupy in this matrix.
+ */
+export function buildComparisonMatrix(
+  rankedEpisodeIds: readonly string[],
+  comparisons: readonly ComparisonRow[]
+): MatrixCellResult[][] {
+  const indexById = new Map(rankedEpisodeIds.map((id, index) => [id, index]));
+  const n = rankedEpisodeIds.length;
+  const matrix: MatrixCellResult[][] = Array.from({ length: n }, () => new Array<MatrixCellResult>(n).fill(null));
+
+  for (const { episodeAId, episodeBId, result } of comparisons) {
+    const i = indexById.get(episodeAId);
+    const j = indexById.get(episodeBId);
+    if (i === undefined || j === undefined) continue; // one or both sides aren't a ranked episode
+
+    if (result === 'a_better') {
+      matrix[i][j] = 'win';
+      matrix[j][i] = 'loss';
+    } else if (result === 'b_better') {
+      matrix[i][j] = 'loss';
+      matrix[j][i] = 'win';
+    } else {
+      matrix[i][j] = 'tie';
+      matrix[j][i] = 'tie';
+    }
+  }
+
+  return matrix;
+}
+
+export interface ComparisonHistoryEntry {
+  opponentEpisodeId: string;
+  result: 'win' | 'loss' | 'tie';
+}
+
+/**
+ * Per-episode comparison history, derived from `buildComparisonMatrix`'s output — for each ranked
+ * episode, every other ranked episode it was *directly* compared against and the outcome, in rank
+ * order (best-to-worst opponent first). An episode with no direct comparisons at all gets an empty
+ * array (never omitted from the map), leaving the "show it anyway vs. omit it" call to the caller.
+ *
+ * `AppSpec.md` originally called this a "comparison/relationship graph." This ships as a flat list
+ * instead of an actual node-link graph: a real graph-layout visualization would mean pulling in a
+ * graph-layout library as a new dependency for a single-user personal project, which cuts against
+ * this project's documented low-ceremony/avoid-over-engineering posture (see
+ * `Docs/CriticalReview.md`'s top finding). This is a deliberate scope call, not a missed spec — the
+ * underlying information (which episodes were directly compared, and who won) is identical either
+ * way; only the rendering differs.
+ */
+export function comparisonHistoryByEpisode(
+  rankedEpisodeIds: readonly string[],
+  matrix: readonly MatrixCellResult[][]
+): Map<string, ComparisonHistoryEntry[]> {
+  const history = new Map<string, ComparisonHistoryEntry[]>();
+
+  for (let i = 0; i < rankedEpisodeIds.length; i++) {
+    const entries: ComparisonHistoryEntry[] = [];
+    for (let j = 0; j < rankedEpisodeIds.length; j++) {
+      if (i === j) continue;
+      const result = matrix[i]?.[j] ?? null;
+      if (result !== null) {
+        entries.push({ opponentEpisodeId: rankedEpisodeIds[j], result });
+      }
+    }
+    history.set(rankedEpisodeIds[i], entries);
+  }
+
+  return history;
+}
+
+export interface TimelineEpisodeInfo {
+  seasonNumber: number;
+  episodeNumber: number;
+  /** ISO `YYYY-MM-DD` (or `null` for pre-migration imports missing this field). */
+  airDate: string | null;
+}
+
+export interface TimelinePoint {
+  episodeId: string;
+  score: number;
+}
+
+/**
+ * Chronological ordering for the season-timeline chart. Sorts primarily by `air_date` — plain
+ * string comparison is correct here since the column is always ISO `YYYY-MM-DD`. Episodes missing
+ * `air_date` (pre-migration imports) fall back to season/episode order, which is itself already a
+ * complete, monotonic ordering over every episode — so an undated episode simply lands in its
+ * season/episode position relative to whichever neighbors it's compared against, dated or not,
+ * without needing an invented date. The same season/episode fallback also breaks ties between two
+ * episodes that share an air date (e.g. a same-day premiere pair).
+ *
+ * Kept deliberately simple: no attempt to interpolate a synthetic date for undated episodes, and no
+ * separate "two groups" handling — one comparator, applied uniformly, is enough for a personal-use
+ * app at this scale.
+ */
+export function buildSeasonTimelineOrder(
+  ranked: readonly TimelinePoint[],
+  episodeInfoById: ReadonlyMap<string, TimelineEpisodeInfo>
+): TimelinePoint[] {
+  return [...ranked].sort((a, b) => {
+    const infoA = episodeInfoById.get(a.episodeId);
+    const infoB = episodeInfoById.get(b.episodeId);
+    if (!infoA || !infoB) return 0; // defensive; shouldn't happen — same invariant as `seasonAverageScores`
+
+    if (infoA.airDate && infoB.airDate && infoA.airDate !== infoB.airDate) {
+      return infoA.airDate < infoB.airDate ? -1 : 1;
+    }
+    if (infoA.seasonNumber !== infoB.seasonNumber) return infoA.seasonNumber - infoB.seasonNumber;
+    return infoA.episodeNumber - infoB.episodeNumber;
+  });
+}
