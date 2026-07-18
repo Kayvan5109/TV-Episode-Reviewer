@@ -240,6 +240,44 @@ describe('cold-start progression and threshold crossing', () => {
     }
   });
 
+  it('routes a small show (fewer than COLD_START_THRESHOLD total episodes) through the global next-step entry point the same way getNextStepForEpisode does', async () => {
+    // Same scenario as getShowRankingDisplay's "too small to ever leave cold start" test below,
+    // but driven through getNextRankingStep/deriveNextStep (the season/episode-order global path)
+    // rather than getNextStepForEpisode (the per-episode picker path) — both call sites share the
+    // same isColdStart(state, totalShowEpisodeCount) semantics, but this exercises deriveNextStep's
+    // own loop directly rather than assuming that from the per-episode test alone.
+    const ids = seedEpisodes(3);
+
+    await expect(getNextRankingStep(SHOW_ID)).resolves.toEqual({ type: 'coldStart', episode: ids[0] });
+    await submitColdStartAnswer(SHOW_ID, ids[0], 'neutral');
+
+    // Episode 1 alone already meets the effective threshold (1) for a 3-episode show, so the very
+    // next global step is a real comparison question, not a second cold-start bucket.
+    await expect(getNextRankingStep(SHOW_ID)).resolves.toEqual({
+      type: 'compare',
+      subject: ids[1],
+      reference: ids[0],
+    });
+    await submitComparisonAnswer(SHOW_ID, ids[1], ids[0], 'better');
+    // ranked = [ids[1], ids[0]]
+
+    await expect(getNextRankingStep(SHOW_ID)).resolves.toEqual({
+      type: 'compare',
+      subject: ids[2],
+      reference: ids[1],
+    });
+    await submitComparisonAnswer(SHOW_ID, ids[2], ids[1], 'worse');
+    await expect(getNextRankingStep(SHOW_ID)).resolves.toEqual({
+      type: 'compare',
+      subject: ids[2],
+      reference: ids[0],
+    });
+    await submitComparisonAnswer(SHOW_ID, ids[2], ids[0], 'better');
+    // ranked = [ids[1], ids[2], ids[0]]
+
+    await expect(getNextRankingStep(SHOW_ID)).resolves.toEqual({ type: 'done' });
+  });
+
   it('rejects a cold-start submission for an episode that does not belong to the show, without writing anything', async () => {
     seedEpisodes(COLD_START_THRESHOLD + 2);
 
@@ -261,8 +299,12 @@ describe('cold-start progression and threshold crossing', () => {
 });
 
 describe('fully ranked show — nothing left to do', () => {
-  it('reports done once every episode already has a ranking row, even a show too small to ever leave cold start', async () => {
-    const ids = seedEpisodes(3); // fewer than COLD_START_THRESHOLD; can never cross into comparative mode
+  it('reports done once every episode already has a ranking row, even one seeded as all-cold-start data', async () => {
+    // 3 episodes, all with a cold_start_bucket row and no rank_position — a state a real small
+    // show can no longer reach post-fix (episode 2+ now go through comparative placement, see the
+    // "small shows" describe block below), but still a valid `episode_rankings` shape to defend
+    // against (e.g. pre-fix data, or a future direct seed) for the "done" detection itself.
+    const ids = seedEpisodes(3);
     fake.rankings = ids.map((id, i) => ({
       user_id: 'user-1',
       episode_id: id,
@@ -518,19 +560,41 @@ describe('getShowRankingDisplay', () => {
     expect(display.unranked).toEqual(ids.slice(2));
   });
 
-  it('reports done: true with a full best-to-worst order for a show too small to ever leave cold start', async () => {
-    // Fewer than COLD_START_THRESHOLD episodes total: this show finishes cold-start judging every
-    // episode and never crosses into comparative placement, so none of them ever get a
-    // `rank_position` — this is exactly the edge case this function exists to handle correctly.
+  it('reports done: true with a full best-to-worst order for a show too small to ever leave cold start, folding cold-start into comparative placement after episode 1', async () => {
+    // Fewer than COLD_START_THRESHOLD episodes total: per Docs/DevelopmentPlan.md's "Decided
+    // 2026-07-17, not yet built: small shows skip cold-start bucketing after episode 1", only the
+    // first episode gets a coarse bucket judgment — episodes 2 and 3 go straight to real pairwise
+    // comparative placement instead of a second/third cold-start bucket.
     const ids = seedEpisodes(3);
 
-    await submitColdStartAnswer(SHOW_ID, ids[0], 'disliked');
-    await submitColdStartAnswer(SHOW_ID, ids[1], 'liked');
-    const finalStep = await submitColdStartAnswer(SHOW_ID, ids[2], 'neutral');
-    expect(finalStep).toEqual({ type: 'alreadyRanked' });
+    const firstStep = await submitColdStartAnswer(SHOW_ID, ids[0], 'disliked');
+    expect(firstStep).toEqual({ type: 'alreadyRanked' });
 
-    // Bucket order liked > neutral > disliked (see @/lib/ranking/coldStart.ts) — one episode per
-    // bucket here, so recency-within-bucket doesn't come into play: [ids[1], ids[2], ids[0]].
+    // Episode 1 alone already meets the effective threshold (1) for a 3-episode show, so episode
+    // 2 is asked a real comparison question against episode 1 rather than a second cold-start
+    // bucket — submitColdStartAnswer would now throw for it.
+    await expect(getNextStepForEpisode(SHOW_ID, ids[1])).resolves.toEqual({
+      type: 'compare',
+      subject: ids[1],
+      reference: ids[0],
+    });
+    let step = await submitComparisonAnswer(SHOW_ID, ids[1], ids[0], 'better');
+    expect(step).toEqual({ type: 'alreadyRanked' });
+    // ranked = [ids[1], ids[0]]
+
+    // Episode 3 is also placed comparatively: binary search over [ids[1], ids[0]] starts at
+    // ids[1] (mid index 0).
+    await expect(getNextStepForEpisode(SHOW_ID, ids[2])).resolves.toEqual({
+      type: 'compare',
+      subject: ids[2],
+      reference: ids[1],
+    });
+    step = await submitComparisonAnswer(SHOW_ID, ids[2], ids[1], 'worse');
+    expect(step).toEqual({ type: 'compare', subject: ids[2], reference: ids[0] });
+    step = await submitComparisonAnswer(SHOW_ID, ids[2], ids[0], 'better');
+    expect(step).toEqual({ type: 'alreadyRanked' });
+    // ranked = [ids[1], ids[2], ids[0]]
+
     await expect(getShowRankingDisplay(SHOW_ID)).resolves.toEqual({
       done: true,
       ranked: [

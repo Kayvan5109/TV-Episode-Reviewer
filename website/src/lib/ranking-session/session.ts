@@ -207,13 +207,18 @@ async function deriveNextStep(
       return { type: 'done' };
     }
 
-    if (isColdStart(state)) {
+    if (isColdStart(state, loaded.episodeIdsInOrder.length)) {
       return { type: 'coldStart', episode: nextEpisode };
     }
 
     const comparator = makeReplayComparator(state.history);
     try {
-      const newState = await addComparativeEpisode(state, nextEpisode, comparator);
+      const newState = await addComparativeEpisode(
+        state,
+        nextEpisode,
+        comparator,
+        loaded.episodeIdsInOrder.length
+      );
       await persistRankedPositions(supabase, userId, newState);
       state = newState;
       continue;
@@ -321,11 +326,12 @@ export async function deleteShowRankingData(showId: string): Promise<void> {
  * the raw stored integer, so a gap wouldn't actually break anything — but it matches this file's
  * existing "simple full-rewrite over gaps" style and keeps the DB state clean.
  *
- * Accepted consequence, not a bug: if this drops the show's total ranked-episode count below
- * `COLD_START_THRESHOLD`, the show reverts to cold-start mode for whatever gets placed next
- * (including this same re-ranked episode) — `isColdStart` is always derived from the current live
- * count, so this is existing, correct behavior, not something new to special-case around for a
- * personal-use app at this scale.
+ * Accepted consequence, not a bug: if this drops the show's total ranked-episode count below its
+ * effective cold-start threshold (see `effectiveColdStartThreshold` in `@/lib/ranking/constants`),
+ * the show reverts to cold-start mode for whatever gets placed next (including this same
+ * re-ranked episode) — `isColdStart` is always derived from the current live count, so this is
+ * existing, correct behavior, not something new to special-case around for a personal-use app at
+ * this scale.
  */
 export async function resetEpisodeRanking(showId: string, episodeId: EpisodeId): Promise<void> {
   const supabase = await createSupabaseServerClient();
@@ -411,13 +417,18 @@ export async function getNextStepForEpisode(
     return { type: 'alreadyRanked' };
   }
 
-  if (isColdStart(loaded.state)) {
+  if (isColdStart(loaded.state, loaded.episodeIdsInOrder.length)) {
     return { type: 'coldStart', episode: episodeId };
   }
 
   const comparator = makeReplayComparator(loaded.state.history);
   try {
-    const newState = await addComparativeEpisode(loaded.state, episodeId, comparator);
+    const newState = await addComparativeEpisode(
+      loaded.state,
+      episodeId,
+      comparator,
+      loaded.episodeIdsInOrder.length
+    );
     await persistRankedPositions(supabase, userId, newState);
     return { type: 'alreadyRanked' };
   } catch (error) {
@@ -497,10 +508,12 @@ export async function getShowRankingDisplay(showId: string): Promise<ShowRanking
 /**
  * Records a cold-start (liked/disliked/neutral) judgment for `episodeId` and returns what's next
  * *for that episode* — which, for cold start, is always `'alreadyRanked'` immediately afterward
- * (cold start never needs a follow-up question for the same episode). Crossing
- * `COLD_START_THRESHOLD` on this answer folds cold-start episodes straight into comparative
- * ranking (per `@/lib/ranking/engine.ts`'s `addComparativeEpisode`) the next time *some* episode
- * needs placing, but that's not this episode's concern anymore.
+ * (cold start never needs a follow-up question for the same episode). Crossing the show's
+ * effective cold-start threshold (see `effectiveColdStartThreshold` in
+ * `@/lib/ranking/constants` — `1` for a show with fewer than `COLD_START_THRESHOLD` total
+ * episodes, else `COLD_START_THRESHOLD` itself) on this answer folds cold-start episodes straight
+ * into comparative ranking (per `@/lib/ranking/engine.ts`'s `addComparativeEpisode`) the next time
+ * *some* episode needs placing, but that's not this episode's concern anymore.
  *
  * Validates the submission against what's actually true (rather than trusting `episodeId`
  * blindly) before writing anything: the show must still be in cold start, and `episodeId` must
@@ -518,7 +531,7 @@ export async function submitColdStartAnswer(
   const userId = await requireUserId(supabase);
   const loaded = await loadShowRankingState(supabase, userId, showId);
 
-  if (!isColdStart(loaded.state)) {
+  if (!isColdStart(loaded.state, loaded.episodeIdsInOrder.length)) {
     throw new Error(
       `Show ${showId} is no longer in cold start; submit a comparison answer instead.`
     );
@@ -575,7 +588,7 @@ export async function submitComparisonAnswer(
   const userId = await requireUserId(supabase);
   const loaded = await loadShowRankingState(supabase, userId, showId);
 
-  if (isColdStart(loaded.state)) {
+  if (isColdStart(loaded.state, loaded.episodeIdsInOrder.length)) {
     throw new Error(`Show ${showId} is still in cold start; submit a cold-start answer instead.`);
   }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { COLD_START_THRESHOLD } from './constants';
-import { createInitialShowState, rankNewEpisode } from './engine';
+import { createInitialShowState, isColdStart, rankNewEpisode } from './engine';
 import { scoresForRankedList } from './score';
 import type { ColdStartBucket, Comparator, EpisodeId } from './types';
 
@@ -51,12 +51,14 @@ describe('end-to-end ranking simulation', () => {
 
     for (const id of ids) {
       if (state.coldStart.length + state.ranked.length < COLD_START_THRESHOLD) {
-        state = await rankNewEpisode(state, id, {
-          mode: 'coldStart',
-          bucket: bucketFor(quality[id]),
-        });
+        state = await rankNewEpisode(
+          state,
+          id,
+          { mode: 'coldStart', bucket: bucketFor(quality[id]) },
+          ids.length
+        );
       } else {
-        state = await rankNewEpisode(state, id, { mode: 'comparative', comparator });
+        state = await rankNewEpisode(state, id, { mode: 'comparative', comparator }, ids.length);
       }
     }
 
@@ -85,5 +87,57 @@ describe('end-to-end ranking simulation', () => {
     // And the usual boundary guarantees from the score formula itself.
     expect(scores.get(state.ranked[0])).toBeCloseTo(10, 10);
     expect(scores.get(state.ranked[state.ranked.length - 1])).toBeCloseTo(1, 10);
+  });
+});
+
+/**
+ * End-to-end proof of Docs/DevelopmentPlan.md's "Decided 2026-07-17, not yet built: small shows
+ * skip cold-start bucketing after episode 1": a show whose total episode count never reaches
+ * COLD_START_THRESHOLD should cold-start-bucket only its first episode, then place every
+ * subsequent one via real pairwise comparison — not bucket all of them, which is what produced
+ * the visibly-different scores for "equally neutral" episodes that motivated this fix.
+ */
+describe('end-to-end small-show simulation: effective cold-start threshold collapses to 1', () => {
+  it('cold-starts only episode 1 of a 3-episode show, then comparatively places episodes 2 and 3', async () => {
+    const ids: EpisodeId[] = ['ep1', 'ep2', 'ep3'];
+    const totalShowEpisodeCount = ids.length;
+    expect(totalShowEpisodeCount).toBeLessThan(COLD_START_THRESHOLD);
+
+    // A "worse" comparator throughout: every subsequent episode places behind whatever's already
+    // ranked, so the resulting order is exactly the ranking order (episode 1, then 2, then 3).
+    const comparator: Comparator = () => 'worse';
+
+    let state = createInitialShowState();
+    let comparisonsAsked = 0;
+    const countingComparator: Comparator = (subject, reference) => {
+      comparisonsAsked += 1;
+      return comparator(subject, reference);
+    };
+
+    for (const id of ids) {
+      if (isColdStart(state, totalShowEpisodeCount)) {
+        state = await rankNewEpisode(
+          state,
+          id,
+          { mode: 'coldStart', bucket: 'neutral' },
+          totalShowEpisodeCount
+        );
+      } else {
+        state = await rankNewEpisode(
+          state,
+          id,
+          { mode: 'comparative', comparator: countingComparator },
+          totalShowEpisodeCount
+        );
+      }
+    }
+
+    // Only episode 1 went through cold start; episodes 2 and 3 were placed comparatively.
+    expect(state.coldStart).toHaveLength(0); // folded into the comparative pool once placement began
+    expect(state.ranked).toEqual(['ep1', 'ep2', 'ep3']);
+    // Real pairwise comparisons happened for both later episodes (ep2 vs ep1; ep3 vs ep1, then
+    // ep3 vs ep2 to reach the end of the binary search) — proof episodes 2 and 3 were genuinely
+    // compared, not silently bucketed like episode 1 was.
+    expect(comparisonsAsked).toBe(3);
   });
 });

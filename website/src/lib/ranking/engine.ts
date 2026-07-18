@@ -1,4 +1,4 @@
-import { COLD_START_THRESHOLD } from './constants';
+import { effectiveColdStartThreshold } from './constants';
 import { orderColdStartIds } from './coldStart';
 import { placeEpisodeComparatively } from './comparativePlacement';
 import type {
@@ -17,24 +17,33 @@ function totalEpisodeCount(state: ShowRankingState): number {
   return state.coldStart.length + state.ranked.length;
 }
 
-/** Whether a show's *next* ranked episode should go through cold start (vs. comparative placement). */
-export function isColdStart(state: ShowRankingState): boolean {
-  return totalEpisodeCount(state) < COLD_START_THRESHOLD;
+/**
+ * Whether a show's *next* ranked episode should go through cold start (vs. comparative
+ * placement). `totalShowEpisodeCount` is the show's total episode count (not just how many have
+ * been ranked so far) — required to compute the per-show effective threshold (see
+ * `effectiveColdStartThreshold` in constants.ts): a show with fewer than `COLD_START_THRESHOLD`
+ * total episodes only cold-starts its first episode, then goes straight to comparative placement.
+ */
+export function isColdStart(state: ShowRankingState, totalShowEpisodeCount: number): boolean {
+  return totalEpisodeCount(state) < effectiveColdStartThreshold(totalShowEpisodeCount);
 }
 
 /**
- * Add a new episode to a show during cold start: fewer than COLD_START_THRESHOLD episodes
- * ranked so far. No comparisons happen — just record the coarse bucket judgment.
+ * Add a new episode to a show during cold start: fewer than the show's effective cold-start
+ * threshold (see `effectiveColdStartThreshold`) ranked so far. No comparisons happen — just
+ * record the coarse bucket judgment.
  */
 export function addColdStartEpisode(
   state: ShowRankingState,
   episodeId: EpisodeId,
-  bucket: ColdStartBucket
+  bucket: ColdStartBucket,
+  totalShowEpisodeCount: number
 ): ShowRankingState {
   const count = totalEpisodeCount(state);
-  if (count >= COLD_START_THRESHOLD) {
+  const threshold = effectiveColdStartThreshold(totalShowEpisodeCount);
+  if (count >= threshold) {
     throw new Error(
-      `Show already has ${count} ranked episodes (>= COLD_START_THRESHOLD=${COLD_START_THRESHOLD}); ` +
+      `Show already has ${count} ranked episodes (>= effective cold-start threshold=${threshold}); ` +
         'use comparative placement instead.'
     );
   }
@@ -47,7 +56,8 @@ export function addColdStartEpisode(
 
 /**
  * Add a new episode via comparative (binary-insertion) placement. Requires the show to have
- * already reached COLD_START_THRESHOLD total episodes.
+ * already reached its effective cold-start threshold (see `effectiveColdStartThreshold`) in
+ * total episodes ranked so far.
  *
  * JUDGMENT CALL — flagged for review: this isn't addressed by the docs, but is required to
  * make the algorithm function once a show crosses the threshold. The very first comparative
@@ -61,12 +71,14 @@ export function addColdStartEpisode(
 export async function addComparativeEpisode(
   state: ShowRankingState,
   episodeId: EpisodeId,
-  comparator: Comparator
+  comparator: Comparator,
+  totalShowEpisodeCount: number
 ): Promise<ShowRankingState> {
   const count = totalEpisodeCount(state);
-  if (count < COLD_START_THRESHOLD) {
+  const threshold = effectiveColdStartThreshold(totalShowEpisodeCount);
+  if (count < threshold) {
     throw new Error(
-      `Show only has ${count} ranked episodes (< COLD_START_THRESHOLD=${COLD_START_THRESHOLD}); ` +
+      `Show only has ${count} ranked episodes (< effective cold-start threshold=${threshold}); ` +
         'use cold-start placement instead.'
     );
   }
@@ -95,19 +107,21 @@ export type RankNewEpisodeInput =
 
 /**
  * Convenience entry point matching Docs/DevelopmentPlan.md's "Ranking Algorithm" section:
- * dispatches to cold-start or comparative placement. Callers should check `isColdStart(state)`
- * to decide which `input` shape to build (e.g. which UI to show); this function still re-
- * validates via the underlying functions' own threshold guards.
+ * dispatches to cold-start or comparative placement. Callers should check
+ * `isColdStart(state, totalShowEpisodeCount)` to decide which `input` shape to build (e.g. which
+ * UI to show); this function still re-validates via the underlying functions' own threshold
+ * guards.
  */
 export async function rankNewEpisode(
   state: ShowRankingState,
   episodeId: EpisodeId,
-  input: RankNewEpisodeInput
+  input: RankNewEpisodeInput,
+  totalShowEpisodeCount: number
 ): Promise<ShowRankingState> {
   if (input.mode === 'coldStart') {
-    return addColdStartEpisode(state, episodeId, input.bucket);
+    return addColdStartEpisode(state, episodeId, input.bucket, totalShowEpisodeCount);
   }
-  return addComparativeEpisode(state, episodeId, input.comparator);
+  return addComparativeEpisode(state, episodeId, input.comparator, totalShowEpisodeCount);
 }
 
 /** The show's current best-to-worst episode order, whichever mode it's in. */
