@@ -35,6 +35,45 @@ features/recommendation engine, discussion/comments/polls, draft mode as a separ
 discussion only, nothing built yet — Tier A (still queued from before, now with items 2/3/4/9 having
 more scope than when originally written) and `CriticalReview.md`'s open findings are both still where
 they were; this was purely additive planning work layered on top, not a continuation into building.
+Kayvan then separately fully spec'd Tier A item 4 (richer comparison screen — two-column layout,
+prominent poster, synopsis, a comparative-mode-only "I can't decide" relabel), folded into that item.
+
+Same session, moved to building: kept the Tier A queue order as-is. Keyboard shortcuts (item 1 at the
+time) was dispatched then immediately cancelled at Kayvan's request and moved to backlog — see
+Deviations for what that dispatch revealed. Built and merged ranking confidence's base score +
+display (now-item-1's non-smart-selection half) — see History. That build hit the worktree-isolation
+bug a third time, which led into a deliberate investigation at Kayvan's request (see Deviations for
+the full account) — conclusively ruled out OneDrive as the cause of the routine `.git/worktrees/*`
+deletion-failure noise (reproduces identically outside OneDrive; it's very likely a Git-for-Windows-
+internal handle-release race, benign), but the more serious "worktree verified real and registered,
+agent's edits still land on `main` directly" variant remains genuinely unexplained.
+
+**⚠️ THE REPO MOVED, READ THIS BEFORE DOING ANYTHING ELSE:** at Kayvan's request (he can't exclude a
+Desktop subfolder from OneDrive sync on his machine), the entire project was physically relocated
+from `C:\Users\khoob\OneDrive\Desktop\TV Episode Reviewer` to **`C:\Users\khoob\Projects\TV Episode
+Reviewer`** — verified clean (`git status`, `git log`, `git remote -v` all correct at the new path,
+`.env.local` and `node_modules` both present) before the old location was emptied. **Open this
+project from the new path from now on** (VSCode, a new Claude Code session, everything) — do not
+reuse the old OneDrive path, which is now just an empty leftover shell (harmless, safe to delete once
+nothing has it open — see below). This move surfaced a real limitation worth knowing: this exact
+session's tooling (specifically the Agent tool's `isolation: "worktree"` mechanism) turned out to be
+hardcoded to wherever the session started, and did **not** follow the mid-session relocation — a live
+test dispatch failed outright (`git rev-parse HEAD` failed, no repo at the old path anymore). An
+attempted fix (a directory junction at the old path pointing to the new one, so old-path references
+would transparently resolve) couldn't be completed either, because this same session's own live shell
+process still held the old directory open, and Windows won't let a directory be replaced while a
+process has it as its working directory. **Session deliberately ended here, at Kayvan's choice**,
+specifically to get a clean tool environment rooted at the new path rather than keep working around a
+broken one. Nothing was lost — everything at this stopping point is committed and pushed (see below).
+**Next session, starting fresh from the new path**: worth trying the junction cleanup again (no
+session should be holding the old empty directory open at that point) or just deleting the leftover
+empty `C:\Users\khoob\OneDrive\Desktop\TV Episode Reviewer` shell outright — either is fine, it's
+empty. Also worth a fresh, cold dispatch test (a trivial `isolation: "worktree"` agent, same shape as
+the diagnostic one referenced in Deviations) to confirm the Agent tool works correctly from the new
+path before resuming real build work, and — since a full fresh session is exactly the natural
+boundary for it — worth watching whether the deeper "agent wrote to `main` despite a real worktree"
+bug recurs at all in a session that never touched OneDrive, which would be genuinely new evidence
+either way.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -314,16 +353,41 @@ it through" is worth a deliberate re-check, not silent acceptance.
   lock contention hits during creation instead of deletion — but does **not** explain today's
   "worktree was real and registered, agent still wrote to `main`" variant, which remains genuinely
   unexplained (most likely a harness-level routing/timing issue this investigation has no visibility
-  into, not a git-level or OneDrive-level cause). **Recommended, not yet actioned**: move this repo
-  out of `OneDrive\Desktop` entirely (or exclude it from OneDrive sync) — real fix for the
-  deletion-failure/disk-clutter class of issue regardless of whether it's also implicated in the
-  worse bug; GitHub is already the real backup for anything that matters, so losing OneDrive's copy of
-  this specific folder costs nothing. Practical mitigation adopted for this session regardless of root
-  cause: after **every** agent dispatch with `isolation: "worktree"` — not just early stops — check
-  both `git worktree list` *and* `git status --short` on `main` before assuming isolation held; if
-  work landed on `main` directly but matches the agent's own reported file list with nothing unrelated
-  mixed in, review and commit it in place rather than trying to force a merge-from-branch workflow
-  that has nothing real to merge.
+  into, not a git-level or OneDrive-level cause). Practical mitigation adopted for this session
+  regardless of root cause: after **every** agent dispatch with `isolation: "worktree"` — not just
+  early stops — check both `git worktree list` *and* `git status --short` on `main` before assuming
+  isolation held; if work landed on `main` directly but matches the agent's own reported file list
+  with nothing unrelated mixed in, review and commit it in place rather than trying to force a
+  merge-from-branch workflow that has nothing real to merge.
+  **Follow-up, same session, actioned at Kayvan's explicit request**: moved the repo out of OneDrive
+  entirely (`C:\Users\khoob\OneDrive\Desktop\TV Episode Reviewer` → `C:\Users\khoob\Projects\TV
+  Episode Reviewer` — see the top-of-file "THE REPO MOVED" note, the durable record of this lives
+  there since it's the thing a cold-start session most needs to see first). Before actually moving,
+  ran a direct test of the OneDrive-causes-deletion-failures theory: reproduced the identical
+  `.git/worktrees/*` "Permission denied" failure at the *new*, non-OneDrive location, immediately
+  followed by a successful plain `rm -rf` on the exact same directory moments later. **This disproves
+  OneDrive as the cause of that specific symptom** — the corrected read is a Git-for-Windows-internal
+  quirk (its own deletion routine likely racing against a file handle it just released), benign and
+  cosmetic, matching what this file originally (correctly) guessed before this investigation
+  second-guessed it. OneDrive was never confirmed as the cause of the more serious "agent wrote to
+  `main`" variant either way — moving out of OneDrive was still worth doing for the genuine
+  deletion-failure/disk-clutter class of issue and because Kayvan asked for it directly, not because
+  it was expected to fix the worse bug.
+  The move itself surfaced a new, previously-unknown limitation: this session's own tooling —
+  specifically the Agent tool's `isolation: "worktree"` mechanism — turned out to be hardcoded to the
+  path the session started at, and does not follow a mid-session relocation. A live diagnostic
+  dispatch (asked an agent to report its cwd and write one throwaway file, nothing else) failed
+  outright with `Failed to resolve base branch "HEAD": git rev-parse failed`, since the old path no
+  longer had a git repo at all by that point. An attempted fix — a directory junction at the old path
+  pointing to the new one, which should be transparent to any tool and isn't synced as real content by
+  OneDrive — could not be completed: this same session's own live shell process still held the old
+  directory open as its working directory, and Windows refuses to replace/remove a directory under
+  those conditions (`New-Item -ItemType Junction` failed with `DirectoryNotEmpty` even though the
+  directory's *contents* were genuinely empty — the block was the directory node itself, held open by
+  the live process, not real content). Kayvan chose to end the session cleanly here rather than keep
+  improvising further filesystem changes mid-session — see the top-of-file note for exact next-session
+  instructions (open from the new path, retry the junction/deletion cleanup then, and run one cold
+  diagnostic dispatch before resuming real build work to confirm the Agent tool is healthy again).
 - 2026-07-18: **Fixed the open-TMDB-proxy security gap (`CriticalReview.md` Finding 3.1) directly,
   without the full implementer-then-independent-reviewer pipeline this would normally get as auth/
   security work** — at 87% session usage, spawning and waiting on a second agent risked not landing
