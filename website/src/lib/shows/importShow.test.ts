@@ -123,6 +123,7 @@ describe('importShowFromTmdb', () => {
             { id: 18, name: 'Drama' },
             { id: 80, name: 'Crime' },
           ],
+          status: 'Ended',
         };
       }
       if (path === '/tv/1396/season/1') {
@@ -184,6 +185,7 @@ describe('importShowFromTmdb', () => {
         title: 'Breaking Bad',
         poster_url: 'https://image.tmdb.org/t/p/w500/abc.jpg',
         genres: ['Drama', 'Crime'],
+        status: 'Ended',
         last_synced_at: expect.any(String),
       },
       { onConflict: 'tmdb_show_id' }
@@ -242,6 +244,7 @@ describe('importShowFromTmdb', () => {
       poster_path: null,
       number_of_seasons: 0,
       genres: [],
+      status: 'Ended',
     });
 
     const result = await importShowFromTmdb(5);
@@ -258,6 +261,7 @@ describe('importShowFromTmdb', () => {
       poster_path: null,
       number_of_seasons: 0,
       genres: [],
+      status: 'Ended',
     });
     showsUpsertSingle.mockResolvedValue({ data: null, error: { message: 'boom' } });
 
@@ -267,7 +271,7 @@ describe('importShowFromTmdb', () => {
   it('throws a clear error if the episodes upsert fails', async () => {
     tmdbFetch.mockImplementation(async (path: string) => {
       if (path === '/tv/1') {
-        return { id: 1, name: 'X', poster_path: null, number_of_seasons: 1, genres: [] };
+        return { id: 1, name: 'X', poster_path: null, number_of_seasons: 1, genres: [], status: 'Ended' };
       }
       return { episodes: [{ id: 1, name: 'Ep', season_number: 1, episode_number: 1 }] };
     });
@@ -283,6 +287,7 @@ describe('importShowFromTmdb', () => {
       poster_path: null,
       number_of_seasons: 0,
       genres: [],
+      status: 'Canceled',
     });
 
     await importShowFromTmdb(7);
@@ -293,6 +298,7 @@ describe('importShowFromTmdb', () => {
         title: 'No Genres Show',
         poster_url: null,
         genres: [],
+        status: 'Canceled',
         last_synced_at: expect.any(String),
       },
       { onConflict: 'tmdb_show_id' }

@@ -51,5 +51,6 @@ export function mapShowDetails(details: TmdbShowDetails): ShowDetails {
     posterUrl: posterUrlFromPath(details.poster_path),
     numberOfSeasons: details.number_of_seasons,
     genres: details.genres.map((genre) => genre.name),
+    status: details.status,
   };
 }

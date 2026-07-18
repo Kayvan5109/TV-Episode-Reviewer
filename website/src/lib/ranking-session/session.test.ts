@@ -190,6 +190,7 @@ vi.mock('@/lib/supabase/serverSession', () => ({
 
 const {
   deleteShowRankingData,
+  getEpisodeComparisonRecord,
   getNextRankingStep,
   getNextStepForEpisode,
   getShowRankingDisplay,
@@ -729,6 +730,44 @@ describe('getShowRankingDisplay', () => {
     expect(display.done).toBe(true);
     if (!display.done) return;
     expect(display.confidence).toBe(100);
+  });
+});
+
+describe('getEpisodeComparisonRecord', () => {
+  it('returns all zeros for an episode with no recorded comparisons at all', async () => {
+    seedComparativePool(1); // A-D ranked, X1 unranked, no comparisons seeded
+
+    await expect(getEpisodeComparisonRecord('A')).resolves.toEqual({ wins: 0, losses: 0, ties: 0 });
+  });
+
+  it('tallies wins/losses/ties across comparisons where the episode is on either side', async () => {
+    seedComparativePool(1); // ranked A-D, X1 unranked
+
+    fake.comparisons.push(
+      // B on the 'a' side: a_better -> win, b_better -> loss, neutral -> tie.
+      { id: 'c1', user_id: 'user-1', episode_a_id: 'B', episode_b_id: 'A', result: 'a_better' },
+      { id: 'c2', user_id: 'user-1', episode_a_id: 'B', episode_b_id: 'C', result: 'b_better' },
+      { id: 'c3', user_id: 'user-1', episode_a_id: 'B', episode_b_id: 'D', result: 'neutral' },
+      // B on the 'b' side: b_better -> win, a_better -> loss, neutral -> tie.
+      { id: 'c4', user_id: 'user-1', episode_a_id: 'A', episode_b_id: 'B', result: 'b_better' },
+      { id: 'c5', user_id: 'user-1', episode_a_id: 'C', episode_b_id: 'B', result: 'a_better' },
+      { id: 'c6', user_id: 'user-1', episode_a_id: 'D', episode_b_id: 'B', result: 'neutral' }
+    );
+
+    await expect(getEpisodeComparisonRecord('B')).resolves.toEqual({ wins: 2, losses: 2, ties: 2 });
+  });
+
+  it('only counts the signed-in user\'s own comparisons, never another user\'s rows for the same episode', async () => {
+    seedComparativePool(1);
+    fake.comparisons.push({
+      id: 'other-user',
+      user_id: 'user-2',
+      episode_a_id: 'A',
+      episode_b_id: 'B',
+      result: 'a_better',
+    });
+
+    await expect(getEpisodeComparisonRecord('A')).resolves.toEqual({ wins: 0, losses: 0, ties: 0 });
   });
 });
 

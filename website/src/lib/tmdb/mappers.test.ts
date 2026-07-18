@@ -139,6 +139,7 @@ describe('mapShowDetails', () => {
           { id: 18, name: 'Drama' },
           { id: 80, name: 'Crime' },
         ],
+        status: 'Ended',
       })
     ).toEqual({
       tmdbShowId: 1396,
@@ -146,6 +147,7 @@ describe('mapShowDetails', () => {
       posterUrl: 'https://image.tmdb.org/t/p/w500/abc.jpg',
       numberOfSeasons: 5,
       genres: ['Drama', 'Crime'],
+      status: 'Ended',
     });
   });
 
@@ -157,6 +159,7 @@ describe('mapShowDetails', () => {
         poster_path: null,
         number_of_seasons: 1,
         genres: [{ id: 35, name: 'Comedy' }],
+        status: 'Returning Series',
       })
     ).toEqual({
       tmdbShowId: 2,
@@ -164,6 +167,7 @@ describe('mapShowDetails', () => {
       posterUrl: null,
       numberOfSeasons: 1,
       genres: ['Comedy'],
+      status: 'Returning Series',
     });
   });
 
@@ -175,6 +179,7 @@ describe('mapShowDetails', () => {
         poster_path: null,
         number_of_seasons: 1,
         genres: [],
+        status: 'Canceled',
       })
     ).toEqual({
       tmdbShowId: 3,
@@ -182,6 +187,7 @@ describe('mapShowDetails', () => {
       posterUrl: null,
       numberOfSeasons: 1,
       genres: [],
+      status: 'Canceled',
     });
   });
 });

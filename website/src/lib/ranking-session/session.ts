@@ -606,6 +606,69 @@ export async function submitColdStartAnswer(
   return getNextStepForEpisode(showId, episodeId);
 }
 
+/** This user's personal win/loss/tie tally against `episodeId` across every recorded comparison. */
+export interface EpisodeComparisonRecord {
+  wins: number;
+  losses: number;
+  ties: number;
+}
+
+/**
+ * Tallies every `episode_comparisons` row involving `episodeId` (either side) for the signed-in
+ * user into a win/loss/tie record from that episode's own perspective — used by the episode detail
+ * page's "N wins, M losses, K ties" line.
+ *
+ * Same "both sides, no hand-built OR filter string" pattern as `loadShowRankingState` (query
+ * `episode_a_id` and `episode_b_id` separately via `Promise.all`), but no de-dupe step is needed
+ * here: unlike that function (which queries for a whole list of episode ids, where a comparison
+ * between two episodes *both* in the list would show up in both result sets), this queries for a
+ * single episode id, and `episode_comparisons`' `episode_a_id <> episode_b_id` check guarantees a
+ * single row can never have the same id on both sides, so a row can only ever appear in one of the
+ * two queries below.
+ */
+export async function getEpisodeComparisonRecord(
+  episodeId: EpisodeId
+): Promise<EpisodeComparisonRecord> {
+  const supabase = await createSupabaseServerClient();
+  const userId = await requireUserId(supabase);
+
+  const [aSide, bSide] = await Promise.all([
+    supabase
+      .from('episode_comparisons')
+      .select('result')
+      .eq('user_id', userId)
+      .eq('episode_a_id', episodeId),
+    supabase
+      .from('episode_comparisons')
+      .select('result')
+      .eq('user_id', userId)
+      .eq('episode_b_id', episodeId),
+  ]);
+
+  if (aSide.error) {
+    throw new Error(`Failed to load episode comparisons (episode_a_id side): ${aSide.error.message}`);
+  }
+  if (bSide.error) {
+    throw new Error(`Failed to load episode comparisons (episode_b_id side): ${bSide.error.message}`);
+  }
+
+  const record: EpisodeComparisonRecord = { wins: 0, losses: 0, ties: 0 };
+
+  for (const row of (aSide.data ?? []) as { result: ComparisonRow['result'] }[]) {
+    if (row.result === 'a_better') record.wins += 1;
+    else if (row.result === 'b_better') record.losses += 1;
+    else record.ties += 1;
+  }
+
+  for (const row of (bSide.data ?? []) as { result: ComparisonRow['result'] }[]) {
+    if (row.result === 'b_better') record.wins += 1;
+    else if (row.result === 'a_better') record.losses += 1;
+    else record.ties += 1;
+  }
+
+  return record;
+}
+
 /**
  * Records a comparison answer (`subjectId` is "better"/"worse"/"neutral" relative to
  * `referenceId`) and returns what's next *for that subject episode's placement* — replay will now
