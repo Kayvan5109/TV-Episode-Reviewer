@@ -108,10 +108,11 @@ hadn't realized existed until seeing it on the episode page). Kayvan then asked 
 and 2 (in that priority) at 33% session usage remaining. Built and merged via two sequential
 dispatches (avoided running in parallel since both touched the show page): items 9 + 11 bundled
 together (`af173f1`), then a scoped-down first slice of item 2 — tier list, season heatmap,
-gatekeeper stat, deliberately deferring the win/loss matrix and comparison graph (`8f5e183`). Both
-now in Bucket 2 for hands-on check. Remaining: Tier A items 1 (smart comparison selection), 2's
-deferred pieces (win/loss matrix, comparison graph, season timeline), 4 (collections), 10 (clickable
-comparison-screen titles). Deviations Awaiting Review are all still open and unactioned.
+gatekeeper stat, deliberately deferring the win/loss matrix and comparison graph (`8f5e183`). Kayvan
+hands-on confirmed all three working — removed from Bucket 2. Remaining: Tier A items 1 (smart
+comparison selection), 2's deferred pieces (win/loss matrix, comparison graph, season timeline), 4
+(collections), 10 (clickable comparison-screen titles). Deviations Awaiting Review are all still
+open and unactioned.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -270,19 +271,7 @@ this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of t
 in Bucket 4, rather than being done piecemeal now.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **Season-completed badge + episode stills on ranking screens (items 9/11), built 2026-07-18, not
-   yet hands-on checked** — no migration needed for either. Confirm: a fully-ranked/judged season
-   shows a "Complete" badge on `/shows/[showId]` and a partially-ranked one doesn't; the comparison
-   and cold-start screens show each episode's own still image where one exists, falling back to the
-   season poster otherwise.
-2. **Stats page (item 2 first slice), built 2026-07-18, not yet hands-on checked** — new
-   `/shows/[showId]/stats`, linked from the show page. Confirm: the tier list groups episodes
-   sensibly (check a show with only a handful of ranked episodes too, where some tiers should be
-   empty by design), the season heatmap's colors are legible in both light and dark mode with the
-   numeric average always visible as text, and the gatekeeper sentence names the right two episodes
-   and gap size (or the whole stats page shows "not enough ranked episodes yet" for a show still
-   fully in cold start).
-3. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
+1. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
    design. Can't be meaningfully verified by just clicking around today (the 24h throttle means a
    freshly-imported show won't actually re-sync for a day), so the real check is patient rather than
    immediate: next time a tracked show is known to have a new episode/season on TMDB, confirm it
@@ -291,7 +280,7 @@ in Bucket 4, rather than being done piecemeal now.
    (check the `shows` table has a populated `last_synced_at` column) and that a show page still loads
    normally post-push (the added `ensureShowSynced` call is fail-open, so even a broken TMDB call
    shouldn't break the page — but confirm that's actually true live, not just in tests).
-4. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
+2. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
    list (auth, search/import, dashboard, show detail page, the rankings page, cold start,
    comparative placement, re-ranking, removing a show all confirmed working end to end). What's
    genuinely still untested/unconfirmed, carried forward rather than chased right now:
@@ -578,6 +567,10 @@ keeps this file fast to read at the start of every session instead of growing fo
     Pushed.
   Both dispatches now in Bucket 2 for hands-on check. Item 2's win/loss matrix, comparison graph, and
   season timeline remain unbuilt, next up whenever item 2 is picked back up.
+- 2026-07-18: Same session, continued. Kayvan hands-on confirmed all three (season-completed badge,
+  episode stills on ranking screens, and the new stats page — tier list, season heatmap, gatekeeper
+  stat) working correctly, after asking for a plain-language explanation of what the gatekeeper stat
+  means. All three removed from Bucket 2.
 - 2026-07-18: Same session, continued. Kayvan hands-on confirmed the full item-8 batch (finale
   badge, win/loss record, rank/re-rank button, credits) working on live Vercel — removed from
   Bucket 2. Logged two more ideas, both placed in Tier A (PM's call) as items 10/11, both building
