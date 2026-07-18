@@ -149,15 +149,29 @@ doesn't currently record *how* an episode's final placement was reached, only wh
 happened. Capturing that would mean a real (if small) algorithm/schema change — worth a v2 once the
 simple version is live and its rough edges are felt in practice, not before.
 
-**Expansion decided 2026-07-18, not yet built**: once this confidence signal exists, two more
-pieces build directly on it rather than needing separate design — full detail in `AppSpec.md`'s
-"Second Design Review — Triage": (1) **smart comparison selection** — instead of asking whatever
-comparison the binary-insertion search would ask next regardless of how informative it is, identify
-and prioritize the pending comparison that would reduce uncertainty the most; (2) framing this live
-("your Top 10 is 92% stable," "one comparison away from confidently separating #4 and #5") is the
-flagship presentation of the whole confidence feature — Kayvan singled this out as the single most
-exciting idea across both design reviews, so when this item actually gets built, lead with that
-framing rather than a plain static percentage.
+**Expansion decided 2026-07-18, not yet built** — **superseded same-day, see below**: the base
+confidence score + display (item 1 above) was built and shipped as planned. The two pieces meant to
+build on top of it did not survive contact with an actual design conversation.
+
+**Smart comparison selection — declined 2026-07-18.** This paragraph originally proposed, without
+ever specifying a mechanism: (1) identify and prioritize whichever pending comparison would reduce
+uncertainty the most, instead of asking whatever the binary-insertion search would ask next; (2)
+frame this live ("your Top 10 is 92% stable," "one comparison away from confidently separating #4
+and #5") as the flagship presentation of the whole confidence feature. Talking through what (1)
+would actually require surfaced that it was never well-defined against this app's real algorithm:
+binary-insertion placement already asks the single most-informative question when placing a *new*
+episode — there is no "smarter" substitute question at that point. The only concrete reading of
+"confidently separating #4 and #5" is a different, genuinely new capability: directly re-comparing
+two *already-ranked* adjacent episodes whose relative order today is only ever inferred transitively
+(e.g. A beat C, C beat B, so A must beat B — A and B may never have been compared directly). Building
+that raises a real open question this doc never answered: what should happen if a direct
+re-comparison *contradicts* the order already on record? A phased build (a safe, read-only "weakest
+boundary" callout first; an interactive re-comparison second, once the contradiction rule is decided)
+was offered as a way to de-risk this, but Kayvan chose to drop the whole idea rather than resolve
+that question now. **Left open to revisit later** — this is a scoping/priority decision, not a "this
+was a bad idea" one, so it's a different class of decline than the Elo/Glicko-style Tier C
+rejections elsewhere in this doc. See `Docs/STATUS.md`'s Tier A item 1 and `Docs/AppSpec.md`'s
+"Second Design Review — Triage" for the same reasoning recorded in those docs too.
 
 ### Decided 2026-07-17, built 2026-07-18: small shows skip cold-start bucketing after episode 1
 

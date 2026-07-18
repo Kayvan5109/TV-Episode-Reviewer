@@ -109,10 +109,13 @@ and 2 (in that priority) at 33% session usage remaining. Built and merged via tw
 dispatches (avoided running in parallel since both touched the show page): items 9 + 11 bundled
 together (`af173f1`), then a scoped-down first slice of item 2 — tier list, season heatmap,
 gatekeeper stat, deliberately deferring the win/loss matrix and comparison graph (`8f5e183`). Kayvan
-hands-on confirmed all three working — removed from Bucket 2. Remaining: Tier A items 1 (smart
-comparison selection), 2's deferred pieces (win/loss matrix, comparison graph, season timeline), 4
-(collections), 10 (clickable comparison-screen titles). Deviations Awaiting Review are all still
-open and unactioned.
+hands-on confirmed all three working — removed from Bucket 2. Kayvan then asked to pick up item 1's
+remaining scope (smart comparison selection); PM flagged it was never actually specified at the
+mechanism level and walked through why, and Kayvan chose to decline it outright rather than resolve
+the open design question — logged as declined-but-revisitable across `STATUS.md`/`AppSpec.md`/
+`DevelopmentPlan.md`. Remaining: Tier A item 2's deferred pieces (win/loss matrix, comparison graph,
+season timeline), 4 (collections), 10 (clickable comparison-screen titles). Deviations Awaiting
+Review are all still open and unactioned.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -127,21 +130,28 @@ unless it's small or genuinely blocking.
 front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
 `DevelopmentPlan.md`'s Discussion section for the full reasoning behind each):
 
-1. **Ranking confidence** ("your Breaking Bad rankings are 87% stable") — the strongest idea from
-   the review. **Base score + display built and merged 2026-07-18** (see History; now in Bucket 2
-   for hands-on verification) — `website/src/lib/ranking/confidence.ts`, wired into
+1. ~~**Ranking confidence**~~ ("your Breaking Bad rankings are 87% stable") — the strongest idea
+   from the review. **Base score + display built and merged 2026-07-18** (see History; Kayvan
+   hands-on confirmed it working) — `website/src/lib/ranking/confidence.ts`, wired into
    `getShowRankingDisplay`, rendered on the show page. Concrete v1 formula was already written up in
    `DevelopmentPlan.md` (decisive-comparison count relative to `log2(showEpisodeCount)`, no schema
    changes needed) — it also documents a known v1 limitation (doesn't yet detect tie-break-fallback
-   placements) that's deliberately not being solved. **Remaining scope, not yet built**: the
-   **smart comparison selection** piece (prioritize whichever pending comparison would reduce
-   uncertainty the most, instead of just the next comparison the search would ask anyway) and the
-   **live "you're one comparison away from confidently separating #4 and #5" framing** on top of it
-   — Kayvan's single most-wanted idea across both design reviews, still worth building, but
-   deliberately *not* bundled into the just-shipped display-only piece: it changes which comparison
-   actually gets asked next, which is correctness-critical (touches live ranking-algorithm behavior)
-   and needs the full implementer-then-independent-reviewer pipeline, unlike the pure-display change
-   that just shipped with implementer + PM review only.
+   placements) that's deliberately not being solved.
+   **Smart comparison selection (the remaining scope) — declined 2026-07-18, not built.** This was
+   Kayvan's single most-wanted idea across both design reviews, but neither design doc had ever
+   pinned down an actual mechanism, only the goal — walking through it live surfaced that the
+   current binary-insertion placement already asks the maximally-informative question for placing a
+   *new* episode, so "confidently separating #4 and #5" can really only mean directly re-comparing
+   two *already-ranked* adjacent episodes to test a relationship that today is only ever inferred
+   transitively, never confirmed head-to-head. That's a genuinely new comparison type, and it opens a
+   real unresolved question — what happens if a direct re-comparison *contradicts* the existing
+   order? (Swap the two? Something bigger?) Presented with a phased split (a safe read-only "weakest
+   boundary" callout first, an interactive re-comparison second, once the contradiction rule is
+   decided) — Kayvan chose to drop the idea entirely rather than resolve that open question right
+   now. See `Docs/AppSpec.md`'s "Second Design Review — Triage" (the item's original "Decided:
+   build" entry, now updated) and `Docs/DevelopmentPlan.md`'s Discussion section for the full
+   reasoning. **Not a permanent rejection** — explicitly left open to revisit later, unlike the
+   Elo/Glicko-class Tier C declines.
 2. **Statistics view + alternate visualizations** of a show's existing rankings. **Expanded
    2026-07-18**: covers a tier list, season-quality heatmap, gatekeeper-episode stat, a win/loss
    matrix (every matchup), a season timeline, and a comparison/relationship graph — all cheap, pure
@@ -567,6 +577,22 @@ keeps this file fast to read at the start of every session instead of growing fo
     Pushed.
   Both dispatches now in Bucket 2 for hands-on check. Item 2's win/loss matrix, comparison graph, and
   season timeline remain unbuilt, next up whenever item 2 is picked back up.
+- 2026-07-18: Same session, continued. Kayvan asked to pick up Tier A item 1's remaining scope
+  (smart comparison selection) next. Before writing anything, PM flagged that neither `AppSpec.md`
+  nor `DevelopmentPlan.md` had ever specified a real mechanism for it, only the goal — walked Kayvan
+  through how binary-insertion placement actually works and why "confidently separating #4 and #5"
+  can only concretely mean directly re-comparing two already-ranked adjacent episodes (a genuinely
+  new comparison type, since their order today is only ever inferred transitively), which raises an
+  unresolved question (what happens on a contradictory answer?). Offered a phased split to de-risk
+  it (read-only callout first, interactive re-comparison second). Kayvan asked instead to just drop
+  it, and asked directly whether there were serious drawbacks to doing so — answered no (nothing
+  regresses, nothing else in the queue depends on it, the existing confidence score already covers
+  the related need it partially addressed, and it was the least-specified item in the whole queue
+  anyway), and logged it as **declined, not built, explicitly open to revisiting later** (a
+  different class of decline than the Elo/Glicko-style permanent Tier C rejections) — updated
+  `Docs/STATUS.md` (this file, Tier A item 1), `Docs/AppSpec.md`'s "Second Design Review — Triage",
+  and `Docs/DevelopmentPlan.md`'s Discussion section, all with the same reasoning rather than
+  silently deleting the prior discussion.
 - 2026-07-18: Same session, continued. Kayvan hands-on confirmed all three (season-completed badge,
   episode stills on ranking screens, and the new stats page — tier list, season heatmap, gatekeeper
   stat) working correctly, after asking for a plain-language explanation of what the gatekeeper stat

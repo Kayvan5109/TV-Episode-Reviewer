@@ -558,12 +558,20 @@ here)**
     country-dependent. Treat as optional later phases of episode pages, not required for v1.
   - **Average community ranking / rating distribution** — blocked on Tier B (community rank
     aggregates) existing; not buildable standalone.
-- **Smart comparison selection** — asking about the pair of episodes that would most reduce ranking
-  uncertainty, instead of a plain "what's next in the search" question. Builds directly on the
-  ranking-confidence formula (Tier A item 2, see `DevelopmentPlan.md`'s Discussion section) rather
-  than requiring an algorithm swap — sequence it as a follow-on to that item, not standalone.
-  "Rivalry matchups" and "is this actually top 5" framing ideas fold into the same mechanism as UI
-  flavor, not new infra.
+- **Smart comparison selection — declined 2026-07-18** (updated from this entry's original "decided:
+  build" status). Walking through what this would actually require, live with Kayvan, surfaced that
+  neither this entry nor `DevelopmentPlan.md`'s Discussion section had ever specified a real
+  mechanism, only the goal ("ask about the pair that would most reduce uncertainty"). The current
+  binary-insertion placement already asks the maximally-informative question for placing a *new*
+  episode, so the only concrete reading of "confidently separating #4 and #5" is directly
+  re-comparing two *already-ranked* adjacent episodes whose order today is only ever inferred
+  transitively, never tested head-to-head — a genuinely new comparison type, which opens a real
+  unresolved design question (what happens if the direct re-comparison *contradicts* the existing
+  order?). Offered a phased split (read-only "weakest boundary" callout first, interactive
+  re-comparison second once the contradiction rule is decided) — Kayvan chose to drop the idea
+  entirely rather than resolve that question now. **Left open to revisit later**, not a permanent
+  Tier C-class rejection — the "rivalry matchups"/"is this actually top 5" framing ideas that would
+  have folded into this are declined along with it for the same reason.
 - **The "wow feature"** (live "your Top 10 is 92% stable," "one comparison away from confidently
   separating #4 and #5") — this is confidence-score + smart-comparison-selection combined with live
   framing, not a separate feature. PM judgment call (Kayvan deferred to it explicitly): elevate this
