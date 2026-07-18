@@ -50,6 +50,13 @@ interface LoadedShowRanking {
   /** Every episode of this show, ordered season/episode ascending — the order new episodes surface in. */
   episodeIdsInOrder: EpisodeId[];
   state: ShowRankingState;
+  /**
+   * `episode_rankings.created_at` for every episode with a ranking row (cold-start or comparative)
+   * — set once, when that episode's first judgment was recorded, and untouched by later
+   * `persistRankedPositions` upserts (see this field's use in `getShowRankingDisplay`). Episodes
+   * with no `episode_rankings` row at all (`unranked`) have no entry here.
+   */
+  createdAtByEpisode: Map<EpisodeId, string>;
 }
 
 /**
@@ -76,12 +83,12 @@ async function loadShowRankingState(
   const episodeIdsInOrder = ((episodeRows ?? []) as { id: string }[]).map((row) => row.id);
 
   if (episodeIdsInOrder.length === 0) {
-    return { episodeIdsInOrder, state: createInitialShowState() };
+    return { episodeIdsInOrder, state: createInitialShowState(), createdAtByEpisode: new Map() };
   }
 
   const { data: rankingRows, error: rankingError } = await supabase
     .from('episode_rankings')
-    .select('episode_id, rank_position, cold_start_bucket, cold_start_sequence')
+    .select('episode_id, rank_position, cold_start_bucket, cold_start_sequence, created_at')
     .eq('user_id', userId)
     .in('episode_id', episodeIdsInOrder);
 
@@ -123,7 +130,12 @@ async function loadShowRankingState(
     [...comparisonRowsById.values()]
   );
 
-  return { episodeIdsInOrder, state };
+  const createdAtByEpisode = new Map<EpisodeId, string>();
+  for (const row of (rankingRows ?? []) as (RankingRow & { created_at: string })[]) {
+    createdAtByEpisode.set(row.episode_id, row.created_at);
+  }
+
+  return { episodeIdsInOrder, state, createdAtByEpisode };
 }
 
 /** First episode of the show (in season/episode order) with no `episode_rankings` row at all yet. */
@@ -446,11 +458,15 @@ export async function getNextStepForEpisode(
  * start (with their bucket), and which haven't been touched at all.
  */
 export type ShowRankingDisplay =
-  | { done: true; ranked: { episodeId: EpisodeId; score: number }[]; confidence: number | null }
+  | {
+      done: true;
+      ranked: { episodeId: EpisodeId; score: number; rank: number; createdAt: string }[];
+      confidence: number | null;
+    }
   | {
       done: false;
-      ranked: { episodeId: EpisodeId; score: number }[];
-      coldStartPending: { episodeId: EpisodeId; bucket: ColdStartBucket }[];
+      ranked: { episodeId: EpisodeId; score: number; rank: number; createdAt: string }[];
+      coldStartPending: { episodeId: EpisodeId; bucket: ColdStartBucket; createdAt: string }[];
       unranked: EpisodeId[];
       confidence: number | null;
     };
@@ -494,6 +510,11 @@ export async function getShowRankingDisplay(showId: string): Promise<ShowRanking
       ranked: order.map((episodeId, index) => ({
         episodeId,
         score: scoreForPosition(index + 1, order.length),
+        rank: index + 1,
+        // Non-null by invariant: `order` only ever contains episodes with an `episode_rankings`
+        // row (comparative or, for a too-small-to-leave-cold-start show, cold-start-only), and
+        // `createdAtByEpisode` is built from that same table.
+        createdAt: reloaded.createdAtByEpisode.get(episodeId)!,
       })),
       confidence:
         state.ranked.length === 0
@@ -512,8 +533,14 @@ export async function getShowRankingDisplay(showId: string): Promise<ShowRanking
     ranked: state.ranked.map((episodeId, index) => ({
       episodeId,
       score: scoreForPosition(index + 1, state.ranked.length),
+      rank: index + 1,
+      createdAt: reloaded.createdAtByEpisode.get(episodeId)!,
     })),
-    coldStartPending: state.coldStart.map(({ episodeId, bucket }) => ({ episodeId, bucket })),
+    coldStartPending: state.coldStart.map(({ episodeId, bucket }) => ({
+      episodeId,
+      bucket,
+      createdAt: reloaded.createdAtByEpisode.get(episodeId)!,
+    })),
     unranked: loaded.episodeIdsInOrder.filter((id) => !rankedSet.has(id) && !coldStartSet.has(id)),
     confidence:
       state.ranked.length === 0

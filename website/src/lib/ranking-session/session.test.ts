@@ -30,7 +30,11 @@ interface FakeRankingRow {
   rank_position: number | null;
   cold_start_bucket: string | null;
   cold_start_sequence: number | null;
+  created_at: string;
 }
+
+/** A fixed, arbitrary `created_at` for seed rows in tests that don't care about its exact value. */
+const SEED_CREATED_AT = '2026-01-01T00:00:00.000Z';
 
 interface FakeComparisonRow {
   id: string;
@@ -113,12 +117,23 @@ class FakeSupabase {
   comparisons: FakeComparisonRow[] = [];
   currentUserId: string | null = 'user-1';
   private comparisonIdCounter = 0;
+  private rankingCreatedAtCounter = 0;
 
   auth = {
     getUser: async () => ({
       data: { user: this.currentUserId ? { id: this.currentUserId } : null },
     }),
   };
+
+  /**
+   * Mirrors `episode_rankings.created_at timestamptz not null default now()`: a fresh, monotonically
+   * increasing timestamp assigned whenever a row is actually inserted for the first time — never
+   * passed explicitly by the production `insert`/`upsert` call sites in `session.ts`, exactly like a
+   * real DB-side default wouldn't be either.
+   */
+  private nextCreatedAt(): string {
+    return new Date(Date.UTC(2026, 1, 1, 0, 0, this.rankingCreatedAtCounter++)).toISOString();
+  }
 
   from(table: string) {
     if (table === 'episodes') {
@@ -128,20 +143,22 @@ class FakeSupabase {
       const builder = makeReadBuilder(this.rankings);
       return {
         ...builder,
-        insert: (row: FakeRankingRow) => {
-          this.rankings.push({ ...row });
+        insert: (row: Omit<FakeRankingRow, 'created_at'>) => {
+          this.rankings.push({ ...row, created_at: this.nextCreatedAt() });
           return Promise.resolve({ data: null, error: null });
         },
         // eslint-disable-next-line @typescript-eslint/no-unused-vars -- signature-compatible with the real `.upsert(rows, options)`; the fake ignores `onConflict` since it always matches on (user_id, episode_id).
-        upsert: (rows: FakeRankingRow[], _opts?: { onConflict: string }) => {
+        upsert: (rows: Omit<FakeRankingRow, 'created_at'>[], _opts?: { onConflict: string }) => {
           for (const row of rows) {
             const idx = this.rankings.findIndex(
               (r) => r.user_id === row.user_id && r.episode_id === row.episode_id
             );
             if (idx >= 0) {
+              // Real upsert only updates columns present in the row being written — `created_at`
+              // isn't one of them (see `persistRankedPositions`), so the existing value survives.
               this.rankings[idx] = { ...this.rankings[idx], ...row };
             } else {
-              this.rankings.push({ ...row });
+              this.rankings.push({ ...row, created_at: this.nextCreatedAt() });
             }
           }
           return Promise.resolve({ data: null, error: null });
@@ -312,6 +329,7 @@ describe('fully ranked show — nothing left to do', () => {
       rank_position: null,
       cold_start_bucket: 'neutral',
       cold_start_sequence: i,
+      created_at: SEED_CREATED_AT,
     }));
 
     await expect(getNextRankingStep(SHOW_ID)).resolves.toEqual({ type: 'done' });
@@ -336,6 +354,10 @@ function seedComparativePool(extraUnranked: number) {
     rank_position: i + 1, // A=1 (best) .. D=4 (worst)
     cold_start_bucket: null,
     cold_start_sequence: null,
+    // Distinct per episode (rather than SEED_CREATED_AT for all) so tests can assert
+    // getShowRankingDisplay actually threads each episode's own created_at through, not just a
+    // single shared value that would pass even if every row got the same one by mistake.
+    created_at: `2026-01-0${i + 1}T00:00:00.000Z`,
   }));
 
   return { rankedIds, extraIds, allIds };
@@ -532,10 +554,10 @@ describe('getShowRankingDisplay', () => {
     if (display.done) return;
 
     expect(display.ranked).toEqual([
-      { episodeId: 'A', score: scoreForPosition(1, 4) },
-      { episodeId: 'B', score: scoreForPosition(2, 4) },
-      { episodeId: 'C', score: scoreForPosition(3, 4) },
-      { episodeId: 'D', score: scoreForPosition(4, 4) },
+      { episodeId: 'A', score: scoreForPosition(1, 4), rank: 1, createdAt: '2026-01-01T00:00:00.000Z' },
+      { episodeId: 'B', score: scoreForPosition(2, 4), rank: 2, createdAt: '2026-01-02T00:00:00.000Z' },
+      { episodeId: 'C', score: scoreForPosition(3, 4), rank: 3, createdAt: '2026-01-03T00:00:00.000Z' },
+      { episodeId: 'D', score: scoreForPosition(4, 4), rank: 4, createdAt: '2026-01-04T00:00:00.000Z' },
     ]);
     expect(display.coldStartPending).toEqual([]);
     expect(display.unranked).toEqual(['X1']);
@@ -553,8 +575,8 @@ describe('getShowRankingDisplay', () => {
     expect(display.ranked).toEqual([]);
     expect(display.coldStartPending).toEqual(
       expect.arrayContaining([
-        { episodeId: ids[0], bucket: 'liked' },
-        { episodeId: ids[1], bucket: 'disliked' },
+        { episodeId: ids[0], bucket: 'liked', createdAt: expect.any(String) },
+        { episodeId: ids[1], bucket: 'disliked', createdAt: expect.any(String) },
       ])
     );
     expect(display.coldStartPending).toHaveLength(2);
@@ -610,9 +632,9 @@ describe('getShowRankingDisplay', () => {
     await expect(getShowRankingDisplay(SHOW_ID)).resolves.toEqual({
       done: true,
       ranked: [
-        { episodeId: ids[1], score: scoreForPosition(1, 3) },
-        { episodeId: ids[2], score: scoreForPosition(2, 3) },
-        { episodeId: ids[0], score: scoreForPosition(3, 3) },
+        { episodeId: ids[1], score: scoreForPosition(1, 3), rank: 1, createdAt: expect.any(String) },
+        { episodeId: ids[2], score: scoreForPosition(2, 3), rank: 2, createdAt: expect.any(String) },
+        { episodeId: ids[0], score: scoreForPosition(3, 3), rank: 3, createdAt: expect.any(String) },
       ],
       confidence: expectedConfidence,
     });
@@ -637,14 +659,33 @@ describe('getShowRankingDisplay', () => {
     await expect(getShowRankingDisplay(SHOW_ID)).resolves.toEqual({
       done: true,
       ranked: [
-        { episodeId: 'A', score: scoreForPosition(1, 5) },
-        { episodeId: 'B', score: scoreForPosition(2, 5) },
-        { episodeId: subject, score: scoreForPosition(3, 5) },
-        { episodeId: 'C', score: scoreForPosition(4, 5) },
-        { episodeId: 'D', score: scoreForPosition(5, 5) },
+        { episodeId: 'A', score: scoreForPosition(1, 5), rank: 1, createdAt: '2026-01-01T00:00:00.000Z' },
+        { episodeId: 'B', score: scoreForPosition(2, 5), rank: 2, createdAt: '2026-01-02T00:00:00.000Z' },
+        { episodeId: subject, score: scoreForPosition(3, 5), rank: 3, createdAt: expect.any(String) },
+        { episodeId: 'C', score: scoreForPosition(4, 5), rank: 4, createdAt: '2026-01-03T00:00:00.000Z' },
+        { episodeId: 'D', score: scoreForPosition(5, 5), rank: 5, createdAt: '2026-01-04T00:00:00.000Z' },
       ],
       confidence: expectedConfidence,
     });
+  });
+
+  it('threads each episode\'s 1-based rank and its own episode_rankings.created_at through for a done: true show', async () => {
+    // Fully seeded (extraUnranked: 0) so every episode's created_at comes straight from
+    // seedComparativePool's fixed per-episode dates, not a dynamically-assigned one from the
+    // fake's insert-time counter — makes this test about `rank`/`createdAt` specifically, not
+    // about re-deriving whatever the fake happened to assign.
+    seedComparativePool(0); // A, B, C, D ranked at positions 1-4, nothing left unranked
+
+    const display = await getShowRankingDisplay(SHOW_ID);
+    expect(display.done).toBe(true);
+    if (!display.done) return;
+
+    expect(display.ranked).toEqual([
+      { episodeId: 'A', score: scoreForPosition(1, 4), rank: 1, createdAt: '2026-01-01T00:00:00.000Z' },
+      { episodeId: 'B', score: scoreForPosition(2, 4), rank: 2, createdAt: '2026-01-02T00:00:00.000Z' },
+      { episodeId: 'C', score: scoreForPosition(3, 4), rank: 3, createdAt: '2026-01-03T00:00:00.000Z' },
+      { episodeId: 'D', score: scoreForPosition(4, 4), rank: 4, createdAt: '2026-01-04T00:00:00.000Z' },
+    ]);
   });
 
   it('reports null confidence while nothing has gone through comparative placement yet', async () => {
@@ -710,6 +751,7 @@ describe('deleteShowRankingData', () => {
       rank_position: 1,
       cold_start_bucket: null,
       cold_start_sequence: null,
+      created_at: SEED_CREATED_AT,
     });
 
     await deleteShowRankingData(SHOW_ID);
@@ -721,6 +763,7 @@ describe('deleteShowRankingData', () => {
         rank_position: 1,
         cold_start_bucket: null,
         cold_start_sequence: null,
+        created_at: SEED_CREATED_AT,
       },
     ]);
     expect(fake.comparisons).toHaveLength(0);
@@ -740,8 +783,22 @@ describe('deleteShowRankingData', () => {
   it('only deletes the signed-in user\'s rows, never another user\'s ranking data for the same show', async () => {
     seedComparativePool(1); // seeds user-1's rankings for A-D
     fake.rankings.push(
-      { user_id: 'user-2', episode_id: 'A', rank_position: 1, cold_start_bucket: null, cold_start_sequence: null },
-      { user_id: 'user-2', episode_id: 'B', rank_position: 2, cold_start_bucket: null, cold_start_sequence: null }
+      {
+        user_id: 'user-2',
+        episode_id: 'A',
+        rank_position: 1,
+        cold_start_bucket: null,
+        cold_start_sequence: null,
+        created_at: SEED_CREATED_AT,
+      },
+      {
+        user_id: 'user-2',
+        episode_id: 'B',
+        rank_position: 2,
+        cold_start_bucket: null,
+        cold_start_sequence: null,
+        created_at: SEED_CREATED_AT,
+      }
     );
     fake.comparisons.push({
       id: 'seed-u2',
@@ -775,6 +832,7 @@ describe('resetEpisodeRanking', () => {
       rank_position: i + 1,
       cold_start_bucket: null,
       cold_start_sequence: null,
+      created_at: SEED_CREATED_AT,
     }));
     return ids;
   }
@@ -863,6 +921,7 @@ describe('resetEpisodeRanking', () => {
       rank_position: 3,
       cold_start_bucket: null,
       cold_start_sequence: null,
+      created_at: SEED_CREATED_AT,
     });
     fake.comparisons.push({
       id: 'seed-u2-c-d',

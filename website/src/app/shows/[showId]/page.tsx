@@ -117,16 +117,26 @@ export default async function ShowDetailPage({
   const display = !episodesError && episodes.length > 0 ? await getShowRankingDisplay(showId) : null;
 
   const scoreByEpisode = new Map<string, number>();
+  const rankByEpisode = new Map<string, number>();
   const bucketByEpisode = new Map<string, string>();
+  const createdAtByEpisode = new Map<string, string>();
   if (display) {
-    for (const { episodeId, score } of display.ranked) {
+    for (const { episodeId, score, rank, createdAt } of display.ranked) {
       scoreByEpisode.set(episodeId, score);
+      rankByEpisode.set(episodeId, rank);
+      createdAtByEpisode.set(episodeId, createdAt);
     }
     if (!display.done) {
-      for (const { episodeId, bucket } of display.coldStartPending) {
+      for (const { episodeId, bucket, createdAt } of display.coldStartPending) {
         bucketByEpisode.set(episodeId, bucket);
+        createdAtByEpisode.set(episodeId, createdAt);
       }
     }
+  }
+
+  /** e.g. "Jul 15" — concise, no year (all ranking data is recent enough that the year is noise). */
+  function formatRankedDate(iso: string): string {
+    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   }
 
   return (
@@ -201,7 +211,9 @@ export default async function ShowDetailPage({
                   <ol className="flex flex-col gap-2">
                     {seasonEpisodes.map((episode) => {
                       const score = scoreByEpisode.get(episode.id);
+                      const rank = rankByEpisode.get(episode.id);
                       const bucket = bucketByEpisode.get(episode.id);
+                      const createdAt = createdAtByEpisode.get(episode.id);
                       return (
                         <li
                           key={episode.id}
@@ -212,10 +224,22 @@ export default async function ShowDetailPage({
                               E{episode.episode_number}
                             </span>
                             <span>{episode.title}</span>
+                            {createdAt !== undefined && (
+                              <span className="text-black/40 dark:text-white/40">
+                                Ranked {formatRankedDate(createdAt)}
+                              </span>
+                            )}
                           </span>
                           {score !== undefined ? (
                             <span className="flex items-center gap-3">
-                              <span className="font-medium">{score.toFixed(1)}</span>
+                              <span className="font-medium">
+                                {score.toFixed(1)}
+                                {rank !== undefined && (
+                                  <span className="ml-1 font-normal text-black/50 dark:text-white/50">
+                                    (#{rank})
+                                  </span>
+                                )}
+                              </span>
                               <ReRankButton
                                 showId={showId}
                                 episodeId={episode.id}
