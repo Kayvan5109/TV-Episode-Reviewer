@@ -5,17 +5,31 @@
  * `src/lib/tmdb/client.ts`) — a TMDB show only exposes its episode list one season at a time, so
  * this route takes the season as a required query param. Never call TMDB directly from the
  * browser or iOS; returns only the fields the app needs, not TMDB's raw response.
+ *
+ * Requires a signed-in caller (see the `getUser()` guard below) — this route spends the server's
+ * own TMDB read-access token on every call, and `proxy.ts`'s matcher deliberately excludes `/api`
+ * (so it never runs on this route), meaning without this guard the route was reachable by anyone on
+ * the internet with no auth and no rate limit, burning the shared TMDB token on their behalf.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { tmdbErrorBody, tmdbFetch } from '@/lib/tmdb/client';
 import { mapSeasonEpisode } from '@/lib/tmdb/mappers';
 import type { TmdbSeasonResponse } from '@/lib/tmdb/types';
+import { createSupabaseServerClient } from '@/lib/supabase/serverSession';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ showId: string }> }
 ) {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: 'Not signed in.' }, { status: 401 });
+  }
+
   const { showId } = await params;
 
   if (!/^\d+$/.test(showId)) {

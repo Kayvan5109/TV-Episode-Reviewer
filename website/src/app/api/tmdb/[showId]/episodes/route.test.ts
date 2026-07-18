@@ -1,12 +1,23 @@
 import { NextRequest } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { GET } from './route';
+
+const getUser = vi.fn();
+
+vi.mock('@/lib/supabase/serverSession', () => ({
+  createSupabaseServerClient: async () => ({ auth: { getUser } }),
+}));
+
+// Imported after the mock so `route.ts` picks up the mocked module — matches
+// `api/tmdb/search/route.test.ts`'s established pattern for this codebase.
+const { GET } = await import('./route');
 
 const ORIGINAL_TOKEN = process.env.TMDB_API_READ_ACCESS_TOKEN;
 
 beforeEach(() => {
-  vi.restoreAllMocks();
+  vi.clearAllMocks();
   process.env.TMDB_API_READ_ACCESS_TOKEN = 'test-token-123';
+  // Default: signed-in user — most tests only care about the TMDB shape, not the auth gate itself.
+  getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
 });
 
 afterEach(() => {
@@ -21,6 +32,18 @@ function requestFor(showId: string, season: string | null) {
 }
 
 describe('GET /api/tmdb/[showId]/episodes', () => {
+  it('returns 401 and never calls TMDB when there is no signed-in user', async () => {
+    getUser.mockResolvedValue({ data: { user: null } });
+    const fetchSpy = vi.spyOn(global, 'fetch');
+
+    const response = await requestFor('1396', '1');
+
+    expect(response.status).toBe(401);
+    const body = await response.json();
+    expect(body.error).toMatch(/signed in/i);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it('returns 400 for a non-numeric showId', async () => {
     const response = await requestFor('not-a-number', '1');
     expect(response.status).toBe(400);

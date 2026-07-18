@@ -16,9 +16,11 @@
  * Uses the *session-aware* Supabase client (`serverSession.ts`), never the service-role client,
  * for the `user_shows` lookup — this must only ever reflect the caller's own rows, enforced by
  * both RLS and an explicit `user_id` filter (defense in depth). The caller's identity always comes
- * from `getUser()`, never a client-supplied value. If there's no signed-in user (e.g. this route
- * were ever hit unauthenticated), every result is simply reported as not-added rather than
- * guessed — this page already requires auth, so that's a defensive fallback, not the expected path.
+ * from `getUser()`, never a client-supplied value. `annotateResultsForCurrentUser` below still does
+ * its own internal `getUser()` call and its own no-user fallback (harmless redundancy, left as-is
+ * rather than threading a user through) — the guard added below is a separate, earlier gate whose
+ * job is different: this route requires a signed-in caller at all, full stop, before it will spend
+ * the server's own TMDB token on anyone's behalf (see that guard's own comment for why).
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -33,6 +35,20 @@ import {
 } from '@/lib/shows/searchAnnotation';
 
 export async function GET(request: NextRequest) {
+  // Auth gate: this route calls out to TMDB using this server's own read-access token
+  // (TMDB_API_READ_ACCESS_TOKEN, see tmdb/client.ts) — without this check, `proxy.ts`'s matcher
+  // deliberately excludes `/api` (so it never runs on this route at all), so this was previously
+  // reachable by anyone on the internet, burning the token with no auth and no rate limit. Checked
+  // before touching TMDB, not after — the point is to never spend the call on an unauthenticated
+  // request in the first place.
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: 'Not signed in.' }, { status: 401 });
+  }
+
   const query = request.nextUrl.searchParams.get('query');
 
   if (!query || query.trim().length === 0) {

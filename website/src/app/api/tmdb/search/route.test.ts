@@ -58,6 +58,18 @@ function requestFor(query: string | null) {
 }
 
 describe('GET /api/tmdb/search', () => {
+  it('returns 401 and never calls TMDB when there is no signed-in user', async () => {
+    getUser.mockResolvedValue({ data: { user: null } });
+    const fetchSpy = vi.spyOn(global, 'fetch');
+
+    const response = await GET(requestFor('Breaking Bad'));
+
+    expect(response.status).toBe(401);
+    const body = await response.json();
+    expect(body.error).toMatch(/signed in/i);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it('returns 400 when the query param is missing', async () => {
     const response = await GET(requestFor(null));
     expect(response.status).toBe(400);
@@ -192,18 +204,6 @@ describe('GET /api/tmdb/search — "already added" annotation', () => {
       (r, i) => from.mock.calls[i][0] === 'user_shows'
     )?.value;
     expect(userShowsBuilder.eq).toHaveBeenCalledWith('user_id', 'the-real-signed-in-user');
-  });
-
-  it('reports every result as not-added when there is no signed-in user, without querying the DB', async () => {
-    getUser.mockResolvedValue({ data: { user: null } });
-
-    const response = await GET(requestFor('Breaking Bad'));
-    const body = await response.json();
-
-    expect(body.results.every((r: { alreadyAdded: boolean }) => r.alreadyAdded === false)).toBe(
-      true
-    );
-    expect(from).not.toHaveBeenCalled();
   });
 
   it('fails open (reports not-added) if the shows lookup errors, without crashing the search', async () => {
