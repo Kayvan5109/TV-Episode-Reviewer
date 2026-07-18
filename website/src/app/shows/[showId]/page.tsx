@@ -141,6 +141,21 @@ export default async function ShowDetailPage({
               <p className="text-sm text-black/60 dark:text-white/60">
                 {episodes.length} episode{episodes.length === 1 ? '' : 's'} imported
               </p>
+              {display && (
+                <p className="text-sm text-black/60 dark:text-white/60">
+                  {(() => {
+                    // Numerator counts episodes with *some* opinion given (fully ranked, or
+                    // mid-cold-start-judged but not yet placed) — see Docs/STATUS.md's decision
+                    // that this is closer to "the user has given an opinion on it" than counting
+                    // only fully-placed episodes.
+                    const rankedCount =
+                      display.ranked.length + (display.done ? 0 : display.coldStartPending.length);
+                    const total = episodes.length;
+                    const percent = total > 0 ? Math.round((rankedCount / total) * 100) : 0;
+                    return `${percent}% (${rankedCount}/${total}) episodes ranked`;
+                  })()}
+                </p>
+              )}
               {display?.done && (
                 <p className="text-sm font-medium text-green-700 dark:text-green-400">Ranking complete</p>
               )}

@@ -22,6 +22,9 @@ export function AppHeader() {
     <header className="flex items-center justify-between border-b border-black/10 px-6 py-4 dark:border-white/20">
       <span className="font-semibold">Episode Ranker</span>
       <div className="flex items-center gap-4">
+        <Link href="/shows/search" className="text-sm underline underline-offset-2">
+          Search Shows
+        </Link>
         <Link href="/dashboard" className="text-sm underline underline-offset-2">
           Dashboard
         </Link>
