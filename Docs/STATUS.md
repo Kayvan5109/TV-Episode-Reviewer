@@ -49,9 +49,7 @@ unless it's small or genuinely blocking.
 front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
 `DevelopmentPlan.md`'s Discussion section for the full reasoning behind each):
 
-1. **Keyboard shortcuts** on the cold-start and comparison screens (e.g. arrow keys or number keys
-   for liked/disliked/neutral and better/worse/about-the-same) — small, no design decision needed.
-2. **Ranking confidence** ("your Breaking Bad rankings are 87% stable") — the strongest idea from
+1. **Ranking confidence** ("your Breaking Bad rankings are 87% stable") — the strongest idea from
    the review. Concrete v1 formula already written up in `DevelopmentPlan.md` (decisive-comparison
    count relative to `log2(showEpisodeCount)`, no schema changes needed) — read that before
    building, it also documents a known v1 limitation (doesn't yet detect tie-break-fallback
@@ -62,7 +60,7 @@ front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
    **live "you're one comparison away from confidently separating #4 and #5" framing** as the
    flagship presentation — Kayvan's single most-wanted idea across both design reviews, build this
    framing first rather than a plain static percentage.
-3. **Statistics view + alternate visualizations** of a show's existing rankings (e.g. a tier list,
+2. **Statistics view + alternate visualizations** of a show's existing rankings (e.g. a tier list,
    heatmap, or season timeline) — sequence after item 2, since "most/least confident episode" is a
    natural stat once confidence exists. Purely additive over data `getShowRankingDisplay` already
    computes; no new persistence logic. **Expanded 2026-07-18**: also covers a comparison/relationship
@@ -71,7 +69,7 @@ front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
    already stored (`episode_comparisons` plus existing derived scores), nothing new to fetch. Tier
    lists specifically are confirmed **auto-generated only** — no manual user editing/override, decided
    2026-07-18.
-4. **Richer comparison screen — fully spec'd 2026-07-18, ready to build.** Two-column layout: the
+3. **Richer comparison screen — fully spec'd 2026-07-18, ready to build.** Two-column layout: the
    episode being placed (`subject`) on the left, the episode it's being compared against
    (`reference`) on the right — replacing the current stacked layout (`rank/[episodeId]/page.tsx`'s
    `RankEpisodeStep`, where `subject` is shown alone at the top and `reference` is mentioned inline
@@ -86,26 +84,26 @@ front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
    relabel). `ColdStartPicker`'s separate "Neutral" bucket button is untouched — cold start still
    says "Neutral," this relabel is comparative-mode-only, confirmed explicitly.
    Cast is deliberately **not** part of this screen's v1 (Kayvan's spec doesn't include it) — stays
-   scoped to item 9 (episode pages) instead, which needs a per-episode credits call regardless.
+   scoped to item 8 (episode pages) instead, which needs a per-episode credits call regardless.
    Synopsis needs one new nullable column (`episodes.synopsis`, same pattern as
    `season_poster_url`/`genres`) populated from TMDB's season-endpoint `overview` field — already
    fetched by `importShowFromTmdb` today, just not persisted, so **no new TMDB call needed**, same
-   "map a field we already have" story as the finale flag and episode stills noted under item 9.
+   "map a field we already have" story as the finale flag and episode stills noted under item 8.
    Classified as feel-based UI + a trivial additive migration (not correctness-critical) — gets the
    same treatment as the season-poster-art work (implementer + direct PM review, hands-on check
    after), not the full independent-reviewer pipeline.
-5. **Collections** — user-created private lists of episodes across shows (e.g. "Best Pilot
+4. **Collections** — user-created private lists of episodes across shows (e.g. "Best Pilot
    Episodes"). Independent of the rest of this batch, can slot in anywhere. Keep to private-only
    for now — a *shareable* version needs public-link infrastructure that doesn't exist yet (see
    the Tier B note in `AppSpec.md`).
-6. **Per-show progress bar on the dashboard** — added 2026-07-17: each show in "My Shows" gets a
+5. **Per-show progress bar on the dashboard** — added 2026-07-17: each show in "My Shows" gets a
    progress indicator (episodes ranked so far) right on the dashboard list itself, not just on the
    show's own page (the per-show-page counter is already built — see History 2026-07-18; this is the
    dashboard-list version — related but distinct, both worth building). Overlaps an idea already
    sitting in `AppSpec.md`'s original brainstorm list ("Poster art + progress indicator per show" on
    the dashboard) — same underlying data (`getShowRankingDisplay` per show), just surfaced one level
    up. Purely additive, no design decision needed.
-7. **"Date ranked" next to each episode's name on the show page** — added 2026-07-17. No schema
+6. **"Date ranked" next to each episode's name on the show page** — added 2026-07-17. No schema
     change needed: `episode_rankings.created_at` already means exactly this — it's set once, the
     first time a row exists for that episode (its first cold-start judgment, or the day it was
     first comparatively placed), and survives untouched through later position-shuffling upserts
@@ -117,7 +115,7 @@ front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
     next to the episode title — for both fully-ranked and cold-start-pending episodes (anything with
     an `episode_rankings` row at all), not shown for untouched ones. Small, self-contained, no design
     decision needed.
-8. **Show each episode's numeric rank position next to its score** — added 2026-07-18, Kayvan's
+7. **Show each episode's numeric rank position next to its score** — added 2026-07-18, Kayvan's
    request. E.g. "8.7 (#3)" rather than just "8.7". No schema/persistence change: `getShowRankingDisplay`
    (`ranking-session/session.ts`) already computes this — both places it builds a `ranked` array
    (`session.ts` lines ~485 and ~499) do `order.map((episodeId, index) => ({ ..., score:
@@ -133,7 +131,7 @@ front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
    they don't show a score. Small, self-contained, no design decision needed — implementer + PM
    review, not the full algorithm-level rigor (this is a pure display of an already-correct value,
    not a change to how rank positions are computed).
-9. **Episode pages** — added 2026-07-18 from the second design review (see `AppSpec.md`'s "Second
+8. **Episode pages** — added 2026-07-18 from the second design review (see `AppSpec.md`'s "Second
    Design Review — Triage" for the full breakdown). Episodes currently only exist as list rows on the
    show page; this is a genuinely new `/shows/[showId]/episodes/[episodeId]`-style route (exact path
    TBD at build time). Build in the cheap-first order the triage laid out: (a) title/season-episode/
@@ -141,7 +139,7 @@ front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
    `still_path`) the app already fetches but currently discards; (b) the season finale flag (derived,
    not tagged — see the triage doc for the exact rule); (c) a personal win/loss record per episode
    (free read over the existing `episode_comparisons` table); (d) director/writer/cast, which needs a
-   new per-episode TMDB credits call — do this alongside item 4 above, same underlying data gap.
+   new per-episode TMDB credits call — do this alongside item 3 above, same underlying data gap.
    IMDb/RT/Metacritic links and streaming availability are optional later phases, not v1. Average
    community ranking and rating distribution are explicitly out of scope until Tier B (the social
    layer) exists.
@@ -241,7 +239,14 @@ see Bucket 4.)
 12. **Import** (IMDb ratings, Letterboxd-style exports, TV Time, Trakt, streaming watch history) —
     added 2026-07-18, same source. Real third-party integration work, one per service, each with its
     own auth/API shape. Whenever picked up, start with a single service rather than all of them.
-13. **Spoiler mode** — added 2026-07-18, same source. How far a user has watched a show, hiding
+13. **Keyboard shortcuts** on the cold-start and comparison screens — was Tier A item 1, moved here
+    2026-07-18 at Kayvan's request ("skip keyboard shortcuts... move to the backlog"), after an
+    implementer agent had been dispatched but before it produced a working result (see Deviations
+    Awaiting Review — it was stopped mid-task and left a stray partial edit that got reverted, not a
+    real implementation to build on). Still small, no design decision needed whenever it's picked up:
+    number keys 1/2/3 mapped to each picker's three buttons in display order, `ColdStartPicker` and
+    `ComparisonPrompt` respectively.
+14. **Spoiler mode** — added 2026-07-18, same source. How far a user has watched a show, hiding
     titles/rankings/descriptions past that point. Confirmed as a real, currently-unaddressed gap
     (nothing today prevents seeing a whole show's ranked episode list regardless of watch progress),
     deliberately backlogged rather than built now (Kayvan: "ignore for now"). Flagged for whenever
@@ -258,6 +263,26 @@ Solo judgment calls made mid-session that weren't slept on get logged here and s
 start of the next session for a second look — even solo, "I decided this at 11pm without thinking
 it through" is worth a deliberate re-check, not silent acceptance.
 
+- 2026-07-18: **The recurring `isolation: "worktree"` bug (logged below, previous session) has a new,
+  more concerning variant.** Dispatched an implementer agent for keyboard shortcuts (was Tier A item
+  1). Immediately after dispatch, `git worktree list` was checked per the existing mitigation and
+  showed a real, separate, properly registered, locked worktree (`agent-af1bfa877ee217cc6`) — the
+  exact check this project adopted specifically to catch the previous variant of this bug (no
+  worktree created at all). Kayvan asked to skip the feature moments later, so the agent was stopped
+  via `TaskStop` almost immediately. Its worktree was correctly auto-cleaned on stop (confirmed via a
+  second `git worktree list`) — but `main`'s own working tree still had an uncommitted, partial edit
+  to `ColdStartPicker.tsx` matching exactly what the agent had started building. So this time the
+  isolation mechanism itself worked correctly (real worktree, correctly registered, correctly
+  cleaned up afterward) and the agent still wrote to `main`'s files directly instead of its own
+  worktree's copy — a different failure mode than the previously-logged one, and one the existing
+  `git worktree list` mitigation does *not* catch, since the worktree genuinely existed the whole
+  time. Reverted the stray edit (`git restore`, confirmed clean, no other files affected). **This
+  makes the underlying bug worth investigating even more urgently than previously logged**: the
+  established mitigation (verify `git worktree list` right after dispatch) is not actually sufficient
+  protection — an agent can apparently still end up editing `main`'s working tree even inside a
+  verified-real, verified-registered worktree. No working theory yet for how that's possible; worth
+  a dedicated investigation before leaning on `isolation: "worktree"` for anything where a real
+  collision with concurrent work would matter.
 - 2026-07-18: **Fixed the open-TMDB-proxy security gap (`CriticalReview.md` Finding 3.1) directly,
   without the full implementer-then-independent-reviewer pipeline this would normally get as auth/
   security work** — at 87% session usage, spawning and waiting on a second agent risked not landing
