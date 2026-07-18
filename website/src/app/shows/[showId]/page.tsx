@@ -186,6 +186,9 @@ export default async function ShowDetailPage({
               <Link href={`/shows/${showId}/rankings`} className="text-sm underline">
                 See episodes ranked best to worst
               </Link>
+              <Link href={`/shows/${showId}/stats`} className="text-sm underline">
+                See stats
+              </Link>
             </div>
           </div>
           <RemoveShowButton showId={showId} showTitle={showRow.title} />
