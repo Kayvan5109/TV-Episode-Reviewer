@@ -177,16 +177,18 @@ this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of t
 in Bucket 4, rather than being done piecemeal now.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **Richer two-column comparison screen, built 2026-07-18, not yet hands-on checked.** Was Tier A
-   item 3. **Needs the new migration (`20260718030000_episode_synopsis.sql`) applied to the live
-   Supabase project before it'll show real synopsis text** — existing episodes will have
-   `synopsis is null` until their show is re-imported (same re-import-backfills-it pattern as the
-   season-poster/genres columns). Confirm hands-on: the two-column layout renders sensibly with a
-   real comparison (poster art, title, synopsis for both subject and reference), the layout holds up
-   on a narrow window (it's meant to stack vertically below a breakpoint), the middle button reads
-   "I can't decide" here specifically (not on the cold-start screen, which should still say
-   "Neutral"), and that an episode with no synopsis yet (pre-migration data) just omits that line
-   rather than showing something broken.
+1. **Richer two-column comparison screen, built 2026-07-18, migration already applied by Kayvan,
+   not yet hands-on checked.** Was Tier A item 3. Kayvan tried the first build hands-on and
+   requested two changes, both built and merged same session (`fce46f2` — see History): (a) the
+   synopsis now also shows on the cold-start screen, not just the two-episode compare screen; (b)
+   the three-button "Better"/"I can't decide"/"Worse" control is gone — the comparison screen now
+   reads "Which episode did you like better?" and the user clicks directly on whichever episode's
+   *poster* they preferred (posterless episodes get a same-size clickable placeholder box with the
+   title in it), leaving "I can't decide" as the only remaining button. Confirm hands-on: clicking
+   each poster actually submits the right episode as the winner (not swapped), "I can't decide"
+   still works, cold-start screens now show synopsis text too, a posterless episode's placeholder
+   box is clickable, the layout still holds up on a narrow window, and no stray "Better"/"Worse"
+   buttons or "About the same" label linger anywhere.
 2. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
    design. Can't be meaningfully verified by just clicking around today (the 24h throttle means a
    freshly-imported show won't actually re-sync for a day), so the real check is patient rather than
@@ -447,6 +449,32 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-18: Same session, continued. Kayvan applied the `episodes.synopsis` migration to live
+  Supabase and tried the just-merged comparison screen hands-on: liked the two-column layout overall
+  but asked for two changes before moving on to anything else. Built and merged both via one more
+  implementer agent (worktree), reviewed, re-verified fresh, merged (`fce46f2`), pushed:
+  1. **Synopsis now shows on the cold-start screen too**, not just the compare screen — the shared
+     wrapper `RankEpisodeStep` uses for cold-start/already-ranked steps now renders the same full
+     `EpisodeColumn` (poster+title+synopsis) the compare screen already used, instead of a small
+     poster+title-only strip.
+  2. **Replaced the three-button "Better"/"I can't decide"/"Worse" control with click-the-poster.**
+     `ComparisonPrompt` was rewritten to render both episode columns itself (poster click handling
+     has to live in a Client Component) — a new heading reads "Which episode did you like better?",
+     clicking the subject's poster submits `result: 'better'`, clicking the reference's poster
+     submits `result: 'worse'` (per `ComparisonResult`'s existing "subject relative to reference"
+     semantics — unchanged, only the trigger changed), and "I can't decide" (`neutral`) remains the
+     only button. Posterless episodes get a same-size dashed-border placeholder with the title in
+     it as the click target, so ranking isn't blocked by missing artwork. A new
+     `resultForClickedSide` pure function isolates the click→result mapping for a direct unit test
+     (2 new tests). `page.tsx` and `ComparisonPrompt.tsx` now share episode-display types/formatting
+     via a new `episodeDisplay.ts` (avoids the Client Component importing runtime code from the
+     Server Component file). `ColdStartPicker.tsx` confirmed untouched via diff review — its own
+     "Neutral" bucket is unaffected.
+  PM reviewed the full diff directly (poster-click semantics double-checked by hand against
+  `ComparisonResult`'s "better means subject is better than reference" definition, confirmed
+  correct), re-ran tests/typecheck/lint/build fresh before merging: 224/224 tests (2 new), clean
+  typecheck, clean lint, clean build. Fast-forward merged, pushed. Not yet hands-on re-tested — see
+  Bucket 2.
 - 2026-07-18: Same session, continued past the diagnostic/cleanup work. Built and merged Tier A item
   3, the richer two-column comparison screen (`f763f5f`), via one implementer agent (worktree) —
   feel-based UI + a trivial additive migration, so implementer + direct PM review, not the full
