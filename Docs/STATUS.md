@@ -212,6 +212,17 @@ front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
    IMDb/RT/Metacritic links and streaming availability are optional later phases, not v1. Average
    community ranking and rating distribution are explicitly out of scope until Tier B (the social
    layer) exists.
+9. **Per-season "completed" badge on the show page** — added 2026-07-18, Kayvan's idea, placed here
+   (PM's call) rather than folded into item 2 (stats/visualizations): this is a simple completion
+   indicator, not an analysis-style visualization, and it's cheap/self-contained like items 5/6/7
+   were, so it fits the queue's small-item pattern better than item 2's bigger, less-defined scope.
+   When every episode in a season has been ranked/judged (has a score or a cold-start bucket — same
+   "some opinion given" definition the dashboard progress bar and show page's own overall-progress
+   line already use), show a visual indicator next to that season's heading on `/shows/[showId]`
+   (exact treatment — badge/checkmark/text, matching this app's existing badge conventions — is a
+   build-time call, not a design decision needing sign-off first, same as items 5/6/7). Purely
+   additive: derivable entirely from data the show page already loads per episode (the same
+   `scoreByEpisode`/`bucketByEpisode` maps it already builds), no schema change, no new query.
 
 Dark mode + per-show accent theming (also proposed in the same review) is **deliberately not in
 this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of the visual-design pass
