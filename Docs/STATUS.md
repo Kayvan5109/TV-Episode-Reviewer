@@ -48,16 +48,38 @@ deletion-failure noise (reproduces identically outside OneDrive; it's very likel
 internal handle-release race, benign), but the more serious "worktree verified real and registered,
 agent's edits still land on `main` directly" variant remains genuinely unexplained.
 
-**The repo-move is fully resolved, 2026-07-18 (new session).** The project lives at
+**The repo-move is fully resolved, 2026-07-18 (session after the move).** The project lives at
 `C:\Users\khoob\Projects\TV Episode Reviewer` (this file's own path confirms it) — `git status`/
-`git remote -v`/`git log` all clean and correct. The leftover empty OneDrive shell
-(`C:\Users\khoob\OneDrive\Desktop\TV Episode Reviewer`) has been deleted. The cold diagnostic dispatch
-the prior session asked for has been run: a trivial `isolation: "worktree"` agent got a real,
-registered worktree and its commit landed only on its own branch, never touching `main`'s working
-tree — clean isolation, no bug recurrence, the Agent tool is confirmed healthy from the new path. See
-History for the full account, including the caveat that one clean dispatch doesn't yet prove the
-deeper "agent wrote to `main` despite a real worktree" bug (see Deviations Awaiting Review) is fixed
-— still worth watching on every future dispatch.
+`git remote -v`/`git log` all clean and correct. The leftover empty OneDrive shell has been deleted.
+A cold diagnostic dispatch confirmed the Agent tool's `isolation: "worktree"` mechanism works
+correctly from the new path (real, registered worktree; commit landed only on its own branch,
+`main` untouched) — the first clean data point from a session that never touched OneDrive, though
+not yet proof the deeper "agent wrote to `main` despite a real worktree" bug (Deviations Awaiting
+Review) is fixed. **Every dispatch for the rest of this same session (3 more, all real build work)
+also isolated cleanly** — 4 for 4 this session, no recurrence at all; still worth watching going
+forward, not yet treated as resolved.
+
+Same session, moved straight to building (Bucket 1 was already empty, Tier A next): confirmed with
+Kayvan hands-on that the confidence-score display and privacy page both work on live Vercel (both
+removed from Bucket 2). Then built and merged, each via its own implementer-agent dispatch, reviewed
+and re-verified fresh before every merge — see History for full detail on each:
+1. **Tier A item 3, the richer two-column comparison screen** (`f763f5f`) — poster art, synopsis,
+   the "I can't decide" relabel. Needed one new migration (`episodes.synopsis`), which Kayvan applied
+   to live Supabase directly.
+2. **A same-session redesign of that screen** (`fce46f2`), after Kayvan tried it hands-on and asked
+   for two changes: synopsis now also shows on the cold-start screen, and the three-button "Better"/
+   "I can't decide"/"Worse" control became click-the-poster-you-preferred, with "I can't decide" as
+   the only remaining button.
+3. **Tier A items 6/7 (date ranked + rank position) plus a rank-screen header fix** (`92d1bb5`),
+   bundled into one dispatch at Kayvan's request since they touch the same display layer — "Ranked
+   Jul 15" and "8.7 (#3)" now show on the show page; the rank screen's header now names the specific
+   episode/season instead of just the show.
+
+**Session deliberately ended here at Kayvan's request** (70%+ usage) — everything above is merged to
+`main` and pushed to `origin`, nothing left uncommitted. **None of this session's 3 builds are yet
+hands-on tested** — see Bucket 2, now carrying all three plus the still-pending throttled-TMDB-resync
+check from the previous session. That's the natural next-session starting point, before picking up
+anything new from Tier A.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -131,34 +153,15 @@ front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
    sitting in `AppSpec.md`'s original brainstorm list ("Poster art + progress indicator per show" on
    the dashboard) — same underlying data (`getShowRankingDisplay` per show), just surfaced one level
    up. Purely additive, no design decision needed.
-6. **"Date ranked" next to each episode's name on the show page** — added 2026-07-17. No schema
-    change needed: `episode_rankings.created_at` already means exactly this — it's set once, the
-    first time a row exists for that episode (its first cold-start judgment, or the day it was
-    first comparatively placed), and survives untouched through later position-shuffling upserts
-    (`persistRankedPositions` only ever writes `rank_position`/`cold_start_bucket`/
-    `cold_start_sequence`, never `created_at`); re-ranking deletes the row and a fresh one gets
-    created on the next judgment, so `created_at` correctly becomes the new date too. Needs:
-    `getShowRankingDisplay` to also select and return `created_at` per episode (currently only
-    returns `episodeId`/`score`/`bucket`), and the show page to render it, formatted (e.g. "Jul 15"),
-    next to the episode title — for both fully-ranked and cold-start-pending episodes (anything with
-    an `episode_rankings` row at all), not shown for untouched ones. Small, self-contained, no design
-    decision needed.
-7. **Show each episode's numeric rank position next to its score** — added 2026-07-18, Kayvan's
-   request. E.g. "8.7 (#3)" rather than just "8.7". No schema/persistence change: `getShowRankingDisplay`
-   (`ranking-session/session.ts`) already computes this — both places it builds a `ranked` array
-   (`session.ts` lines ~485 and ~499) do `order.map((episodeId, index) => ({ ..., score:
-   scoreForPosition(index + 1, order.length) }))`; `index + 1` *is* the rank position, already
-   computed and immediately discarded. Just add a `rank: index + 1` field alongside `score` in both
-   places (and in `ShowRankingDisplay`'s type, both the `done: true` and `done: false` branches), then
-   render it in the two places scores already show: the per-episode list on `/shows/[showId]`
-   (`shows/[showId]/page.tsx`, next to the existing `score.toFixed(1)`) and the best-to-worst list on
-   `/shows/[showId]/rankings` (`shows/[showId]/rankings/page.tsx`) — check that second file's current
-   structure before assuming it needs the field added the same way, it may already imply rank via
-   list position and just need the explicit number surfaced. Cold-start-pending episodes (shown via
-   `coldStartPending`, not `ranked`) have no rank position yet — don't show one for those, same as
-   they don't show a score. Small, self-contained, no design decision needed — implementer + PM
-   review, not the full algorithm-level rigor (this is a pure display of an already-correct value,
-   not a change to how rank positions are computed).
+6. ~~**"Date ranked" next to each episode's name on the show page**~~ — **built and merged
+   2026-07-18** (`92d1bb5`), now in Bucket 2 for hands-on check. `getShowRankingDisplay` threads
+   `episode_rankings.created_at` through for both ranked and cold-start-pending episodes; show page
+   renders "Ranked Jul 15" next to the title.
+7. ~~**Show each episode's numeric rank position next to its score**~~ — **built and merged
+   2026-07-18** (`92d1bb5`), now in Bucket 2 for hands-on check. Renders as "8.7 (#3)" on
+   `/shows/[showId]`. Deliberately **not** added to `/shows/[showId]/rankings` — that page already
+   shows the same value via its `{index + 1}.` ordinal list prefix, so the field would be pure
+   duplication there.
 8. **Episode pages** — added 2026-07-18 from the second design review (see `AppSpec.md`'s "Second
    Design Review — Triage" for the full breakdown). Episodes currently only exist as list rows on the
    show page; this is a genuinely new `/shows/[showId]/episodes/[episodeId]`-style route (exact path
@@ -189,7 +192,13 @@ in Bucket 4, rather than being done piecemeal now.
    still works, cold-start screens now show synopsis text too, a posterless episode's placeholder
    box is clickable, the layout still holds up on a narrow window, and no stray "Better"/"Worse"
    buttons or "About the same" label linger anywhere.
-2. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
+2. **Rank position, date-ranked, and rank-screen header, built 2026-07-18, not yet hands-on checked**
+   (`92d1bb5`). Was Tier A items 6/7 plus a direct header request. Confirm hands-on: the show page
+   shows "8.7 (#3)"-style rank next to each score and "Ranked Jul 15"-style dates next to both
+   ranked and cold-start-pending episode titles (nothing for untouched episodes), and the
+   `/shows/[showId]/rank/[episodeId]` screen's header now reads "Rank {episode} from Season {N} of
+   {show}" instead of just the show title.
+3. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
    design. Can't be meaningfully verified by just clicking around today (the 24h throttle means a
    freshly-imported show won't actually re-sync for a day), so the real check is patient rather than
    immediate: next time a tracked show is known to have a new episode/season on TMDB, confirm it
@@ -198,7 +207,7 @@ in Bucket 4, rather than being done piecemeal now.
    (check the `shows` table has a populated `last_synced_at` column) and that a show page still loads
    normally post-push (the added `ensureShowSynced` call is fail-open, so even a broken TMDB call
    shouldn't break the page — but confirm that's actually true live, not just in tests).
-3. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
+4. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
    list (auth, search/import, dashboard, show detail page, the rankings page, cold start,
    comparative placement, re-ranking, removing a show all confirmed working end to end). What's
    genuinely still untested/unconfirmed, carried forward rather than chased right now:
@@ -449,6 +458,39 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-18: Same session, continued, at 70% session usage — Kayvan asked for one small Tier A
+  item before ending the session; offered items 5/6/7 (all flagged "small, self-contained, no design
+  decision needed"), Kayvan asked to bundle items 6 (date ranked) and 7 (rank position) together
+  since they touch the same display layer, then separately asked for a third small change mid-turn
+  (the rank screen's header, previously just "Rank {show}", now names the specific episode/season
+  too). All three built in one implementer dispatch (worktree), reviewed, re-verified fresh, merged
+  (`92d1bb5`), pushed:
+  - `getShowRankingDisplay`'s `ranked`/`coldStartPending` arrays now carry `rank`/`createdAt`
+    alongside the existing `episodeId`/`score`/`bucket` fields — `rank` was already computed
+    (`index + 1`) and discarded; `createdAt` needed `loadShowRankingState`'s `episode_rankings`
+    query to add the already-existing `created_at` column and a new `createdAtByEpisode` map on
+    `LoadedShowRanking`. PM independently traced the non-null-assertion invariant on
+    `createdAtByEpisode.get(episodeId)!` by hand (both `order` in the done branch and
+    `state.ranked`/`state.coldStart` in the not-done branch are derived from the same `rankingRows`
+    query `createdAtByEpisode` is built from, so every lookup is guaranteed to hit) rather than
+    trusting the implementer's inline comment.
+  - Show page renders both: "8.7 (#3)" next to each score, "Ranked Jul 15" next to both ranked and
+    cold-start-pending episode titles. Deliberately **not** added to `/shows/[showId]/rankings` —
+    that page already shows rank via its `{index + 1}.` ordinal list prefix, so the implementer
+    judged the field redundant there and left it alone (a call worth spot-checking hands-on, not
+    pre-confirmed with Kayvan).
+  - `rank/[episodeId]/page.tsx`'s header now reads "Rank {episode title} from Season {N} of
+    {show name}" instead of just "Rank {show name}", falling back to the old text only for the one
+    edge case where the episode itself failed to load (an `episodesError`, not a missing episode —
+    the latter still 404s).
+  - Test coverage: the in-memory fake Supabase's `episode_rankings` insert/upsert now mirrors the
+    real table's `created_at` semantics (assigned fresh only on genuine insert, preserved across
+    later upserts) rather than just stubbing the new field — existing assertions on
+    `getShowRankingDisplay`'s exact return shape updated, one new test added with precise expected
+    `rank`/`createdAt` values (not `expect.any(String)`) for a `done: true` show.
+  225/225 tests (1 new), clean typecheck/lint/build, re-verified fresh before merging. Not yet
+  hands-on tested — see Bucket 2. **This was the last item before ending the session at Kayvan's
+  request** — see the top-of-file summary and Deviations for the end-of-session state.
 - 2026-07-18: Same session, continued. Kayvan applied the `episodes.synopsis` migration to live
   Supabase and tried the just-merged comparison screen hands-on: liked the two-column layout overall
   but asked for two changes before moving on to anything else. Built and merged both via one more
