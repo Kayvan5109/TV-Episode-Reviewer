@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 
 import { createSupabaseServerClient } from '@/lib/supabase/serverSession';
 import { AppHeader } from '@/components/AppHeader';
+import { getShowRankingDisplay } from '@/lib/ranking-session';
 import { ensureShowSynced } from '@/lib/shows/refreshShow';
 
 import { logout } from './actions';
@@ -77,6 +78,25 @@ export default async function DashboardPage() {
       )
   );
 
+  // Per-show ranking progress for the list below — same `getShowRankingDisplay` call and the same
+  // "ranked = some opinion given" convention the show detail page uses for its own progress line
+  // (see `shows/[showId]/page.tsx`'s `display`/`rankedCount`/`total`/`percent`).
+  const progressByShowId = new Map<string, { percent: number; rankedCount: number; total: number }>();
+  await Promise.all(
+    myShows
+      .filter((row) => row.shows !== null)
+      .map(async (row) => {
+        const display = await getShowRankingDisplay(row.show_id);
+        const rankedCount = display.ranked.length + (display.done ? 0 : display.coldStartPending.length);
+        const total = display.done
+          ? display.ranked.length
+          : display.ranked.length + display.coldStartPending.length + display.unranked.length;
+        if (total === 0) return;
+        const percent = Math.round((rankedCount / total) * 100);
+        progressByShowId.set(row.show_id, { percent, rankedCount, total });
+      })
+  );
+
   return (
     <>
       <AppHeader />
@@ -122,26 +142,44 @@ export default async function DashboardPage() {
             <ul className="flex flex-col gap-3">
               {myShows
                 .filter((row) => row.shows !== null)
-                .map((row) => (
-                  <li key={row.show_id}>
-                    <Link
-                      href={`/shows/${row.show_id}`}
-                      className="flex items-center gap-3 rounded border border-black/10 p-3 hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/5"
-                    >
-                      {row.shows?.poster_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element -- external TMDB CDN image.
-                        <img
-                          src={row.shows.poster_url}
-                          alt=""
-                          width={46}
-                          height={69}
-                          className="h-[69px] w-[46px] rounded object-cover"
-                        />
-                      ) : null}
-                      <span className="font-medium">{row.shows?.title}</span>
-                    </Link>
-                  </li>
-                ))}
+                .map((row) => {
+                  const progress = progressByShowId.get(row.show_id);
+                  return (
+                    <li key={row.show_id}>
+                      <Link
+                        href={`/shows/${row.show_id}`}
+                        className="flex items-center gap-3 rounded border border-black/10 p-3 hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/5"
+                      >
+                        {row.shows?.poster_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element -- external TMDB CDN image.
+                          <img
+                            src={row.shows.poster_url}
+                            alt=""
+                            width={46}
+                            height={69}
+                            className="h-[69px] w-[46px] rounded object-cover"
+                          />
+                        ) : null}
+                        <span className="flex flex-col gap-1">
+                          <span className="font-medium">{row.shows?.title}</span>
+                          {progress && (
+                            <span className="flex items-center gap-2">
+                              <span className="h-1.5 w-24 overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
+                                <span
+                                  className="block h-full rounded-full bg-black dark:bg-white"
+                                  style={{ width: `${progress.percent}%` }}
+                                />
+                              </span>
+                              <span className="text-xs text-black/60 dark:text-white/60">
+                                {progress.percent}% ({progress.rankedCount}/{progress.total})
+                              </span>
+                            </span>
+                          )}
+                        </span>
+                      </Link>
+                    </li>
+                  );
+                })}
             </ul>
           )}
         </div>
