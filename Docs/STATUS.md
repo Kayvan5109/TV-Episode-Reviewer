@@ -120,9 +120,20 @@ both built and merged: item 10 (clickable comparison/cold-start titles + a retur
 `6f420d2`) and item 2's remaining pieces (win/loss matrix, comparison history list, season timeline,
 `ace73fc`) — **all of Tier A items 2, 9, 10, 11 are now built**. Kayvan hands-on confirmed all of it
 working — removed from Bucket 2. **The Tier A queue is now fully empty** — every item from both
-design reviews is either built, declined, or moved to Tier B. Deviations Awaiting Review are all
-still open and unactioned; next session should pick a fresh priority (Bucket 4 backlog, Tier B, or
-the still-unreviewed Deviations) rather than assuming there's an obvious next Tier A item.
+design reviews is either built, declined, or moved to Tier B.
+
+**Session ended here at 71% usage, Kayvan's choice.** Kayvan flagged the mobile experience as
+genuinely bad ("the mobile version of the website is terrible") and asked whether there was enough
+budget left to fix it. PM's honest read: no — a real fix needs a full-app audit at narrow width plus
+likely two implementer dispatches (the ranking-flow pages and the stats page's wide win/loss matrix
+are different shapes of problem) plus Kayvan's own phone testing before it's done, which didn't fit
+in the remaining budget alongside closing the session out cleanly. Kayvan chose to stop here rather
+than start a narrow partial fix. **Bucket 4's mobile/responsive item is confirmed as next session's
+priority** (updated with the full reasoning) — everything below is otherwise merged and pushed,
+nothing left uncommitted, and the Tier A queue being empty means next session opens straight into
+either that mobile work or a fresh priority pick, not "whatever's next in the queue." Deviations
+Awaiting Review are all still open and unactioned — worth a look whenever mobile work isn't the
+immediate pick.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -333,8 +344,17 @@ see Bucket 4.)
    world testing widens beyond a couple of people** — 2 emails/hour project-wide will start silently
    failing signups/resets otherwise (confirmed priority 2026-07-16, still not urgent for a small
    initial test group).
-4. **Mobile/responsive check** — nothing's been tested outside a desktop browser yet. Flagged
-   2026-07-16 as needed before real-world testing widens, not before.
+4. **Mobile/responsive fix — confirmed by Kayvan 2026-07-18 as the next session's priority**, not
+   just a "check" anymore: "the mobile version of the website is terrible" (his words), a real,
+   confirmed problem, not a hypothetical one. Deliberately **not started this session** — flagged at
+   71% session usage remaining that a proper fix means auditing essentially every page (dashboard,
+   show page's poster+episode list, the comparison screen's two-column layout, the new stats page's
+   win/loss matrix specifically since that one's wide by design, episode detail page, auth pages),
+   then at least one implementer dispatch (likely two — the ranking-flow pages and the stats page's
+   wide-table content are different shapes of problem), then Kayvan's own hands-on test on a real
+   phone before it's done. That's a bigger unit of work than anything built this session and didn't
+   leave enough margin to do properly plus close the session out cleanly. Kayvan chose to start fresh
+   next session with full budget rather than a narrow partial fix now. **Start here next session.**
 5. **Error monitoring** — no visibility if something breaks for a real user other than them telling
    you. Consider a lightweight free-tier setup (e.g. Sentry) before wider testing. Flagged 2026-07-16.
 6. **Visual design** — still zero design polish, bare Tailwind defaults throughout. Flagged
