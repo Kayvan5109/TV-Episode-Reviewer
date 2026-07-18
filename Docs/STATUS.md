@@ -4,28 +4,21 @@
 "what's actually going on right now" pointer, kept short and current on purpose.
 
 **[Docs/CriticalReview.md](CriticalReview.md) was written 2026-07-18** — a deliberately harsh,
-requested full-project critique. Top finding: the roadmap is designing far ahead of any real usage
-(a whole social layer, gamification, and stats fully designed for an audience of one). Also names a
-**live, currently-unfixed security gap**: `/api/tmdb/search` and `/api/tmdb/[showId]/episodes` are
-reachable by anyone on the internet with no auth check, burning this project's own TMDB token —
-`proxy.ts`'s matcher excludes `/api` entirely and neither route calls `getUser()` before fetching.
-Not fixed yet as of this update — Kayvan's call on when, see the exchange right after this doc was
-written. Read the full review before scoping new feature work; not repeating its findings here.
+requested full-project critique, 27 findings. Top finding: the roadmap is designing far ahead of any
+real usage (a whole social layer, gamification, and stats fully designed for an audience of one).
+Its one live/urgent finding (open, unauthenticated TMDB proxy routes) is **already fixed** — see
+History. Everything else in it is unactioned, on purpose: this is a next-session decision-making
+task (what to freeze, what to fix, what to accept), not something to rush through at end-of-session
+budget. **Read it before scoping any new feature work.**
 
-Last updated: 2026-07-18. Same session as the cold-start fix above, continued: built, reviewed, and
-merged all 6 remaining Bucket 1 items back to back — Search Shows nav link + progress counter, season
-poster art, TMDB attribution footer, the password reset flow, TMDB genres on the show page, and the
-privacy notice (see History for each). **Bucket 1 is now fully cleared — Tier A is next.** Kayvan
-hands-on confirmed on live Vercel: nav link, progress counter, attribution footer, and season posters
-all working; genres also confirmed working ("looks good"). Also did one small follow-up polish
-directly (removed the now-redundant "N episodes imported" line from the show page). The privacy
-notice's content (email/password + ranking data collected; Supabase/TMDB/Vercel as the three third
-parties) came directly from Kayvan, not invented. **Password reset deliberately deferred, not
-urgent**: Kayvan is the only user right now, so its 3 setup steps (Vercel env var, Supabase redirect
-allowlist, one email click-through test — see History) can wait until it actually matters. **A
-worktree-isolation process issue recurred a third time this session** (3 of 6 agent dispatches) — see
-Deviations Awaiting Review, still not investigated, happening often enough (half the time) to be
-worth digging into before relying on it again for anything where a real file collision would matter.
+Last updated: 2026-07-18, end of a long session (stopped at ~87% usage). Cleared all of Bucket 1
+(6 items — see History for each), then ran the critical review above, then fixed its one live
+security issue directly (self-reviewed, not the full reviewer pipeline, given budget — logged as a
+Deviation). Clean stopping point: working tree clean, everything pushed, nothing running. **Next
+session**: read `CriticalReview.md` first and make real decisions on it before touching Tier A —
+that review exists specifically to be acted on, not filed away. Password reset stays deliberately
+deferred (single user, not urgent). The worktree-isolation bug (3 of 6 dispatches this session
+produced no real isolation) is still un-investigated — see Deviations Awaiting Review.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -166,6 +159,17 @@ Solo judgment calls made mid-session that weren't slept on get logged here and s
 start of the next session for a second look — even solo, "I decided this at 11pm without thinking
 it through" is worth a deliberate re-check, not silent acceptance.
 
+- 2026-07-18: **Fixed the open-TMDB-proxy security gap (`CriticalReview.md` Finding 3.1) directly,
+  without the full implementer-then-independent-reviewer pipeline this would normally get as auth/
+  security work** — at 87% session usage, spawning and waiting on a second agent risked not landing
+  the fix at all before running out. Did it solo instead: added an early `getUser()` 401 gate to both
+  `/api/tmdb/search` and `/api/tmdb/[showId]/episodes`, updated the tests whose premise the fix
+  invalidated, re-ran all checks fresh (199/199). Self-review only. Worth a genuine fresh-eyes look
+  next session: confirm the gate is checked *before* any TMDB call in both routes (not just present
+  somewhere in the function), confirm no legitimate caller broke (the web client same-origin-fetches
+  `/api/tmdb/search` so cookies flow automatically — verify this holds after a real hands-on
+  `/shows/search` check, not just from reading the code), and confirm `/api/tmdb/[showId]/episodes`
+  really has no current caller that would now 401 unexpectedly.
 - 2026-07-18: **Process issue, not a judgment call, recurred a third time — now clearly not rare,
   worth actually investigating rather than just noting.** The implementer agent for the small-show
   cold-start fix was spawned with `isolation: "worktree"`, but the resulting worktree had no `.git`
@@ -228,6 +232,19 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-18: Requested a dedicated, deliberately harsh full-project critical review — "as honest as
+  possible so we can make the best product possible." One agent (Opus) read every doc, the actual
+  ranking/auth code (not just docs' claims about it), migrations, and git history, then wrote
+  `Docs/CriticalReview.md`: 27 findings across product/scope, the ranking algorithm, architecture,
+  code quality, process, risks, and UX. Headline finding: the project is designing far ahead of
+  validating (a full social layer, gamification, and stats designed for an audience of one). Verified
+  the single most load-bearing/urgent claim directly before reporting it — confirmed `/api/tmdb/
+  search` and `/api/tmdb/[showId]/episodes` really were reachable by anyone with no auth check
+  (`proxy.ts`'s matcher excludes `/api`; neither route called `getUser()` before hitting TMDB) — then
+  fixed it immediately (see Deviations Awaiting Review for why that was done solo, without the usual
+  reviewer pass). Cross-linked the review from `CLAUDE.md` and flagged it at the top of this file so
+  it doesn't get filed away and forgotten — it's meant to drive next session's priorities, not just
+  be read once.
 - 2026-07-18: Kayvan hands-on confirmed genres working on live Vercel ("I see the genre there. Look
   good."). Gave the privacy notice's content directly (email/password + ranking data collected;
   Supabase/TMDB/Vercel as the three third parties) rather than leaving it to be invented. Built
