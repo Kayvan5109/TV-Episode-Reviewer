@@ -38,6 +38,8 @@ export interface TmdbSeasonEpisode {
   season_number: number;
   episode_number: number;
   overview: string | null;
+  still_path: string | null;
+  air_date: string | null;
 }
 
 /**
@@ -67,6 +69,10 @@ export interface EpisodeSummary {
   seasonPosterUrl: string | null;
   // See supabase/migrations/20260718030000_episode_synopsis.sql.
   synopsis: string | null;
+  // See supabase/migrations/20260718040000_episode_still_air_date.sql.
+  stillUrl: string | null;
+  // See supabase/migrations/20260718040000_episode_still_air_date.sql.
+  airDate: string | null;
 }
 
 /** App-facing shape for a show's details — maps to the `shows` table's columns, plus season count. */

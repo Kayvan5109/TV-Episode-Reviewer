@@ -125,6 +125,8 @@ describe('GET /api/tmdb/[showId]/episodes', () => {
           title: 'Pilot',
           seasonPosterUrl: 'https://image.tmdb.org/t/p/w500/season1.jpg',
           synopsis: '...',
+          stillUrl: 'https://image.tmdb.org/t/p/w500/still1.jpg',
+          airDate: '2008-01-20',
         },
         {
           tmdbEpisodeId: 62086,
@@ -133,6 +135,8 @@ describe('GET /api/tmdb/[showId]/episodes', () => {
           title: "Cat's in the Bag...",
           seasonPosterUrl: 'https://image.tmdb.org/t/p/w500/season1.jpg',
           synopsis: '...',
+          stillUrl: 'https://image.tmdb.org/t/p/w500/still2.jpg',
+          airDate: '2008-01-27',
         },
       ],
     });

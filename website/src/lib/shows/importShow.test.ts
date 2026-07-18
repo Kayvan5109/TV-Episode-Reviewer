@@ -59,6 +59,8 @@ describe('toEpisodeRows', () => {
           title: 'Pilot',
           seasonPosterUrl: 'https://image.tmdb.org/t/p/w500/season1.jpg',
           synopsis: 'A pilot episode synopsis.',
+          stillUrl: 'https://image.tmdb.org/t/p/w500/still1.jpg',
+          airDate: '2008-01-20',
         },
         {
           tmdbEpisodeId: 2,
@@ -67,6 +69,8 @@ describe('toEpisodeRows', () => {
           title: 'Cat',
           seasonPosterUrl: null,
           synopsis: null,
+          stillUrl: null,
+          airDate: null,
         },
       ])
     ).toEqual([
@@ -78,6 +82,8 @@ describe('toEpisodeRows', () => {
         title: 'Pilot',
         season_poster_url: 'https://image.tmdb.org/t/p/w500/season1.jpg',
         synopsis: 'A pilot episode synopsis.',
+        still_url: 'https://image.tmdb.org/t/p/w500/still1.jpg',
+        air_date: '2008-01-20',
       },
       {
         show_id: 'show-uuid',
@@ -87,6 +93,8 @@ describe('toEpisodeRows', () => {
         title: 'Cat',
         season_poster_url: null,
         synopsis: null,
+        still_url: null,
+        air_date: null,
       },
     ]);
   });
@@ -127,8 +135,18 @@ describe('importShowFromTmdb', () => {
               season_number: 1,
               episode_number: 1,
               overview: 'A high school chemistry teacher turns to a life of crime.',
+              still_path: '/still100.jpg',
+              air_date: '2008-01-20',
             },
-            { id: 101, name: 'Cat', season_number: 1, episode_number: 2, overview: null },
+            {
+              id: 101,
+              name: 'Cat',
+              season_number: 1,
+              episode_number: 2,
+              overview: null,
+              still_path: null,
+              air_date: null,
+            },
           ],
         };
       }
@@ -142,6 +160,8 @@ describe('importShowFromTmdb', () => {
               season_number: 2,
               episode_number: 1,
               overview: 'Season 2 begins.',
+              still_path: '/still200.jpg',
+              air_date: '2009-03-08',
             },
           ],
         };
@@ -185,6 +205,8 @@ describe('importShowFromTmdb', () => {
         title: 'Pilot',
         season_poster_url: 'https://image.tmdb.org/t/p/w500/season1.jpg',
         synopsis: 'A high school chemistry teacher turns to a life of crime.',
+        still_url: 'https://image.tmdb.org/t/p/w500/still100.jpg',
+        air_date: '2008-01-20',
       },
       {
         show_id: 'show-uuid',
@@ -194,6 +216,8 @@ describe('importShowFromTmdb', () => {
         title: 'Cat',
         season_poster_url: 'https://image.tmdb.org/t/p/w500/season1.jpg',
         synopsis: null,
+        still_url: null,
+        air_date: null,
       },
       {
         show_id: 'show-uuid',
@@ -203,6 +227,8 @@ describe('importShowFromTmdb', () => {
         title: 'Season 2 Ep 1',
         season_poster_url: null,
         synopsis: 'Season 2 begins.',
+        still_url: 'https://image.tmdb.org/t/p/w500/still200.jpg',
+        air_date: '2009-03-08',
       },
     ]);
 

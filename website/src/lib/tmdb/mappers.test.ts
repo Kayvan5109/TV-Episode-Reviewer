@@ -31,6 +31,8 @@ describe('mapSeasonEpisode', () => {
           season_number: 1,
           episode_number: 1,
           overview: 'A high school chemistry teacher turns to a life of crime.',
+          still_path: '/still.jpg',
+          air_date: '2008-01-20',
         },
         '/season-poster.jpg'
       )
@@ -41,6 +43,8 @@ describe('mapSeasonEpisode', () => {
       title: 'Pilot',
       seasonPosterUrl: 'https://image.tmdb.org/t/p/w500/season-poster.jpg',
       synopsis: 'A high school chemistry teacher turns to a life of crime.',
+      stillUrl: 'https://image.tmdb.org/t/p/w500/still.jpg',
+      airDate: '2008-01-20',
     });
   });
 
@@ -53,6 +57,8 @@ describe('mapSeasonEpisode', () => {
           season_number: 1,
           episode_number: 2,
           overview: 'Some overview.',
+          still_path: '/still.jpg',
+          air_date: '2008-01-27',
         },
         null
       )
@@ -63,6 +69,8 @@ describe('mapSeasonEpisode', () => {
       title: 'No Poster Episode',
       seasonPosterUrl: null,
       synopsis: 'Some overview.',
+      stillUrl: 'https://image.tmdb.org/t/p/w500/still.jpg',
+      airDate: '2008-01-27',
     });
   });
 
@@ -75,6 +83,8 @@ describe('mapSeasonEpisode', () => {
           season_number: 1,
           episode_number: 3,
           overview: null,
+          still_path: '/still.jpg',
+          air_date: '2008-02-03',
         },
         '/season-poster.jpg'
       )
@@ -85,6 +95,34 @@ describe('mapSeasonEpisode', () => {
       title: 'No Overview Episode',
       seasonPosterUrl: 'https://image.tmdb.org/t/p/w500/season-poster.jpg',
       synopsis: null,
+      stillUrl: 'https://image.tmdb.org/t/p/w500/still.jpg',
+      airDate: '2008-02-03',
+    });
+  });
+
+  it('leaves stillUrl and airDate null when TMDB has no still_path/air_date for the episode', () => {
+    expect(
+      mapSeasonEpisode(
+        {
+          id: 62088,
+          name: 'No Still Episode',
+          season_number: 1,
+          episode_number: 4,
+          overview: 'Some overview.',
+          still_path: null,
+          air_date: null,
+        },
+        '/season-poster.jpg'
+      )
+    ).toEqual({
+      tmdbEpisodeId: 62088,
+      seasonNumber: 1,
+      episodeNumber: 4,
+      title: 'No Still Episode',
+      seasonPosterUrl: 'https://image.tmdb.org/t/p/w500/season-poster.jpg',
+      synopsis: 'Some overview.',
+      stillUrl: null,
+      airDate: null,
     });
   });
 });

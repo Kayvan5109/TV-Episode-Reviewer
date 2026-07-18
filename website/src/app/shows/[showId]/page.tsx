@@ -223,7 +223,12 @@ export default async function ShowDetailPage({
                             <span className="text-black/50 dark:text-white/50">
                               E{episode.episode_number}
                             </span>
-                            <span>{episode.title}</span>
+                            <Link
+                              href={`/shows/${showId}/episodes/${episode.id}`}
+                              className="underline underline-offset-2"
+                            >
+                              {episode.title}
+                            </Link>
                             {createdAt !== undefined && (
                               <span className="text-black/40 dark:text-white/40">
                                 Ranked {formatRankedDate(createdAt)}

@@ -39,6 +39,8 @@ export function mapSeasonEpisode(
     title: episode.name,
     seasonPosterUrl: posterUrlFromPath(seasonPosterPath),
     synopsis: episode.overview,
+    stillUrl: posterUrlFromPath(episode.still_path),
+    airDate: episode.air_date,
   };
 }
 

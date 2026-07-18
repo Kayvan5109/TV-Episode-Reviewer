@@ -46,6 +46,8 @@ export interface EpisodeInsertRow {
   title: string;
   season_poster_url: string | null;
   synopsis: string | null;
+  still_url: string | null;
+  air_date: string | null;
 }
 
 /**
@@ -62,6 +64,8 @@ export function toEpisodeRows(showId: string, episodes: EpisodeSummary[]): Episo
     title: episode.title,
     season_poster_url: episode.seasonPosterUrl,
     synopsis: episode.synopsis,
+    still_url: episode.stillUrl,
+    air_date: episode.airDate,
   }));
 }
 
