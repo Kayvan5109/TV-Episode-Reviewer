@@ -9,6 +9,7 @@ import { getNextStepForEpisode } from '@/lib/ranking-session';
 
 import { ColdStartPicker } from './ColdStartPicker';
 import { ComparisonPrompt } from './ComparisonPrompt';
+import { formatEpisode, type EpisodeDisplay } from './episodeDisplay';
 
 export const metadata: Metadata = {
   title: 'Rank episode — Episode Ranker',
@@ -23,18 +24,9 @@ interface ShowRow {
   title: string;
 }
 
-interface EpisodeRow {
-  id: string;
-  season_number: number;
-  episode_number: number;
-  title: string;
-  season_poster_url: string | null;
-  synopsis: string | null;
-}
-
-function formatEpisode(episode: EpisodeRow): string {
-  return `S${episode.season_number}E${episode.episode_number} — ${episode.title}`;
-}
+// Same shape as `EpisodeDisplay` (see `episodeDisplay.ts`) — kept as a local alias since this file
+// also carries the raw Supabase row type naming (`*Row`) used throughout the rest of the page.
+type EpisodeRow = EpisodeDisplay;
 
 /**
  * Season-poster art for one side of the comparison screen. Rendered larger than the show-page
@@ -181,22 +173,28 @@ async function RankEpisodeStep({
 }) {
   const step = await getNextStepForEpisode(showId, episodeId);
 
-  // The 'compare' step gets its own two-column layout (subject vs. reference, prompt in the
-  // middle) rather than the single-subject-block-plus-content wrapper the other step types share
-  // below — the whole point of this step is showing both episodes side by side.
+  // The 'compare' step gets its own layout — `ComparisonPrompt` (a Client Component) now renders
+  // both episode columns itself, since clicking directly on a poster is what submits the answer
+  // (see that component's doc comment), rather than a shared subject-block-plus-content wrapper.
   if (step.type === 'compare') {
     const reference = episodesById.get(step.reference);
     return (
       <div className="flex w-full max-w-4xl flex-col items-center gap-6">
-        <div className="flex w-full flex-col items-center justify-center gap-6 sm:flex-row sm:items-start sm:gap-8">
-          <EpisodeColumn episode={episode} />
-          <ComparisonPrompt showId={showId} subjectId={episodeId} referenceId={step.reference} />
-          {reference ? (
-            <EpisodeColumn episode={reference} />
-          ) : (
-            <p className="text-sm text-black/60 dark:text-white/60">{step.reference}</p>
-          )}
-        </div>
+        {reference ? (
+          <ComparisonPrompt showId={showId} subject={episode} reference={reference} />
+        ) : (
+          // Defensive fallback only — `step.reference` should always be one of this show's own
+          // episodes, already loaded into `episodesById`. Without the reference episode's own
+          // display data there's no poster to make clickable, so this can't offer the redesigned
+          // click-to-answer UI at all; just show what we do know and let the user bail out via the
+          // "Return to show page" link the page always renders.
+          <>
+            <EpisodeColumn episode={episode} />
+            <p className="text-sm text-black/60 dark:text-white/60">
+              Couldn&apos;t load the comparison episode ({step.reference}).
+            </p>
+          </>
+        )}
       </div>
     );
   }
@@ -220,10 +218,10 @@ async function RankEpisodeStep({
 
   return (
     <div className="flex w-full max-w-2xl flex-col items-center gap-4">
-      <div className="flex items-center justify-center gap-3">
-        <SeasonPoster episode={episode} />
-        <p className="text-lg font-medium">{formatEpisode(episode)}</p>
-      </div>
+      {/* Full poster+title+synopsis column, not just a small poster+title — Kayvan wants the
+          synopsis visible while cold-ranking the first few episodes too, not only on the
+          two-episode compare screen. Harmless for the rare 'alreadyRanked' stale-link case too. */}
+      <EpisodeColumn episode={episode} />
       {stepContent}
     </div>
   );

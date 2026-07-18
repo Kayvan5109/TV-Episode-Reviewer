@@ -2,35 +2,117 @@
 
 import { useState, useTransition } from 'react';
 
-import type { ComparisonResult, EpisodeId } from '@/lib/ranking-session';
+import type { ComparisonResult } from '@/lib/ranking-session';
 
 import { submitComparison } from './actions';
-
-// The middle button reads "I can't decide" rather than "About the same" (contrast
-// `ColdStartPicker`'s own "Neutral" bucket, which stays as-is — that's a different judgment,
-// cold-start liked/neutral/disliked, not a comparison) — this component is only ever used in
-// comparative mode (one call site, the 'compare' step in `page.tsx`), so the label is just set
-// directly rather than threading a `mode` prop through for a distinction that doesn't exist yet.
-// The underlying `result: 'neutral'` value sent to `submitComparison` is unchanged — display label
-// only.
-const OPTIONS: { result: ComparisonResult; label: string }[] = [
-  { result: 'better', label: 'Better' },
-  { result: 'neutral', label: "I can't decide" },
-  { result: 'worse', label: 'Worse' },
-];
+import { formatEpisode, type EpisodeDisplay } from './episodeDisplay';
 
 /**
- * Comparison answer picker: three buttons ("subject" is better/worse/can't-decide-vs. "reference"),
- * sharing one pending/error state — same reasoning as `ColdStartPicker`.
+ * Which comparison outcome clicking a given side's poster maps to. Per `ComparisonResult`'s
+ * semantics (`'better'` means *the subject is better than the reference* — see
+ * `src/lib/ranking/types.ts`), clicking the subject's poster means "the subject was better" and
+ * clicking the reference's poster means "the subject was worse" (i.e. the reference was better).
+ * Pulled out as a small pure function — rather than inlined at the two call sites — so the
+ * click→result mapping itself is unit-testable without rendering anything (see
+ * `ComparisonPrompt.test.ts`), matching how the rest of this codebase tests pure logic directly.
+ */
+export function resultForClickedSide(side: 'subject' | 'reference'): ComparisonResult {
+  return side === 'subject' ? 'better' : 'worse';
+}
+
+/**
+ * One side's clickable poster. Renders the real poster image when the episode has one; otherwise
+ * a same-sized bordered placeholder holding the episode's title, so there's still something to
+ * click for posterless episodes (imported before the poster column existed, or a season TMDB has
+ * no poster for) — ranking must not be blocked just because artwork is missing.
+ */
+function PosterButton({
+  episode,
+  disabled,
+  onClick,
+}: {
+  episode: EpisodeDisplay;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      aria-label={`This one was better: ${formatEpisode(episode)}`}
+      className="rounded transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {episode.season_poster_url ? (
+        // eslint-disable-next-line @next/next/no-img-element -- external TMDB CDN image.
+        <img
+          src={episode.season_poster_url}
+          alt=""
+          width={120}
+          height={180}
+          className="h-[180px] w-[120px] rounded object-cover"
+        />
+      ) : (
+        <div className="flex h-[180px] w-[120px] items-center justify-center rounded border border-dashed border-black/30 p-2 text-center text-xs text-black/60 dark:border-white/30 dark:text-white/60">
+          {episode.title}
+        </div>
+      )}
+    </button>
+  );
+}
+
+/**
+ * One column of the comparison layout: clickable poster (or placeholder), then season/episode +
+ * title, then synopsis (if any) — title/synopsis are plain text, not part of the click target, so
+ * reading them can't cause an accidental submission (only the poster/placeholder above them is
+ * clickable). Shared between the `subject` and `reference` sides; only the data and the resulting
+ * `ComparisonResult` differ.
+ */
+function ComparisonColumn({
+  episode,
+  disabled,
+  onPick,
+}: {
+  episode: EpisodeDisplay;
+  disabled: boolean;
+  onPick: () => void;
+}) {
+  return (
+    <div className="flex w-full max-w-xs flex-col items-center gap-2 text-center">
+      <PosterButton episode={episode} disabled={disabled} onClick={onPick} />
+      <p className="text-lg font-medium">{formatEpisode(episode)}</p>
+      {episode.synopsis && (
+        <p className="text-sm text-black/60 dark:text-white/60">{episode.synopsis}</p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Comparison answer picker, redesigned per Kayvan's request after using the just-shipped
+ * two-column layout: instead of separate "Better"/"Worse" buttons below each column, the poster
+ * itself is now the click target — clicking `subject`'s poster means "this one was better",
+ * clicking `reference`'s poster means the same for that side (`resultForClickedSide` above). The
+ * only remaining button is "I can't decide" (unchanged `result: 'neutral'`), roughly centered
+ * between the two columns.
+ *
+ * Takes the subject/reference episodes as plain serializable data (matching the `episodes` table
+ * shape via `EpisodeDisplay`) rather than JSX, and renders both full columns itself — poster
+ * click handling has to live in a Client Component, so the columns moved here from `page.tsx`'s
+ * (Server Component) `EpisodeColumn` for this step only; `page.tsx` still uses its own
+ * `EpisodeColumn`/`SeasonPoster` for the non-interactive cold-start/already-ranked display.
+ *
+ * Same pending/error UX as before: interaction is disabled while a submission is in flight, and a
+ * thrown error is surfaced as an alert below the row.
  */
 export function ComparisonPrompt({
   showId,
-  subjectId,
-  referenceId,
+  subject,
+  reference,
 }: {
   showId: string;
-  subjectId: EpisodeId;
-  referenceId: EpisodeId;
+  subject: EpisodeDisplay;
+  reference: EpisodeDisplay;
 }) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +120,7 @@ export function ComparisonPrompt({
   function handlePick(result: ComparisonResult) {
     setError(null);
     startTransition(async () => {
-      const outcome = await submitComparison(showId, subjectId, referenceId, result);
+      const outcome = await submitComparison(showId, subject.id, reference.id, result);
       if (outcome?.error) {
         setError(outcome.error);
       }
@@ -46,19 +128,29 @@ export function ComparisonPrompt({
   }
 
   return (
-    <div className="flex flex-col items-center gap-2">
-      <div className="flex gap-3">
-        {OPTIONS.map(({ result, label }) => (
+    <div className="flex w-full flex-col items-center gap-6">
+      <h2 className="text-lg font-medium">Which episode did you like better?</h2>
+      <div className="flex w-full flex-col items-center justify-center gap-6 sm:flex-row sm:items-start sm:gap-8">
+        <ComparisonColumn
+          episode={subject}
+          disabled={isPending}
+          onPick={() => handlePick(resultForClickedSide('subject'))}
+        />
+        <div className="flex items-center justify-center sm:h-[180px]">
           <button
-            key={result}
             type="button"
             disabled={isPending}
-            onClick={() => handlePick(result)}
+            onClick={() => handlePick('neutral')}
             className="rounded bg-black px-4 py-2 text-sm text-white disabled:opacity-50 dark:bg-white dark:text-black"
           >
-            {label}
+            I can&apos;t decide
           </button>
-        ))}
+        </div>
+        <ComparisonColumn
+          episode={reference}
+          disabled={isPending}
+          onPick={() => handlePick(resultForClickedSide('reference'))}
+        />
       </div>
       {error && (
         <p role="alert" className="text-sm text-red-600 dark:text-red-400">
