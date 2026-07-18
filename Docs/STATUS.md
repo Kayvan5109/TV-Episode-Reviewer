@@ -113,8 +113,11 @@ hands-on confirmed all three working — removed from Bucket 2. Kayvan then aske
 remaining scope (smart comparison selection); PM flagged it was never actually specified at the
 mechanism level and walked through why, and Kayvan chose to decline it outright rather than resolve
 the open design question — logged as declined-but-revisitable across `STATUS.md`/`AppSpec.md`/
-`DevelopmentPlan.md`. Remaining: Tier A item 2's deferred pieces (win/loss matrix, comparison graph,
-season timeline), 4 (collections), 10 (clickable comparison-screen titles). Deviations Awaiting
+`DevelopmentPlan.md`. Kayvan then asked to move Collections (item 4) to Tier B (already has a full
+shareable design there) rather than build a private-only stopgap, and to build items 10 and item 2's
+deferred pieces at the same time. Dispatched both in parallel (confirmed no file overlap first): item
+10 (clickable comparison/cold-start titles + a return-to-ranking link) and item 2's remaining pieces
+(win/loss matrix, comparison list, season timeline, added to the stats page). Deviations Awaiting
 Review are all still open and unactioned.
 
 ## Punch List (ranked — read this section first for "what's actually next")
@@ -193,10 +196,6 @@ front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
    Classified as feel-based UI + a trivial additive migration (not correctness-critical) — gets the
    same treatment as the season-poster-art work (implementer + direct PM review, hands-on check
    after), not the full independent-reviewer pipeline.
-4. **Collections** — user-created private lists of episodes across shows (e.g. "Best Pilot
-   Episodes"). Independent of the rest of this batch, can slot in anywhere. Keep to private-only
-   for now — a *shareable* version needs public-link infrastructure that doesn't exist yet (see
-   the Tier B note in `AppSpec.md`).
 5. ~~**Per-show progress bar on the dashboard**~~ — **built and merged 2026-07-18** (`634b9d2`), now
    in Bucket 2 for hands-on check. Each show in "My Shows" gets a visual progress bar (thin filled
    track) plus `{percent}% ({rankedCount}/{total})` text, right on the dashboard list itself — design
@@ -382,6 +381,14 @@ see Bucket 4.)
     it's picked up: needs the same implementer-then-independent-reviewer rigor as auth/persistence
     work, not a quick UI pass — a spoiler-protection feature that's only partially airtight is worse
     than not having it at all, since it creates false trust in surfaces it doesn't actually cover.
+15. **Collections — moved here from Tier A item 4, 2026-07-18, at Kayvan's request** ("its a social
+    aspect"). Previously scoped as a private-only v1 (shareable version deliberately deferred, since
+    that needs public-link infrastructure that doesn't exist yet); Kayvan chose to fold the whole
+    feature into Tier B instead of building a private-only stopgap now, since the *full* (shareable)
+    version's schema and design already exist in `AppSpec.md`'s "Tier B Detailed Design — Social
+    Layer" (`collections`/`collection_items` tables, `/collections` management page, `/c/[shareToken]`
+    public view) — building it once as part of that effort avoids a private-only version now that
+    would need retrofitting for sharing later. Not scheduled; picked up whenever Tier B itself is.
 
 **Bucket 5 — Rework flagged for a later phase, not being worked now:**
 (empty for now)
