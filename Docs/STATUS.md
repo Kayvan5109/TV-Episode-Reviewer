@@ -87,10 +87,14 @@ natural next-session starting point.
 **New session, 2026-07-18 (continued same date).** Confirmed clean state, then built and merged Tier
 A item 5 (dashboard per-show progress bar, `634b9d2`) — design confirmed with Kayvan first (visual
 bar + percentage + `(X/Y)` fraction) before building. Kayvan hands-on confirmed it working on live
-Vercel same session — removed from Bucket 2. Only the still-untestable throttled TMDB re-sync remains
-there. Remaining Tier A queue: items 1 (smart comparison selection), 2 (stats/visualizations), 4
-(collections), 8 (episode pages) — deciding which to pick up next. Deviations Awaiting Review are all
-still open and unactioned.
+Vercel same session — removed from Bucket 2. Then picked up item 8 (episode pages): corrected a
+STATUS.md factual error first (`still_path`/`air_date` were never actually fetched, unlike the doc's
+prior claim — same mistake pattern as an earlier `overview` correction), confirmed the new route/entry-
+point/image-fallback design with Kayvan, then built and merged sub-item (a) — title/season-episode/
+air-date/synopsis/still image (`7bfab1c`). Now in Bucket 2 for the migration + hands-on check.
+Remaining: item 8's sub-items (b)/(c)/(d), plus Tier A items 1 (smart comparison selection), 2
+(stats/visualizations), 4 (collections). Deviations Awaiting Review are all still open and
+unactioned.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -173,22 +177,25 @@ front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
    shows the same value via its `{index + 1}.` ordinal list prefix, so the field would be pure
    duplication there.
 8. **Episode pages** — added 2026-07-18 from the second design review (see `AppSpec.md`'s "Second
-   Design Review — Triage" for the full breakdown). Episodes currently only exist as list rows on the
-   show page; this is a genuinely new `/shows/[showId]/episodes/[episodeId]`-style route (exact path
-   TBD at build time). Build in the cheap-first order the triage laid out: (a) title/season-episode/
-   air-date/synopsis/episode-still — **correction, 2026-07-18 (next session), verified by direct code
-   read before building**: `overview`/`synopsis` really is already fetched and persisted (shipped as
-   part of item 3), but `still_path` and `air_date` are genuinely **not** on `TmdbSeasonEpisode`
-   (`website/src/lib/tmdb/types.ts`) at all yet — same "assumed captured, actually never was" mistake
-   this file already corrected once for `overview` itself. Both need real new work: added to the type,
-   mapped in `mapSeasonEpisode`, a new migration, columns on `episode_rows` — not a pure "just persist
-   what we already have" change like `overview`/`synopsis` was; (b) the season finale flag (derived,
-   not tagged — see the triage doc for the exact rule; also needs TMDB's `status` field added to
-   `TmdbShowDetails`, which doesn't exist on that type yet either); (c) a personal win/loss record per
-   episode (free read over the existing `episode_comparisons` table); (d) director/writer/cast, which
-   needs a genuinely new per-episode TMDB credits call (confirmed nothing like this exists yet) — item
-   3 (the richer comparison screen) was originally going to piggyback on this same call but shipped
-   without it, so this is now a standalone gap, not shared work.
+   Design Review — Triage" for the full breakdown). Build in the cheap-first order the triage laid
+   out:
+   (a) ~~title/season-episode/air-date/synopsis/episode-still~~ — **built and merged 2026-07-18**
+   (`7bfab1c`), now in Bucket 2 for the migration + hands-on check. New route
+   `/shows/[showId]/episodes/[episodeId]` (design confirmed with Kayvan first: episode title on the
+   show page becomes the link into it; the hero image falls back to the season poster when TMDB has
+   no episode-specific still). Needed two new TMDB fields that turned out not to exist at all yet
+   (`still_path`/`air_date` on `TmdbSeasonEpisode` — see the 2026-07-18 correction above this list
+   used to have, now folded in: this was **not** a "just persist what we already fetch" change like
+   `overview`/`synopsis` was) plus one new migration (`episodes.still_url`/`episodes.air_date`,
+   same nullable/no-backfill/re-import-backfills-it pattern as before) that Kayvan needs to apply to
+   live Supabase directly, same as `episodes.synopsis` before it.
+   (b) the season finale flag (derived, not tagged — see the triage doc for the exact rule; also
+   needs TMDB's `status` field added to `TmdbShowDetails`, which doesn't exist on that type yet
+   either); (c) a personal win/loss record per episode (free read over the existing
+   `episode_comparisons` table); (d) director/writer/cast, which needs a genuinely new per-episode
+   TMDB credits call (confirmed nothing like this exists yet) — item 3 (the richer comparison
+   screen) was originally going to piggyback on this same call but shipped without it, so this is now
+   a standalone gap, not shared work.
    IMDb/RT/Metacritic links and streaming availability are optional later phases, not v1. Average
    community ranking and rating distribution are explicitly out of scope until Tier B (the social
    layer) exists.
@@ -198,7 +205,14 @@ this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of t
 in Bucket 4, rather than being done piecemeal now.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
+1. **Episode detail page (Tier A item 8a), built 2026-07-18, not yet hands-on checked** — needs the
+   new `episodes.still_url`/`episodes.air_date` migration (`20260718040000_episode_still_air_date.sql`)
+   applied to live Supabase first (same as `episodes.synopsis` before it — existing episodes stay
+   null until their show is re-imported). After that: confirm clicking an episode's title on
+   `/shows/[showId]` navigates to `/shows/[showId]/episodes/[episodeId]`, the hero image shows
+   (falling back to the season poster for an episode with no TMDB still), air date/synopsis render,
+   and a wrong-show/episode-id combination 404s instead of showing the wrong episode.
+2. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
    design. Can't be meaningfully verified by just clicking around today (the 24h throttle means a
    freshly-imported show won't actually re-sync for a day), so the real check is patient rather than
    immediate: next time a tracked show is known to have a new episode/season on TMDB, confirm it
@@ -207,7 +221,7 @@ in Bucket 4, rather than being done piecemeal now.
    (check the `shows` table has a populated `last_synced_at` column) and that a show page still loads
    normally post-push (the added `ensureShowSynced` call is fail-open, so even a broken TMDB call
    shouldn't break the page — but confirm that's actually true live, not just in tests).
-2. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
+3. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
    list (auth, search/import, dashboard, show detail page, the rankings page, cold start,
    comparative placement, re-ranking, removing a show all confirmed working end to end). What's
    genuinely still untested/unconfirmed, carried forward rather than chased right now:
@@ -458,6 +472,46 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-18: Same session, continued. Kayvan confirmed the dashboard progress bar working hands-on
+  on live Vercel — removed from Bucket 2. Moved to Tier A item 8 (episode pages), starting with
+  sub-item (a) per the triage's cheap-first order. Before designing anything, dispatched a research-
+  only Explore agent to verify STATUS.md's own claims against the actual code rather than trust them:
+  confirmed `overview`/`synopsis` really is already fetched and persisted (shipped with item 3), but
+  found `still_path`/`air_date` genuinely don't exist on `TmdbSeasonEpisode` at all — STATUS.md's
+  prior wording ("already fetches but currently discards") was wrong, the same "assumed captured,
+  never was" mistake this file previously made and corrected for `overview` itself. Corrected that
+  wording immediately, as its own small commit, before building anything on top of the wrong premise.
+  Also had the research agent confirm the season-finale derivation rule (verbatim from `AppSpec.md`'s
+  triage section) and that no per-episode TMDB credits call exists yet (needed for sub-item (d), not
+  this dispatch).
+  Proposed the new route's design (entry point: episode title on the show page becomes the link; hero
+  image: falls back to the season poster when TMDB has no episode-specific still) and got both
+  confirmed by Kayvan before building. Built and merged via one implementer agent (worktree) — an
+  additive nullable migration plus new display surface, same risk profile as the earlier synopsis-
+  column work, so implementer + direct PM review, not the full independent-reviewer pipeline (`7bfab1c`):
+  - `TmdbSeasonEpisode` gained `still_path`/`air_date`; `EpisodeSummary` gained `stillUrl`/`airDate`;
+    `mapSeasonEpisode` maps `still_path` through the existing `posterUrlFromPath` helper (works for
+    any TMDB image path despite the name) and passes `air_date` straight through.
+  - New migration `20260718040000_episode_still_air_date.sql`: nullable `episodes.still_url`/
+    `episodes.air_date`, same no-backfill/re-import-backfills-it pattern as `synopsis`/
+    `season_poster_url` before it — **needs Kayvan to apply it to live Supabase**, same as those.
+  - `EpisodeInsertRow`/`toEpisodeRows` (`importShow.ts`) now carry both new fields through to the
+    upsert.
+  - New route `/shows/[showId]/episodes/[episodeId]` (`page.tsx`): same auth-guard pattern as every
+    other page here, scoped to both `id` and `show_id` so a stale/wrong-show link 404s rather than
+    silently rendering the wrong episode; hero image (`still_url` falling back to
+    `season_poster_url`, else nothing), "Season N, Episode M" label + title, "Aired Mon D, YYYY" (year
+    included, unlike the show page's own `formatRankedDate` which omits it since ranking dates are
+    always recent), synopsis.
+  - Show page: episode titles in the per-season list are now links into the new route; nothing else
+    in each row changed.
+  PM reviewed the full diff directly (every changed file, plus the new migration's exact SQL),
+  verified worktree isolation held cleanly (`git worktree list` + `git status --short` both clean
+  before merging), fast-forward merged, re-ran tests/typecheck/lint/build fresh on `main` post-merge:
+  226/226 tests (1 new), clean typecheck, clean lint, clean build (new route confirmed in the build's
+  route table). Pushed. Not yet hands-on tested, and the migration isn't applied to live Supabase yet
+  — see Bucket 2. Sub-items (b) season-finale flag, (c) win/loss record, (d) credits are still
+  unbuilt.
 - 2026-07-18: Fresh session. Confirmed `git status`/`git log` clean and matching the prior session's
   end state before doing anything else, per procedure. Asked Kayvan what to prioritize; chose to
   continue the Tier A queue, then specifically item 5 (dashboard progress bar) — Kayvan asked to see
