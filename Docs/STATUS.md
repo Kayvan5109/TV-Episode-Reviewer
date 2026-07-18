@@ -93,9 +93,11 @@ prior claim — same mistake pattern as an earlier `overview` correction), confi
 point/image-fallback design with Kayvan, then built and merged sub-item (a) — title/season-episode/
 air-date/synopsis/still image (`7bfab1c`). Kayvan applied the migration and hands-on confirmed the
 page working on live Vercel same session (still image, season/episode number, title, air date,
-synopsis all render correctly) — removed from Bucket 2. Remaining: item 8's sub-items (b)/(c)/(d),
-plus Tier A items 1 (smart comparison selection), 2 (stats/visualizations), 4 (collections).
-Deviations Awaiting Review are all still open and unactioned.
+synopsis all render correctly) — removed from Bucket 2. Kayvan then asked for sub-items (b)/(c) plus
+a rank/re-rank button in one go: built and merged (`6d0a7e0`), now in Bucket 2 for the `shows.status`
+migration + hands-on check. Remaining: item 8(d) credits (next up), plus Tier A items 1 (smart
+comparison selection), 2 (stats/visualizations), 4 (collections). Deviations Awaiting Review are all
+still open and unactioned.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -190,13 +192,23 @@ front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
    `overview`/`synopsis` was) plus one new migration (`episodes.still_url`/`episodes.air_date`,
    same nullable/no-backfill/re-import-backfills-it pattern as before) that Kayvan needs to apply to
    live Supabase directly, same as `episodes.synopsis` before it.
-   (b) the season finale flag (derived, not tagged — see the triage doc for the exact rule; also
-   needs TMDB's `status` field added to `TmdbShowDetails`, which doesn't exist on that type yet
-   either); (c) a personal win/loss record per episode (free read over the existing
-   `episode_comparisons` table); (d) director/writer/cast, which needs a genuinely new per-episode
-   TMDB credits call (confirmed nothing like this exists yet) — item 3 (the richer comparison
-   screen) was originally going to piggyback on this same call but shipped without it, so this is now
-   a standalone gap, not shared work.
+   (b) ~~the season finale flag~~ — **built and merged 2026-07-18** (`6d0a7e0`), now in Bucket 2 for
+   the migration + hands-on check. Added TMDB's `status` field (`TmdbShowDetails`/`ShowDetails`, plus
+   a new `shows.status` migration Kayvan needs to apply to live Supabase, same pattern as before) and
+   a pure, unit-tested `isSeasonFinale` (`website/src/lib/shows/seasonFinale.ts`) implementing the
+   triage doc's exact rule; renders as a "Season finale" badge on the episode page.
+   (c) ~~a personal win/loss record per episode~~ — **built and merged 2026-07-18** (`6d0a7e0`, same
+   dispatch as (b)), now in Bucket 2 for hands-on check. New `getEpisodeComparisonRecord` in
+   `@/lib/ranking-session`, a free read over the existing `episode_comparisons` table (no schema
+   change); renders as "N wins, N losses, N ties" on the episode page, omitted when all-zero.
+   (d) director/writer/cast, which needs a genuinely new per-episode TMDB credits call (confirmed
+   nothing like this exists yet) — item 3 (the richer comparison screen) was originally going to
+   piggyback on this same call but shipped without it, so this is now a standalone gap, not shared
+   work. **Still unbuilt** — next up.
+   Also added, same 2026-07-18 dispatch as (b)/(c) at Kayvan's request (not from the original
+   triage): a rank/re-rank button directly on the episode detail page, mirroring the show page's
+   existing per-episode status handling (score+`ReRankButton` if ranked, cold-start bucket label if
+   pending, a "Rank this episode" link if untouched) rather than inventing new UI.
    IMDb/RT/Metacritic links and streaming availability are optional later phases, not v1. Average
    community ranking and rating distribution are explicitly out of scope until Tier B (the social
    layer) exists.
@@ -206,7 +218,14 @@ this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of t
 in Bucket 4, rather than being done piecemeal now.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
+1. **Episode page finale badge + win/loss record + rank button, built 2026-07-18, not yet hands-on
+   checked** — needs the new `shows.status` migration (`20260718050000_shows_status.sql`) applied to
+   live Supabase first (existing shows stay `status is null`, and therefore never show a finale
+   badge, until re-imported). After that: confirm a season finale shows the badge (and a
+   still-airing show's newest episode doesn't), the win/loss/tie line renders correctly and is
+   omitted for an episode with no comparisons yet, and the rank/re-rank button correctly reflects
+   each of the three states (ranked, cold-start-pending, untouched).
+2. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
    design. Can't be meaningfully verified by just clicking around today (the 24h throttle means a
    freshly-imported show won't actually re-sync for a day), so the real check is patient rather than
    immediate: next time a tracked show is known to have a new episode/season on TMDB, confirm it
@@ -215,7 +234,7 @@ in Bucket 4, rather than being done piecemeal now.
    (check the `shows` table has a populated `last_synced_at` column) and that a show page still loads
    normally post-push (the added `ensureShowSynced` call is fail-open, so even a broken TMDB call
    shouldn't break the page — but confirm that's actually true live, not just in tests).
-2. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
+3. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
    list (auth, search/import, dashboard, show detail page, the rankings page, cold start,
    comparative placement, re-ranking, removing a show all confirmed working end to end). What's
    genuinely still untested/unconfirmed, carried forward rather than chased right now:
@@ -466,6 +485,35 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-18: Same session, continued. Kayvan asked for the remaining episode-page sub-items
+  ((b) season finale flag, (c) win/loss record) plus a fourth addition not in the original triage: a
+  rank/re-rank button directly on the episode page. Built and merged via one implementer agent
+  (worktree) — an additive nullable migration plus pure derivations/reused componentry, same risk
+  profile as sub-item (a), so implementer + direct PM review, not the full independent-reviewer
+  pipeline (`6d0a7e0`):
+  - Added TMDB's `status` field (`TmdbShowDetails`/`ShowDetails`/`mapShowDetails`) and a new
+    migration `20260718050000_shows_status.sql` (nullable `shows.status`, same no-backfill pattern
+    as before) — **needs Kayvan to apply it to live Supabase**, same as the still/air-date one.
+  - New pure, unit-tested `isSeasonFinale` (`website/src/lib/shows/seasonFinale.ts`, 5 tests) —
+    implements the triage doc's exact rule; "a later season already exists" is derived from the
+    `episodes` table itself (any other episode with a higher `season_number`) rather than storing
+    TMDB's `number_of_seasons` anywhere, so `status` is the only new column this needed. Renders as a
+    "Season finale" badge on the episode page.
+  - New `getEpisodeComparisonRecord` in `@/lib/ranking-session/session.ts` (3 new tests) — a
+    two-query both-sides read over `episode_comparisons`, same pattern `loadShowRankingState`
+    already uses elsewhere in that file; tallies wins/losses/ties for the signed-in user. Renders as
+    "N wins, N losses, N ties" (correct singular/plural per category), omitted entirely when all-zero.
+  - Rank/re-rank button: reuses the show page's existing three-way status handling and its
+    `ReRankButton` component directly (imported across the route-folder boundary) rather than
+    inventing new UI — score+Re-rank if ranked, cold-start bucket label if pending, a "Rank this
+    episode" link if untouched.
+  PM reviewed the full diff directly (every changed file, the new migration's exact SQL, the pure
+  `isSeasonFinale`/`getEpisodeComparisonRecord` logic checked by hand against the triage rule and the
+  win/loss tallying rules respectively), verified worktree isolation held cleanly, fast-forward
+  merged, re-ran tests/typecheck/lint/build fresh on `main` post-merge: 234/234 tests (8 new), clean
+  typecheck, clean lint, clean build (new route still compiles). Pushed. Not yet hands-on tested, and
+  the migration isn't applied to live Supabase yet — see Bucket 2. Sub-item (d) credits is still
+  unbuilt, next up.
 - 2026-07-18: Same session, continued. Kayvan applied the `episodes.still_url`/`episodes.air_date`
   migration to live Supabase and hands-on confirmed the new episode detail page on live Vercel: still
   image, season/episode number, title, air date, and synopsis all render correctly. Removed from
