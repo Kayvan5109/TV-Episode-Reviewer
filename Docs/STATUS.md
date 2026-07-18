@@ -298,7 +298,12 @@ this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of t
 in Bucket 4, rather than being done piecemeal now.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
+1. **Sentry error monitoring, built 2026-07-18, blocked on Kayvan creating a Sentry project** — code
+   is merged and verified (build/tests/lint all clean with the DSN unset), but nothing will actually
+   report until `NEXT_PUBLIC_SENTRY_DSN` is set locally *and* on Vercel. Once set: trigger a real
+   test error (temporarily `throw` in a Server Action, per `.env.local.example`'s note) and confirm
+   it shows up in the Sentry dashboard within a minute, then remove the test throw.
+2. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
    design. Can't be meaningfully verified by just clicking around today (the 24h throttle means a
    freshly-imported show won't actually re-sync for a day), so the real check is patient rather than
    immediate: next time a tracked show is known to have a new episode/season on TMDB, confirm it
@@ -307,7 +312,7 @@ in Bucket 4, rather than being done piecemeal now.
    (check the `shows` table has a populated `last_synced_at` column) and that a show page still loads
    normally post-push (the added `ensureShowSynced` call is fail-open, so even a broken TMDB call
    shouldn't break the page — but confirm that's actually true live, not just in tests).
-2. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
+3. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
    list (auth, search/import, dashboard, show detail page, the rankings page, cold start,
    comparative placement, re-ranking, removing a show all confirmed working end to end). What's
    genuinely still untested/unconfirmed, carried forward rather than chased right now:
@@ -355,8 +360,21 @@ see Bucket 4.)
    phone before it's done. That's a bigger unit of work than anything built this session and didn't
    leave enough margin to do properly plus close the session out cleanly. Kayvan chose to start fresh
    next session with full budget rather than a narrow partial fix now. **Start here next session.**
-5. **Error monitoring** — no visibility if something breaks for a real user other than them telling
-   you. Consider a lightweight free-tier setup (e.g. Sentry) before wider testing. Flagged 2026-07-16.
+5. ~~**Error monitoring**~~ — **built and merged 2026-07-18** (`1a37f88`), now in Bucket 2 pending
+   Kayvan creating a real Sentry project. `@sentry/nextjs`, free tier, errors only (`tracesSampleRate:
+   0`, no session replay) — server (`sentry.server.config.ts`), edge (`sentry.edge.config.ts`, not
+   load-bearing today since nothing in this app opts into the Edge runtime, but kept as a no-cost
+   safety net), and client (`instrumentation-client.ts`) all wired via Next.js's native
+   `instrumentation.ts`/`onRequestError` hooks — deliberately not via `withSentryConfig` in
+   `next.config.ts`, since that needs a Sentry auth token/org/project Kayvan doesn't have yet and
+   this app doesn't need source-map upload for basic error capture. This app had zero error
+   boundaries before this — added a root `global-error.tsx` (required by Next.js's file-convention
+   rules once any error boundary exists) that reports client-side rendering errors via
+   `Sentry.captureException`. One new env var, `NEXT_PUBLIC_SENTRY_DSN` (not a secret — Sentry's own
+   docs confirm a DSN can only submit events, never read them) — safe to leave unset (a documented
+   no-op, confirmed by testing the full build/test suite with it unset, matching the real current
+   `.env.local` state). **Needs Kayvan to create a free Sentry project and set this env var** (see
+   the next chat message for exact steps) before any errors actually get reported.
 6. **Visual design** — still zero design polish, bare Tailwind defaults throughout. Flagged
    2026-07-16 as a real gap before wider testing, deliberately deferred past piece 2b.
 7. ~~Small-show exact score precision~~ — **superseded 2026-07-17, fix built 2026-07-18**: the
@@ -574,6 +592,44 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-18: Same session, continued, at 71% usage. With the Tier A queue empty, Kayvan asked
+  whether any remaining backlog items were small enough to still fit this session. PM assessed the
+  full remaining list (mobile/responsive, visual design, season rankings, import, spoiler mode,
+  keyboard shortcuts, error monitoring, the Deviations items) and recommended error monitoring,
+  keyboard shortcuts, and a fresh-eyes review of the TMDB security fix as genuinely small/bounded,
+  while flagging season rankings/import/spoiler mode as comparable in size to episode pages (which
+  took most of the session) and not confident they'd fit. Kayvan then made three backlog decisions in
+  one message: redesigned season rankings to be *derived* from existing episode rankings (e.g.
+  average score) rather than a separate season-vs-season comparison flow — shrinking its real scope
+  a lot, since `seasonAverageScores` (built for the stats page's heatmap) already computes nearly
+  this; declined keyboard shortcuts outright; declined spoiler mode outright. All three logged with
+  reasoning in both `STATUS.md` and `AppSpec.md`. Picked error monitoring to build with the rest of
+  the session.
+  Built and merged via one implementer agent (worktree) — infrastructure wiring, not app logic, but
+  touches build configuration (a new native Next.js hook file, `instrumentation.ts`) so reviewed with
+  extra care despite not being correctness-critical to the ranking algorithm/auth/persistence
+  (`1a37f88`). This app's own `AGENTS.md` warns this Next.js version (16.2.10) has real API
+  differences from common knowledge; the implementer confirmed this mattered here — this version
+  uses a newer `instrumentation-client.ts` file convention (not the classic `sentry.client.config.ts`
+  pattern many guides show) and Proxy defaults to the Node.js runtime rather than Edge, which changes
+  which Sentry config file actually covers `src/proxy.ts`. `@sentry/nextjs` installed and wired
+  manually (not via the `npx @sentry/wizard` scaffolding tool, which can rewrite `next.config.ts` in
+  ways that are hard to fully audit) across server/edge/client configs plus a new root
+  `global-error.tsx` (this app had zero error boundaries before), all kept to free-tier basics
+  (`tracesSampleRate: 0`, no session replay). One new env var, `NEXT_PUBLIC_SENTRY_DSN` — confirmed
+  safe to leave unset (a documented Sentry no-op) by actually running the full build/test suite with
+  it unset, matching the real current `.env.local` state, not just asserting it. PM reviewed every
+  new file directly, merged, then hit one real gap the implementer's own worktree-scoped verification
+  couldn't catch: `npx tsc --noEmit` failed on `main` immediately after merging with "Cannot find
+  module '@sentry/nextjs'" — the new dependency was added to `package.json`/`package-lock.json` but
+  the main working directory's own `node_modules` (separate from the now-deleted worktree's) had
+  never had `npm install` run in it; a one-line `npm install` fixed it, re-verified clean afterward.
+  Also surfaced two pre-existing moderate-severity `npm audit` findings in Next.js's own bundled
+  `postcss` dependency, unrelated to this change (fixing them would mean downgrading Next.js itself)
+  — noted, not chased, out of scope for this task. Final state: 265/265 tests (unchanged), clean
+  typecheck/lint/build. Pushed. **Needs Kayvan to create a free Sentry project and set
+  `NEXT_PUBLIC_SENTRY_DSN` (locally and on Vercel) before anything actually gets reported** — see
+  Bucket 2.
 - 2026-07-18: Same session, continued, at 33% session usage. Kayvan asked to build three Tier A
   items together: item 9 (season-completed badge), item 11 (episode stills on ranking screens), and
   item 2 (stats/visualizations), leaving the implementation approach up to the PM. Ran two sequential
