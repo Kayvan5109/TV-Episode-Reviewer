@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mapSeasonEpisode, mapShowDetails, mapShowSearchResult } from './mappers';
+import { mapEpisodeCredits, mapSeasonEpisode, mapShowDetails, mapShowSearchResult } from './mappers';
 
 describe('mapShowSearchResult', () => {
   it('reshapes a raw TMDB search result into the app shape', () => {
@@ -188,6 +188,88 @@ describe('mapShowDetails', () => {
       numberOfSeasons: 1,
       genres: [],
       status: 'Canceled',
+    });
+  });
+});
+
+describe('mapEpisodeCredits', () => {
+  it('reshapes raw episode credits into directors/writers/cast', () => {
+    expect(
+      mapEpisodeCredits({
+        cast: [
+          { name: 'Bryan Cranston', character: 'Walter White' },
+          { name: 'Aaron Paul', character: 'Jesse Pinkman' },
+        ],
+        crew: [
+          { name: 'Vince Gilligan', job: 'Director' },
+          { name: 'Vince Gilligan', job: 'Writer' },
+          { name: 'Michelle MacLaren', job: 'Producer' },
+        ],
+      })
+    ).toEqual({
+      directors: ['Vince Gilligan'],
+      writers: ['Vince Gilligan'],
+      cast: ['Bryan Cranston', 'Aaron Paul'],
+    });
+  });
+
+  it('returns empty arrays when cast and crew are both empty', () => {
+    expect(mapEpisodeCredits({ cast: [], crew: [] })).toEqual({
+      directors: [],
+      writers: [],
+      cast: [],
+    });
+  });
+
+  it('returns empty directors/writers when crew has neither job', () => {
+    expect(
+      mapEpisodeCredits({
+        cast: [],
+        crew: [
+          { name: 'Michelle MacLaren', job: 'Producer' },
+          { name: 'Some Editor', job: 'Editor' },
+        ],
+      })
+    ).toEqual({
+      directors: [],
+      writers: [],
+      cast: [],
+    });
+  });
+
+  it('truncates cast to the first 8 entries', () => {
+    const cast = Array.from({ length: 10 }, (_, i) => ({
+      name: `Actor ${i + 1}`,
+      character: `Character ${i + 1}`,
+    }));
+
+    const result = mapEpisodeCredits({ cast, crew: [] });
+
+    expect(result.cast).toEqual([
+      'Actor 1',
+      'Actor 2',
+      'Actor 3',
+      'Actor 4',
+      'Actor 5',
+      'Actor 6',
+      'Actor 7',
+      'Actor 8',
+    ]);
+  });
+
+  it('de-dupes a director who appears twice with the same job', () => {
+    expect(
+      mapEpisodeCredits({
+        cast: [],
+        crew: [
+          { name: 'Vince Gilligan', job: 'Director' },
+          { name: 'Vince Gilligan', job: 'Director' },
+        ],
+      })
+    ).toEqual({
+      directors: ['Vince Gilligan'],
+      writers: [],
+      cast: [],
     });
   });
 });

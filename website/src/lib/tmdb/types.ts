@@ -86,3 +86,28 @@ export interface ShowDetails {
   // See supabase/migrations/20260718050000_shows_status.sql.
   status: string;
 }
+
+/** Raw shape (subset) of one entry from GET /tv/{series_id}/season/{s}/episode/{e}/credits's `cast` array. */
+export interface TmdbEpisodeCastMember {
+  name: string;
+  character: string;
+}
+
+/** Raw shape (subset) of one entry from GET /tv/{series_id}/season/{s}/episode/{e}/credits's `crew` array. */
+export interface TmdbEpisodeCrewMember {
+  name: string;
+  job: string;
+}
+
+/** Raw shape (subset) of GET /tv/{series_id}/season/{season_number}/episode/{episode_number}/credits. */
+export interface TmdbEpisodeCredits {
+  cast: TmdbEpisodeCastMember[];
+  crew: TmdbEpisodeCrewMember[];
+}
+
+/** App-facing shape for one episode's credits — derived from `TmdbEpisodeCredits`, not persisted anywhere. */
+export interface EpisodeCredits {
+  directors: string[];
+  writers: string[];
+  cast: string[];
+}
