@@ -50,16 +50,20 @@ front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
 `DevelopmentPlan.md`'s Discussion section for the full reasoning behind each):
 
 1. **Ranking confidence** ("your Breaking Bad rankings are 87% stable") — the strongest idea from
-   the review. Concrete v1 formula already written up in `DevelopmentPlan.md` (decisive-comparison
-   count relative to `log2(showEpisodeCount)`, no schema changes needed) — read that before
-   building, it also documents a known v1 limitation (doesn't yet detect tie-break-fallback
-   placements) that's deliberately not being solved yet. **Expanded 2026-07-18** (second design
-   review, see `AppSpec.md`'s "Second Design Review — Triage"): this item now also covers **smart
-   comparison selection** (prioritize whichever pending comparison would reduce uncertainty the
-   most, instead of just the next comparison the search would ask anyway) and should lead with the
-   **live "you're one comparison away from confidently separating #4 and #5" framing** as the
-   flagship presentation — Kayvan's single most-wanted idea across both design reviews, build this
-   framing first rather than a plain static percentage.
+   the review. **Base score + display built and merged 2026-07-18** (see History; now in Bucket 2
+   for hands-on verification) — `website/src/lib/ranking/confidence.ts`, wired into
+   `getShowRankingDisplay`, rendered on the show page. Concrete v1 formula was already written up in
+   `DevelopmentPlan.md` (decisive-comparison count relative to `log2(showEpisodeCount)`, no schema
+   changes needed) — it also documents a known v1 limitation (doesn't yet detect tie-break-fallback
+   placements) that's deliberately not being solved. **Remaining scope, not yet built**: the
+   **smart comparison selection** piece (prioritize whichever pending comparison would reduce
+   uncertainty the most, instead of just the next comparison the search would ask anyway) and the
+   **live "you're one comparison away from confidently separating #4 and #5" framing** on top of it
+   — Kayvan's single most-wanted idea across both design reviews, still worth building, but
+   deliberately *not* bundled into the just-shipped display-only piece: it changes which comparison
+   actually gets asked next, which is correctness-critical (touches live ranking-algorithm behavior)
+   and needs the full implementer-then-independent-reviewer pipeline, unlike the pure-display change
+   that just shipped with implementer + PM review only.
 2. **Statistics view + alternate visualizations** of a show's existing rankings (e.g. a tier list,
    heatmap, or season timeline) — sequence after item 2, since "most/least confident episode" is a
    natural stat once confidence exists. Purely additive over data `getShowRankingDisplay` already
@@ -149,7 +153,13 @@ this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of t
 in Bucket 4, rather than being done piecemeal now.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
+1. **Ranking confidence score + display, built 2026-07-18, not yet hands-on checked.** Was Tier A
+   item 1 (base score only — see that item for the still-unbuilt smart-comparison-selection/live-
+   framing remainder). Confirm on a real show with a mix of decisive and neutral comparisons that
+   "Your {show} rankings are N% stable" renders sensibly near the existing percent-ranked line, is
+   absent for a show with nothing comparatively ranked yet, and that the number actually moves as
+   more comparisons get answered rather than staying static.
+2. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
    design. Can't be meaningfully verified by just clicking around today (the 24h throttle means a
    freshly-imported show won't actually re-sync for a day), so the real check is patient rather than
    immediate: next time a tracked show is known to have a new episode/season on TMDB, confirm it
@@ -158,10 +168,10 @@ in Bucket 4, rather than being done piecemeal now.
    (check the `shows` table has a populated `last_synced_at` column) and that a show page still loads
    normally post-push (the added `ensureShowSynced` call is fail-open, so even a broken TMDB call
    shouldn't break the page — but confirm that's actually true live, not just in tests).
-2. **Privacy notice page, built 2026-07-18, not yet hands-on checked.** Low-priority (static content
+3. **Privacy notice page, built 2026-07-18, not yet hands-on checked.** Low-priority (static content
    page, nothing functional to break) — just confirm the footer's "Privacy" link works from a
    signed-out page too (e.g. `/login`), not only while signed in.
-3. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
+4. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
    list (auth, search/import, dashboard, show detail page, the rankings page, cold start,
    comparative placement, re-ranking, removing a show all confirmed working end to end). What's
    genuinely still untested/unconfirmed, carried forward rather than chased right now:
@@ -283,6 +293,37 @@ it through" is worth a deliberate re-check, not silent acceptance.
   verified-real, verified-registered worktree. No working theory yet for how that's possible; worth
   a dedicated investigation before leaning on `isolation: "worktree"` for anything where a real
   collision with concurrent work would matter.
+  **Update, same session, investigated at Kayvan's request**: this happened a **third** time, on the
+  very next dispatch (the ranking-confidence-score implementer) — same signature exactly (worktree
+  verified real/registered/locked right after dispatch, agent's edits still landed directly on
+  `main`'s working tree, its branch ended up with zero new commits). This third occurrence is
+  actually informative: **it disproves the leading theory from the second occurrence** — that dispatch
+  ran to full, successful completion (221/221 tests, clean build, a genuine multi-file feature, not
+  stopped early like the keyboard-shortcuts one) — so "the agent got killed mid-task" cannot be the
+  explanation; whatever's happening isn't specific to early termination.
+  Separately investigated the repeated `failed to delete '.git/worktrees/agent-*': Permission denied`
+  noise seen on every commit since 2026-07-15 (previously just noted as "harmless," never actually
+  looked into) — found real, if circumstantial, evidence this is OneDrive: this repo lives inside
+  `OneDrive\Desktop\...`, OneDrive's sync process was confirmed actively running, and every one of the
+  6 "orphaned" worktree directories checked (including one, `agent-a35c465e...`, known for certain to
+  have been a real, correctly-functioning, properly-merged worktree earlier the same session) had
+  already had its internal `.git` pointer file successfully removed by `git worktree remove` — meaning
+  the *unregistration* step works fine, only the *physical directory deletion* that follows it fails,
+  consistent with OneDrive's background sync filter transiently locking files mid-scan. This plausibly
+  also explains the previous session's "worktree created with no `.git` at all" variant, if the same
+  lock contention hits during creation instead of deletion — but does **not** explain today's
+  "worktree was real and registered, agent still wrote to `main`" variant, which remains genuinely
+  unexplained (most likely a harness-level routing/timing issue this investigation has no visibility
+  into, not a git-level or OneDrive-level cause). **Recommended, not yet actioned**: move this repo
+  out of `OneDrive\Desktop` entirely (or exclude it from OneDrive sync) — real fix for the
+  deletion-failure/disk-clutter class of issue regardless of whether it's also implicated in the
+  worse bug; GitHub is already the real backup for anything that matters, so losing OneDrive's copy of
+  this specific folder costs nothing. Practical mitigation adopted for this session regardless of root
+  cause: after **every** agent dispatch with `isolation: "worktree"` — not just early stops — check
+  both `git worktree list` *and* `git status --short` on `main` before assuming isolation held; if
+  work landed on `main` directly but matches the agent's own reported file list with nothing unrelated
+  mixed in, review and commit it in place rather than trying to force a merge-from-branch workflow
+  that has nothing real to merge.
 - 2026-07-18: **Fixed the open-TMDB-proxy security gap (`CriticalReview.md` Finding 3.1) directly,
   without the full implementer-then-independent-reviewer pipeline this would normally get as auth/
   security work** — at 87% session usage, spawning and waiting on a second agent risked not landing
@@ -356,6 +397,28 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-18: Same session, moved from planning to building — Kayvan said to keep the Tier A queue
+  order as-is and start work. First item, keyboard shortcuts, was dispatched then cancelled moments
+  later at Kayvan's request ("skip keyboard shortcuts... move to the backlog") — see Deviations for
+  what that dispatch left behind and what it revealed about the recurring worktree-isolation bug.
+  Moved to item 1's remainder, ranking confidence: built and merged the base score + display
+  (`website/src/lib/ranking/confidence.ts`, pure functions computing `decisiveComparisonCount`/
+  `episodeConfidence`/`showConfidence` per the v1 formula already written up in
+  `DevelopmentPlan.md`), wired into `getShowRankingDisplay` in `ranking-session/session.ts` (a new
+  `confidence: number | null` field, computed from comparison history/ranked list already loaded
+  there — no new database query), and rendered on the show page ("Your {show} rankings are N%
+  stable."). One real judgment call the design doc itself left ambiguous — what count to divide by,
+  a show's total episodes or just how many are ranked so far — resolved to match `scoreForPosition`'s
+  existing convention (current ranked count, recomputed fresh every time) and marked `JUDGMENT CALL`
+  in source for review. Deliberately scoped to the display-only piece: smart comparison selection
+  (which pending comparison would most reduce uncertainty) and the live "one comparison away from
+  separating #4 and #5" framing are still unbuilt, since those change which comparison actually gets
+  asked next — correctness-critical, needs the full reviewer pipeline, not bundled into this pass.
+  This build hit the third occurrence of the worktree-isolation bug (see Deviations for the full
+  investigation) — the agent's work landed directly on `main`'s working tree despite a verified real
+  worktree, but matched its own reported file list exactly with nothing unrelated mixed in, so it was
+  reviewed by hand and committed in place rather than merged from a branch. 221/221 tests, clean
+  typecheck/lint/build, re-verified fresh before committing. Not yet hands-on tested — see Bucket 2.
 - 2026-07-18: Same session, after the TMDB auto-refresh work below. Kayvan brought a second large
   idea list (independently written, not the same document as the 2026-07-17 external design review)
   and asked to go through it together — read fully, then discussed cluster by cluster rather than
