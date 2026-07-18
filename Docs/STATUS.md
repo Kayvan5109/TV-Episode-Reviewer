@@ -3,6 +3,15 @@
 **Read this file first** — before the other docs, before doing anything else. It's the single
 "what's actually going on right now" pointer, kept short and current on purpose.
 
+**[Docs/CriticalReview.md](CriticalReview.md) was written 2026-07-18** — a deliberately harsh,
+requested full-project critique. Top finding: the roadmap is designing far ahead of any real usage
+(a whole social layer, gamification, and stats fully designed for an audience of one). Also names a
+**live, currently-unfixed security gap**: `/api/tmdb/search` and `/api/tmdb/[showId]/episodes` are
+reachable by anyone on the internet with no auth check, burning this project's own TMDB token —
+`proxy.ts`'s matcher excludes `/api` entirely and neither route calls `getUser()` before fetching.
+Not fixed yet as of this update — Kayvan's call on when, see the exchange right after this doc was
+written. Read the full review before scoping new feature work; not repeating its findings here.
+
 Last updated: 2026-07-18. Same session as the cold-start fix above, continued: built, reviewed, and
 merged all 6 remaining Bucket 1 items back to back — Search Shows nav link + progress counter, season
 poster art, TMDB attribution footer, the password reset flow, TMDB genres on the show page, and the
