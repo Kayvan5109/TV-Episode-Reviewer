@@ -115,10 +115,13 @@ mechanism level and walked through why, and Kayvan chose to decline it outright 
 the open design question — logged as declined-but-revisitable across `STATUS.md`/`AppSpec.md`/
 `DevelopmentPlan.md`. Kayvan then asked to move Collections (item 4) to Tier B (already has a full
 shareable design there) rather than build a private-only stopgap, and to build items 10 and item 2's
-deferred pieces at the same time. Dispatched both in parallel (confirmed no file overlap first): item
-10 (clickable comparison/cold-start titles + a return-to-ranking link) and item 2's remaining pieces
-(win/loss matrix, comparison list, season timeline, added to the stats page). Deviations Awaiting
-Review are all still open and unactioned.
+deferred pieces at the same time. Dispatched both in parallel (confirmed no file overlap first),
+both built and merged: item 10 (clickable comparison/cold-start titles + a return-to-ranking link,
+`6f420d2`) and item 2's remaining pieces (win/loss matrix, comparison history list, season timeline,
+`ace73fc`) — **all of Tier A items 2, 9, 10, 11 are now built**, both dispatches queued together in
+Bucket 2 for one combined hands-on check. Remaining in Tier A: nothing except items already in
+Bucket 2 pending confirmation — the queue is otherwise empty pending Kayvan's next priority pick.
+Deviations Awaiting Review are all still open and unactioned.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -155,23 +158,31 @@ front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
    build" entry, now updated) and `Docs/DevelopmentPlan.md`'s Discussion section for the full
    reasoning. **Not a permanent rejection** — explicitly left open to revisit later, unlike the
    Elo/Glicko-class Tier C declines.
-2. **Statistics view + alternate visualizations** of a show's existing rankings. **Expanded
-   2026-07-18**: covers a tier list, season-quality heatmap, gatekeeper-episode stat, a win/loss
-   matrix (every matchup), a season timeline, and a comparison/relationship graph — all cheap, pure
-   visualizations over data already stored, nothing new to fetch. Tier lists specifically are
-   confirmed **auto-generated only** — no manual user editing/override, decided 2026-07-18.
-   **First slice built and merged 2026-07-18** (`8f5e183`), now in Bucket 2 for hands-on check: new
-   route `/shows/[showId]/stats` (linked from the show page) with (a) an auto-generated tier list —
-   S/A/B/C/D by rank-position quintile, not absolute score (absolute `scoreForPosition` scores
-   compress for small shows, so tiering by rank position instead keeps a top/bottom tier populated
-   regardless of show size — see `website/src/lib/ranking/stats.ts`'s `assignTiers`); (b) a
-   season-quality heatmap (average score per season, colored via the `dataviz` skill's documented
-   sequential ramp, normalized to each show's own season-average range rather than the absolute 1-10
-   domain, with the numeric average always shown as text too, never color-only); (c) the gatekeeper-
-   episode stat (biggest score gap between two *adjacent* ranked positions). **Deliberately deferred
-   to a follow-up, not built yet**: the win/loss matrix (every matchup) and the comparison/
-   relationship graph — both more UI-complex than the three pieces above and worth their own design
-   pass rather than being rushed into this batch. Season timeline also still unbuilt.
+2. ~~**Statistics view + alternate visualizations**~~ of a show's existing rankings — **all pieces
+   now built and merged 2026-07-18**, now in Bucket 2 for hands-on check. Tier lists are confirmed
+   **auto-generated only** — no manual user editing/override, decided 2026-07-18. New route
+   `/shows/[showId]/stats` (linked from the show page), built in two dispatches:
+   - **First slice** (`8f5e183`): (a) an auto-generated tier list — S/A/B/C/D by rank-position
+     quintile, not absolute score (absolute `scoreForPosition` scores compress for small shows, so
+     tiering by rank position instead keeps a top/bottom tier populated regardless of show size —
+     see `website/src/lib/ranking/stats.ts`'s `assignTiers`); (b) a season-quality heatmap (average
+     score per season, colored via the `dataviz` skill's documented sequential ramp, normalized to
+     each show's own season-average range rather than the absolute 1-10 domain, numeric average
+     always shown as text too, never color-only); (c) the gatekeeper-episode stat (biggest score gap
+     between two *adjacent* ranked positions).
+   - **Second slice** (`ace73fc`, built in parallel with Tier A item 10 — confirmed no file overlap
+     first): (d) a win/loss matrix — every ranked episode against every other, showing only *direct*
+     recorded comparisons (a blank cell means the pair's order is only known transitively, never
+     tested head-to-head), scrollable with sticky row/column headers, win/loss/tie shown via the
+     `dataviz` skill's fixed status colors *plus* a literal W/L/T letter (never color-only); (e) a
+     "comparison history" list — **deliberately shipped as a flat per-episode list, not an actual
+     node-link graph**, despite `AppSpec.md`'s original "comparison/relationship graph" wording: a
+     real graph-layout visualization would mean a new dependency for a single-user app, which cuts
+     against this project's documented anti-over-engineering posture (`Docs/CriticalReview.md`'s top
+     finding) — the underlying data is identical either way, only the rendering differs; (f) a season
+     timeline — plain inline SVG (no charting library), one point per ranked episode, x-axis
+     chronological (`air_date` when present, season/episode order as a documented fallback for
+     pre-migration episodes missing it).
 3. ~~**Richer comparison screen**~~ — **built and merged 2026-07-18** (`f763f5f`), now in Bucket 2
    for the migration + hands-on check. Two-column layout: the
    episode being placed (`subject`) on the left, the episode it's being compared against
@@ -252,22 +263,17 @@ front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
    (`af173f1`), now in Bucket 2 for hands-on check. A "Complete" badge (same styling as the
    cold-start bucket labels) next to a season's heading on `/shows/[showId]` whenever every episode
    in it has a score or a cold-start bucket.
-10. **Clickable episode titles on the comparison screen, with a way back into the ranking flow** —
-    added 2026-07-18, Kayvan's idea, placed here (PM's call): builds directly on episode pages (item
-    8, just finished) and the ranking UI, same class of work as the rest of this queue. On the
-    comparison screen (`ComparisonPrompt`) and likely the cold-start screen too (`ColdStartPicker`,
-    for consistency — confirm at build time whether Kayvan wants both or just the comparison screen),
-    each episode's title becomes a link to its `/shows/[showId]/episodes/[episodeId]` detail page.
-    The real work is the return trip: the episode detail page needs a "back to ranking" link that
-    lands the user back on the exact comparison they were mid-way through, not just the show page.
-    Candidate mechanism (not yet confirmed with Kayvan, a build-time design call): thread the
-    in-progress rank flow's own subject-episode id through as a query param when linking out (e.g.
-    `?returnToRank={subjectEpisodeId}`), since `/shows/[showId]/rank/[episodeId]` already
-    recomputes "what's next" for that subject fresh on every visit (`getNextStepForEpisode` is
-    idempotent) — so linking back to that same URL naturally re-presents the same pending
-    comparison, no new state needs to be stored. Feel-based UI + navigation, not correctness-critical
-    (doesn't touch scoring/the ranking algorithm itself) — implementer + direct PM review, same
-    treatment as the rest of this queue, not the full independent-reviewer pipeline.
+10. ~~**Clickable episode titles on the comparison screen, with a way back into the ranking
+    flow**~~ — **built and merged 2026-07-18** (`6f420d2`, built in parallel with item 2's second
+    slice — confirmed no file overlap first), now in Bucket 2 for hands-on check. Episode titles on
+    both the comparison screen (`ComparisonPrompt`) and the cold-start/already-ranked screen
+    (`EpisodeColumn`) now link to `/shows/[showId]/episodes/[episodeId]?returnToRank={subjectId}` —
+    always the *subject* episode's id (the one actually being placed), even on the comparison
+    screen's reference-side link, since the reference has no pending step of its own. The episode
+    detail page reads that query param and shows a "↩ Return to ranking" link back to
+    `/shows/[showId]/rank/[returnToRank]`, which recomputes "what's next" fresh on every visit
+    (`getNextStepForEpisode` is idempotent) — no new state needed anywhere. `ColdStartPicker` itself
+    renders no episode title, confirmed nothing needed changing there.
 11. ~~**Show an episode's own still image instead of the season poster on the ranking screens**~~ —
     **built and merged 2026-07-18** (`af173f1`, same dispatch as item 9), now in Bucket 2 for
     hands-on check. Both the comparison screen (`ComparisonPrompt`'s `PosterButton`) and cold-start's
@@ -280,7 +286,16 @@ this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of t
 in Bucket 4, rather than being done piecemeal now.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
+1. **Clickable ranking-flow titles + return-to-ranking, and the stats page's win/loss matrix/
+   comparison history/season timeline, built 2026-07-18, not yet hands-on checked** — no migration
+   needed for either. Confirm: clicking an episode title mid-ranking (comparison or cold-start
+   screen) opens its detail page, "↩ Return to ranking" takes you back to the exact pending
+   question; the win/loss matrix scrolls cleanly for a show with many ranked episodes and its
+   sticky headers stay aligned, blank cells genuinely mean "never directly compared" (spot-check one
+   you know was only inferred transitively), the comparison history list reads clearly, and the
+   season timeline's point order looks chronologically sensible (especially for a show with a mix of
+   dated and undated episodes).
+2. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
    design. Can't be meaningfully verified by just clicking around today (the 24h throttle means a
    freshly-imported show won't actually re-sync for a day), so the real check is patient rather than
    immediate: next time a tracked show is known to have a new episode/season on TMDB, confirm it
@@ -289,7 +304,7 @@ in Bucket 4, rather than being done piecemeal now.
    (check the `shows` table has a populated `last_synced_at` column) and that a show page still loads
    normally post-push (the added `ensureShowSynced` call is fail-open, so even a broken TMDB call
    shouldn't break the page — but confirm that's actually true live, not just in tests).
-2. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
+3. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
    list (auth, search/import, dashboard, show detail page, the rankings page, cold start,
    comparative placement, re-ranking, removing a show all confirmed working end to end). What's
    genuinely still untested/unconfirmed, carried forward rather than chased right now:
@@ -584,6 +599,43 @@ keeps this file fast to read at the start of every session instead of growing fo
     Pushed.
   Both dispatches now in Bucket 2 for hands-on check. Item 2's win/loss matrix, comparison graph, and
   season timeline remain unbuilt, next up whenever item 2 is picked back up.
+- 2026-07-18: Same session, continued. Kayvan chose to decline Tier A item 1's remaining scope
+  (smart comparison selection) after a design conversation surfaced it was never actually specified
+  at the mechanism level — logged as declined-but-revisitable (see the earlier entry above and the
+  Punch List's item 1). Moved Collections (item 4) to Tier B at Kayvan's request, since its full
+  (shareable) design already exists there. Asked to build items 10 and item 2's remaining pieces
+  together; dispatched both in parallel via two implementer agents (worktree), having first confirmed
+  they touch disjoint files (item 10: the rank flow + episode detail page; item 2: the stats page +
+  `stats.ts`):
+  - **Item 10** (`6f420d2`) — episode titles during the ranking flow (`ComparisonPrompt`'s subject
+    and reference columns, `page.tsx`'s `EpisodeColumn`) became links to
+    `/shows/[showId]/episodes/[episodeId]?returnToRank={subjectId}` — always the *subject* episode's
+    id, even on the reference side's link, since only the subject has a pending step. The episode
+    detail page gained a `searchParams` prop (following `login/page.tsx`'s exact existing pattern)
+    and renders a "↩ Return to ranking" link back to `/shows/[showId]/rank/[returnToRank]` when
+    present, with no validation needed since that route already handles a stale/invalid id
+    gracefully on its own. `ColdStartPicker` confirmed to render no title, nothing to change there.
+  - **Item 2's remaining pieces** (`ace73fc`) — three new pure, unit-tested functions in
+    `website/src/lib/ranking/stats.ts`: `buildComparisonMatrix` (N×N grid of *direct* recorded
+    comparisons only — deliberately doesn't infer transitive results), `comparisonHistoryByEpisode`
+    (per-episode opponent list derived from the matrix), and `buildSeasonTimelineOrder`
+    (`air_date`-primary chronological sort with a documented season/episode fallback for episodes
+    missing it). Wired into the stats page as three new sections: a scrollable win/loss matrix with
+    sticky row/column headers (win/loss/tie shown via the `dataviz` skill's fixed status colors
+    *plus* a literal W/L/T letter, never color-only); a "comparison history" list — **deliberately
+    shipped as a flat list, not the node-link graph `AppSpec.md` originally described**, to avoid a
+    new graph-layout dependency for a single-user app (documented in the function's own doc comment,
+    same underlying data either way); and a season timeline as plain inline SVG (no charting
+    library), gated to shows with 2+ ranked episodes to sidestep a divide-by-zero in the single-point
+    case.
+  PM reviewed both diffs in full before merging either (the matrix's win/loss/transpose logic, the
+  timeline's chronological-sort fallback, and the SVG chart's rendering math all checked by hand).
+  Item 10 merged first (fast-forward, `6f420d2`); item 2's dispatch had branched before that merge,
+  so its own merge used `--no-ff` once it landed (no conflicts — confirmed disjoint files held).
+  Verified worktree isolation held for both, re-ran tests/typecheck/lint/build fresh on `main` after
+  each merge: 252/252 then 265/265 tests (13 new), clean typecheck/lint/build throughout, new routes
+  confirmed compiling. Both pushed. **All of Tier A items 2, 9, 10, 11 are now built** — queued
+  together in Bucket 2 for one combined hands-on check.
 - 2026-07-18: Same session, continued. Kayvan asked to pick up Tier A item 1's remaining scope
   (smart comparison selection) next. Before writing anything, PM flagged that neither `AppSpec.md`
   nor `DevelopmentPlan.md` had ever specified a real mechanism for it, only the goal — walked Kayvan
