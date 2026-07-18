@@ -5,7 +5,17 @@ import { notFound, redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/serverSession';
 import { AppHeader } from '@/components/AppHeader';
 import { getShowRankingDisplay } from '@/lib/ranking-session';
-import { assignTiers, findGatekeeperGap, seasonAverageScores, type Tier } from '@/lib/ranking/stats';
+import {
+  assignTiers,
+  buildComparisonMatrix,
+  buildSeasonTimelineOrder,
+  comparisonHistoryByEpisode,
+  findGatekeeperGap,
+  seasonAverageScores,
+  type ComparisonRow,
+  type MatrixCellResult,
+  type Tier,
+} from '@/lib/ranking/stats';
 
 export const metadata: Metadata = {
   title: 'Stats — Episode Ranker',
@@ -25,6 +35,7 @@ interface EpisodeRow {
   season_number: number;
   episode_number: number;
   title: string;
+  air_date: string | null;
 }
 
 type RankedEntry = { episodeId: string; score: number; rank: number; createdAt: string };
@@ -34,6 +45,13 @@ const TIER_ORDER: readonly Tier[] = ['S', 'A', 'B', 'C', 'D'];
 /** Matches `shows/[showId]/page.tsx` and `rank/[episodeId]/episodeDisplay.ts`'s own `formatEpisode`. */
 function formatEpisode(episode: EpisodeRow): string {
   return `S${episode.season_number}E${episode.episode_number} — ${episode.title}`;
+}
+
+/** Short season/episode code only (no title) — used for the matrix's row/column headers and the
+ * timeline's axis labels, where the full title would be too wide; the full title is still reachable
+ * via each element's `title` attribute (native hover tooltip). */
+function formatEpisodeShort(episode: EpisodeRow): string {
+  return `S${episode.season_number}E${episode.episode_number}`;
 }
 
 /**
@@ -115,6 +133,52 @@ const HEAT_CSS = [
 ].join('\n');
 
 /**
+ * Win/loss matrix cell colors — the dataviz skill's fixed **status** palette (`palette.md`'s status
+ * table), not the categorical/sequential ramps: a win/loss/tie result is a *state* of the
+ * comparison, not a series identity, so it gets the reserved status hexes (`good`/`critical`, plus
+ * `warning` standing in for "tie" — there's no dedicated neutral status slot). These three hexes are
+ * mode-invariant (same value in both `palette.md`'s light and dark status columns), so unlike
+ * `HEAT_STEPS` above there's no separate dark variant to compute — only the ink color (via the same
+ * `readableInkFor` already defined above) needs to react to the fill. Per the skill's status-color
+ * rule, color is never the only signal here: every cell also carries a literal "W"/"L"/"T" letter.
+ */
+const MATRIX_STATUS_COLORS = {
+  win: '#0ca30c', // status "good"
+  loss: '#d03b3b', // status "critical"
+  tie: '#fab219', // status "warning", standing in for "tie" (no dedicated neutral status slot)
+} as const;
+
+const MATRIX_CSS = Object.entries(MATRIX_STATUS_COLORS)
+  .map(([key, hex]) => `.matrix-cell-${key} { background-color: ${hex}; color: ${readableInkFor(hex)}; }`)
+  .join('\n');
+
+/**
+ * Season-timeline line/marker/gridline colors. The line is a single series (one score line per
+ * show), so per the dataviz skill's marks-and-anatomy.md ("a single series needs no legend box") it
+ * takes the categorical palette's slot-1 blue rather than needing a legend — the same hue as this
+ * page's own heatmap sequential ramp (`HEAT_STEPS`), both light→dark variants copied verbatim from
+ * `palette.md`. Gridline/axis hexes are `palette.md`'s "Chart chrome & ink" table, copied verbatim.
+ */
+const TIMELINE_COLORS = {
+  line: { light: '#2a78d6', dark: '#3987e5' }, // categorical slot 1 / sequential-hue base, light->dark
+  grid: { light: '#e1e0d9', dark: '#2c2c2a' }, // gridline (hairline)
+  axis: { light: '#c3c2b7', dark: '#383835' }, // baseline / axis
+} as const;
+
+const TIMELINE_CSS = [
+  `.timeline-line { stroke: ${TIMELINE_COLORS.line.light}; }`,
+  `.timeline-marker { fill: ${TIMELINE_COLORS.line.light}; }`,
+  `.timeline-grid { stroke: ${TIMELINE_COLORS.grid.light}; }`,
+  `.timeline-axis { stroke: ${TIMELINE_COLORS.axis.light}; }`,
+  '@media (prefers-color-scheme: dark) {',
+  `  .timeline-line { stroke: ${TIMELINE_COLORS.line.dark}; }`,
+  `  .timeline-marker { fill: ${TIMELINE_COLORS.line.dark}; }`,
+  `  .timeline-grid { stroke: ${TIMELINE_COLORS.grid.dark}; }`,
+  `  .timeline-axis { stroke: ${TIMELINE_COLORS.axis.dark}; }`,
+  '}',
+].join('\n');
+
+/**
  * Bucket index (0 = lowest season average in this show, `HEAT_STEP_COUNT - 1` = highest) —
  * normalized *relative to this show's own season averages*, not the absolute 1-10 score domain.
  * Absolute scores compress for small shows (`score.ts`'s `spread` function), which would wash out
@@ -173,7 +237,7 @@ export default async function StatsPage({
 
   const { data: episodesData, error: episodesError } = await supabase
     .from('episodes')
-    .select('id, season_number, episode_number, title')
+    .select('id, season_number, episode_number, title, air_date')
     .eq('show_id', showId)
     .order('season_number', { ascending: true })
     .order('episode_number', { ascending: true });
@@ -187,6 +251,55 @@ export default async function StatsPage({
   // `getShowRankingDisplay` to say anyway.
   const display = !episodesError && episodes.length > 0 ? await getShowRankingDisplay(showId) : null;
   const hasStats = display !== null && display.ranked.length > 0;
+
+  // `episode_comparisons` rows for this show's episodes, this user only — needed for the win/loss
+  // matrix and comparison-history sections below. Same "both sides, no hand-built OR filter, dedupe
+  // by row id" pattern as `ranking-session/session.ts`'s `loadShowRankingState` (a comparison
+  // between two episodes that are *both* in this show's episode list would otherwise be returned by
+  // both queries). Only fetched when there's actually ranked data to build a matrix from.
+  let comparisons: ComparisonRow[] = [];
+  if (hasStats) {
+    const episodeIds = episodes.map((episode) => episode.id);
+    const [aSide, bSide] = await Promise.all([
+      supabase
+        .from('episode_comparisons')
+        .select('id, episode_a_id, episode_b_id, result')
+        .eq('user_id', user.id)
+        .in('episode_a_id', episodeIds),
+      supabase
+        .from('episode_comparisons')
+        .select('id, episode_a_id, episode_b_id, result')
+        .eq('user_id', user.id)
+        .in('episode_b_id', episodeIds),
+    ]);
+
+    if (aSide.error) {
+      throw new Error(`Failed to load episode comparisons (episode_a_id side): ${aSide.error.message}`);
+    }
+    if (bSide.error) {
+      throw new Error(`Failed to load episode comparisons (episode_b_id side): ${bSide.error.message}`);
+    }
+
+    type RawComparisonRow = {
+      id: string;
+      episode_a_id: string;
+      episode_b_id: string;
+      result: ComparisonRow['result'];
+    };
+
+    const comparisonRowsById = new Map<string, ComparisonRow>();
+    for (const row of [
+      ...((aSide.data ?? []) as RawComparisonRow[]),
+      ...((bSide.data ?? []) as RawComparisonRow[]),
+    ]) {
+      comparisonRowsById.set(row.id, {
+        episodeAId: row.episode_a_id,
+        episodeBId: row.episode_b_id,
+        result: row.result,
+      });
+    }
+    comparisons = [...comparisonRowsById.values()];
+  }
 
   return (
     <>
@@ -216,6 +329,7 @@ export default async function StatsPage({
             ranked={display.ranked}
             episodeById={episodeById}
             episodeSeasonById={episodeSeasonById}
+            comparisons={comparisons}
           />
         )}
       </div>
@@ -227,10 +341,12 @@ function StatsSections({
   ranked,
   episodeById,
   episodeSeasonById,
+  comparisons,
 }: {
   ranked: RankedEntry[];
   episodeById: Map<string, EpisodeRow>;
   episodeSeasonById: Map<string, number>;
+  comparisons: ComparisonRow[];
 }) {
   const tierByEpisode = assignTiers(ranked);
   const seasonAverages = seasonAverageScores(ranked, episodeSeasonById);
@@ -241,9 +357,24 @@ function StatsSections({
   const minSeasonScore = seasonScores.length > 0 ? Math.min(...seasonScores) : 0;
   const maxSeasonScore = seasonScores.length > 0 ? Math.max(...seasonScores) : 0;
 
+  // `ranked` is already best-to-worst (`getShowRankingDisplay`'s contract), so this order doubles
+  // directly as the win/loss matrix's row/column order without any extra sorting.
+  const rankedEpisodeIds = ranked.map((entry) => entry.episodeId);
+  const matrix = buildComparisonMatrix(rankedEpisodeIds, comparisons);
+  const comparisonHistory = comparisonHistoryByEpisode(rankedEpisodeIds, matrix);
+  const hasAnyComparisonHistory = [...comparisonHistory.values()].some((entries) => entries.length > 0);
+
+  const episodeInfoById = new Map(
+    [...episodeById.entries()].map(([id, episode]) => [
+      id,
+      { seasonNumber: episode.season_number, episodeNumber: episode.episode_number, airDate: episode.air_date },
+    ])
+  );
+  const timelineOrder = ranked.length >= 2 ? buildSeasonTimelineOrder(ranked, episodeInfoById) : [];
+
   return (
     <div className="flex w-full max-w-2xl flex-col gap-8">
-      <style>{HEAT_CSS}</style>
+      <style>{[HEAT_CSS, MATRIX_CSS, TIMELINE_CSS].join('\n')}</style>
 
       <section className="flex flex-col gap-4">
         <h2 className="text-lg font-medium">Tier list</h2>
@@ -311,6 +442,325 @@ function StatsSections({
           </p>
         </section>
       )}
+
+      {rankedEpisodeIds.length >= 2 && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-lg font-medium">Win/loss matrix</h2>
+          <p className="text-sm text-black/60 dark:text-white/60">
+            Only *direct* recorded comparisons — a blank cell means these two episodes were never
+            compared head-to-head, even if their relative order is already known transitively
+            through other episodes.
+          </p>
+          <ComparisonMatrixTable rankedEpisodeIds={rankedEpisodeIds} episodeById={episodeById} matrix={matrix} />
+        </section>
+      )}
+
+      <section className="flex flex-col gap-2">
+        <h2 className="text-lg font-medium">Comparison history</h2>
+        {hasAnyComparisonHistory ? (
+          <ol className="flex flex-col gap-2">
+            {/*
+             * `AppSpec.md` originally called this a "comparison/relationship graph." This renders
+             * the same underlying direct-comparison data (`comparisonHistory`, built from
+             * `buildComparisonMatrix`'s output — see `@/lib/ranking/stats`) as a flat per-episode
+             * list instead of an actual node-link graph, to avoid pulling in a graph-layout library
+             * as a new dependency for a single-user personal project — see that function's doc
+             * comment for the full reasoning. An episode with zero direct comparisons is simply
+             * omitted from this list (rather than rendered with an empty body) for readability.
+             */}
+            {ranked.map((entry) => {
+              const opponents = comparisonHistory.get(entry.episodeId) ?? [];
+              if (opponents.length === 0) return null;
+
+              const episode = episodeById.get(entry.episodeId);
+              const label = episode ? formatEpisode(episode) : entry.episodeId;
+              const summary = opponents
+                .map((opponent) => {
+                  const opponentEpisode = episodeById.get(opponent.opponentEpisodeId);
+                  const opponentLabel = opponentEpisode
+                    ? formatEpisode(opponentEpisode)
+                    : opponent.opponentEpisodeId;
+                  const verb =
+                    opponent.result === 'win' ? 'beat' : opponent.result === 'loss' ? 'lost to' : 'tied with';
+                  return `${verb} ${opponentLabel}`;
+                })
+                .join('; ');
+
+              return (
+                <li key={entry.episodeId} className="rounded border border-black/10 p-2 text-sm dark:border-white/20">
+                  <strong>{label}</strong>: {summary}
+                </li>
+              );
+            })}
+          </ol>
+        ) : (
+          <p className="text-sm text-black/60 dark:text-white/60">No direct comparisons recorded yet.</p>
+        )}
+      </section>
+
+      {timelineOrder.length >= 2 && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-lg font-medium">Season timeline</h2>
+          <p className="text-sm text-black/60 dark:text-white/60">
+            Ranked score across the show&apos;s run, in air-date order (episodes missing an air date
+            fall back to season/episode order).
+          </p>
+          <SeasonTimelineChart timelineOrder={timelineOrder} episodeById={episodeById} episodeInfoById={episodeInfoById} />
+        </section>
+      )}
+    </div>
+  );
+}
+
+function ComparisonMatrixTable({
+  rankedEpisodeIds,
+  episodeById,
+  matrix,
+}: {
+  rankedEpisodeIds: string[];
+  episodeById: Map<string, EpisodeRow>;
+  matrix: MatrixCellResult[][];
+}) {
+  return (
+    <div className="max-h-[70vh] overflow-auto rounded border border-black/10 dark:border-white/20">
+      <table className="border-collapse text-xs">
+        <thead>
+          <tr>
+            <th
+              scope="col"
+              className="sticky left-0 top-0 z-30 border border-black/10 bg-white p-1 dark:border-white/20 dark:bg-black"
+            />
+            {rankedEpisodeIds.map((colId) => {
+              const episode = episodeById.get(colId);
+              return (
+                <th
+                  key={colId}
+                  scope="col"
+                  title={episode ? formatEpisode(episode) : colId}
+                  className="sticky top-0 z-20 whitespace-nowrap border border-black/10 bg-white p-1 font-medium dark:border-white/20 dark:bg-black"
+                >
+                  {episode ? formatEpisodeShort(episode) : colId}
+                </th>
+              );
+            })}
+          </tr>
+        </thead>
+        <tbody>
+          {rankedEpisodeIds.map((rowId, i) => {
+            const rowEpisode = episodeById.get(rowId);
+            const rowLabel = rowEpisode ? formatEpisode(rowEpisode) : rowId;
+            return (
+              <tr key={rowId}>
+                <th
+                  scope="row"
+                  title={rowLabel}
+                  className="sticky left-0 z-10 whitespace-nowrap border border-black/10 bg-white p-1 text-left font-medium dark:border-white/20 dark:bg-black"
+                >
+                  {rowEpisode ? formatEpisodeShort(rowEpisode) : rowId}
+                </th>
+                {rankedEpisodeIds.map((colId, j) => {
+                  // Diagonal: an episode against itself — always visually distinct, never a real
+                  // comparison (see `buildComparisonMatrix`'s doc comment: `matrix[i][i]` is always null).
+                  if (i === j) {
+                    return (
+                      <td
+                        key={colId}
+                        aria-hidden
+                        className="border border-black/10 bg-black/10 p-1 text-center dark:border-white/20 dark:bg-white/10"
+                      />
+                    );
+                  }
+
+                  const colEpisode = episodeById.get(colId);
+                  const colLabel = colEpisode ? formatEpisode(colEpisode) : colId;
+                  const cell = matrix[i]?.[j] ?? null;
+
+                  if (cell === null) {
+                    return (
+                      <td
+                        key={colId}
+                        title={`${rowLabel} vs ${colLabel}: never directly compared`}
+                        className="border border-black/10 p-1 text-center text-black/30 dark:border-white/20 dark:text-white/30"
+                      >
+                        {'–'}
+                      </td>
+                    );
+                  }
+
+                  const label = cell === 'win' ? 'W' : cell === 'loss' ? 'L' : 'T';
+                  const outcome = cell === 'win' ? 'won' : cell === 'loss' ? 'lost' : 'tied';
+                  return (
+                    <td
+                      key={colId}
+                      title={`${rowLabel} vs ${colLabel}: ${outcome}`}
+                      className={`matrix-cell-${cell} border border-black/10 p-1 text-center font-semibold dark:border-white/20`}
+                    >
+                      {label}
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/**
+ * Simple scatter/line chart, plain inline SVG per the dataviz skill's guidance (no charting
+ * dependency for a single line series). This is a static server-rendered page with no client-side
+ * JS elsewhere on it (the heatmap above is the same "value is always visible as text, no hover-only
+ * data" style) — rather than building a full interactive crosshair+tooltip layer (which would need a
+ * client component), each point ships a native SVG `<title>` for hover detail, and the score is
+ * always readable directly (endpoint labels here; every score is also visible in the tier list
+ * above). Deliberate scope match to this page's existing interactivity bar, not an oversight.
+ */
+function SeasonTimelineChart({
+  timelineOrder,
+  episodeById,
+  episodeInfoById,
+}: {
+  timelineOrder: { episodeId: string; score: number }[];
+  episodeById: Map<string, EpisodeRow>;
+  episodeInfoById: Map<string, { seasonNumber: number; episodeNumber: number; airDate: string | null }>;
+}) {
+  const n = timelineOrder.length;
+  const paddingLeft = 32;
+  const paddingRight = 20;
+  const paddingTop = 24;
+  const paddingBottom = 40;
+  const chartHeight = 200;
+  const stepX = 32;
+  const chartWidth = Math.max(240, (n - 1) * stepX);
+  const width = paddingLeft + chartWidth + paddingRight;
+  const height = paddingTop + chartHeight + paddingBottom;
+
+  const yMin = 1;
+  const yMax = 10;
+  const yTicks = [2, 4, 6, 8, 10];
+
+  const xFor = (index: number) => paddingLeft + (index / (n - 1)) * chartWidth;
+  const yFor = (score: number) => paddingTop + chartHeight - ((score - yMin) / (yMax - yMin)) * chartHeight;
+
+  const points = timelineOrder.map((point, index) => ({ ...point, x: xFor(index), y: yFor(point.score) }));
+  const linePath = points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ');
+
+  const firstPoint = points[0];
+  const lastPoint = points[points.length - 1];
+  const firstEpisode = episodeById.get(firstPoint.episodeId);
+  const lastEpisode = episodeById.get(lastPoint.episodeId);
+
+  return (
+    <div className="overflow-x-auto rounded border border-black/10 p-2 dark:border-white/20">
+      <svg
+        width={width}
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label={`Season timeline: ranked score over time for ${n} episodes`}
+      >
+        {yTicks.map((tick) => (
+          <g key={tick}>
+            <line
+              x1={paddingLeft}
+              y1={yFor(tick)}
+              x2={paddingLeft + chartWidth}
+              y2={yFor(tick)}
+              className="timeline-grid"
+              strokeWidth={1}
+            />
+            <text
+              x={paddingLeft - 6}
+              y={yFor(tick)}
+              textAnchor="end"
+              dominantBaseline="middle"
+              fontSize={11}
+              fill="currentColor"
+              className="text-black/50 dark:text-white/50"
+            >
+              {tick}
+            </text>
+          </g>
+        ))}
+
+        <line
+          x1={paddingLeft}
+          y1={paddingTop + chartHeight}
+          x2={paddingLeft + chartWidth}
+          y2={paddingTop + chartHeight}
+          className="timeline-axis"
+          strokeWidth={1}
+        />
+
+        <path d={linePath} fill="none" className="timeline-line" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+
+        {points.map((point) => {
+          const episode = episodeById.get(point.episodeId);
+          const label = episode ? formatEpisode(episode) : point.episodeId;
+          const info = episodeInfoById.get(point.episodeId);
+          const dateLabel = info?.airDate ? ` — ${info.airDate}` : '';
+          return (
+            <circle
+              key={point.episodeId}
+              cx={point.x}
+              cy={point.y}
+              r={4}
+              className="timeline-marker"
+              stroke="var(--background)"
+              strokeWidth={2}
+            >
+              <title>{`${label}${dateLabel}: ${point.score.toFixed(1)}`}</title>
+            </circle>
+          );
+        })}
+
+        {/* Direct labels at the line's ends only (marks-and-anatomy.md: "label the endpoint... let
+            the rest ride the tooltip") — the score value above each end point, the episode's
+            short code below the axis. */}
+        <text
+          x={firstPoint.x}
+          y={firstPoint.y - 10}
+          textAnchor="start"
+          fontSize={11}
+          fill="currentColor"
+          className="text-black/70 dark:text-white/70"
+        >
+          {firstPoint.score.toFixed(1)}
+        </text>
+        <text
+          x={lastPoint.x}
+          y={lastPoint.y - 10}
+          textAnchor="end"
+          fontSize={11}
+          fill="currentColor"
+          className="text-black/70 dark:text-white/70"
+        >
+          {lastPoint.score.toFixed(1)}
+        </text>
+
+        <text
+          x={firstPoint.x}
+          y={height - 8}
+          textAnchor="start"
+          fontSize={11}
+          fill="currentColor"
+          className="text-black/50 dark:text-white/50"
+        >
+          {firstEpisode ? formatEpisodeShort(firstEpisode) : ''}
+        </text>
+        <text
+          x={lastPoint.x}
+          y={height - 8}
+          textAnchor="end"
+          fontSize={11}
+          fill="currentColor"
+          className="text-black/50 dark:text-white/50"
+        >
+          {lastEpisode ? formatEpisodeShort(lastEpisode) : ''}
+        </text>
+      </svg>
     </div>
   );
 }
