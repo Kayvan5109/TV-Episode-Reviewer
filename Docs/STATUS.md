@@ -91,10 +91,11 @@ Vercel same session — removed from Bucket 2. Then picked up item 8 (episode pa
 STATUS.md factual error first (`still_path`/`air_date` were never actually fetched, unlike the doc's
 prior claim — same mistake pattern as an earlier `overview` correction), confirmed the new route/entry-
 point/image-fallback design with Kayvan, then built and merged sub-item (a) — title/season-episode/
-air-date/synopsis/still image (`7bfab1c`). Now in Bucket 2 for the migration + hands-on check.
-Remaining: item 8's sub-items (b)/(c)/(d), plus Tier A items 1 (smart comparison selection), 2
-(stats/visualizations), 4 (collections). Deviations Awaiting Review are all still open and
-unactioned.
+air-date/synopsis/still image (`7bfab1c`). Kayvan applied the migration and hands-on confirmed the
+page working on live Vercel same session (still image, season/episode number, title, air date,
+synopsis all render correctly) — removed from Bucket 2. Remaining: item 8's sub-items (b)/(c)/(d),
+plus Tier A items 1 (smart comparison selection), 2 (stats/visualizations), 4 (collections).
+Deviations Awaiting Review are all still open and unactioned.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -205,14 +206,7 @@ this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of t
 in Bucket 4, rather than being done piecemeal now.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **Episode detail page (Tier A item 8a), built 2026-07-18, not yet hands-on checked** — needs the
-   new `episodes.still_url`/`episodes.air_date` migration (`20260718040000_episode_still_air_date.sql`)
-   applied to live Supabase first (same as `episodes.synopsis` before it — existing episodes stay
-   null until their show is re-imported). After that: confirm clicking an episode's title on
-   `/shows/[showId]` navigates to `/shows/[showId]/episodes/[episodeId]`, the hero image shows
-   (falling back to the season poster for an episode with no TMDB still), air date/synopsis render,
-   and a wrong-show/episode-id combination 404s instead of showing the wrong episode.
-2. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
+1. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
    design. Can't be meaningfully verified by just clicking around today (the 24h throttle means a
    freshly-imported show won't actually re-sync for a day), so the real check is patient rather than
    immediate: next time a tracked show is known to have a new episode/season on TMDB, confirm it
@@ -221,7 +215,7 @@ in Bucket 4, rather than being done piecemeal now.
    (check the `shows` table has a populated `last_synced_at` column) and that a show page still loads
    normally post-push (the added `ensureShowSynced` call is fail-open, so even a broken TMDB call
    shouldn't break the page — but confirm that's actually true live, not just in tests).
-3. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
+2. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
    list (auth, search/import, dashboard, show detail page, the rankings page, cold start,
    comparative placement, re-ranking, removing a show all confirmed working end to end). What's
    genuinely still untested/unconfirmed, carried forward rather than chased right now:
@@ -472,6 +466,11 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-18: Same session, continued. Kayvan applied the `episodes.still_url`/`episodes.air_date`
+  migration to live Supabase and hands-on confirmed the new episode detail page on live Vercel: still
+  image, season/episode number, title, air date, and synopsis all render correctly. Removed from
+  Bucket 2 — only sub-item (a) is done; sub-items (b) season-finale flag, (c) win/loss record, (d)
+  credits are still unbuilt, next up in that same cheap-first order whenever picked back up.
 - 2026-07-18: Same session, continued. Kayvan confirmed the dashboard progress bar working hands-on
   on live Vercel — removed from Bucket 2. Moved to Tier A item 8 (episode pages), starting with
   sub-item (a) per the triage's cheap-first order. Before designing anything, dispatched a research-
