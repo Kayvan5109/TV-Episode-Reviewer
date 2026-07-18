@@ -118,10 +118,11 @@ shareable design there) rather than build a private-only stopgap, and to build i
 deferred pieces at the same time. Dispatched both in parallel (confirmed no file overlap first),
 both built and merged: item 10 (clickable comparison/cold-start titles + a return-to-ranking link,
 `6f420d2`) and item 2's remaining pieces (win/loss matrix, comparison history list, season timeline,
-`ace73fc`) — **all of Tier A items 2, 9, 10, 11 are now built**, both dispatches queued together in
-Bucket 2 for one combined hands-on check. Remaining in Tier A: nothing except items already in
-Bucket 2 pending confirmation — the queue is otherwise empty pending Kayvan's next priority pick.
-Deviations Awaiting Review are all still open and unactioned.
+`ace73fc`) — **all of Tier A items 2, 9, 10, 11 are now built**. Kayvan hands-on confirmed all of it
+working — removed from Bucket 2. **The Tier A queue is now fully empty** — every item from both
+design reviews is either built, declined, or moved to Tier B. Deviations Awaiting Review are all
+still open and unactioned; next session should pick a fresh priority (Bucket 4 backlog, Tier B, or
+the still-unreviewed Deviations) rather than assuming there's an obvious next Tier A item.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -286,16 +287,7 @@ this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of t
 in Bucket 4, rather than being done piecemeal now.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **Clickable ranking-flow titles + return-to-ranking, and the stats page's win/loss matrix/
-   comparison history/season timeline, built 2026-07-18, not yet hands-on checked** — no migration
-   needed for either. Confirm: clicking an episode title mid-ranking (comparison or cold-start
-   screen) opens its detail page, "↩ Return to ranking" takes you back to the exact pending
-   question; the win/loss matrix scrolls cleanly for a show with many ranked episodes and its
-   sticky headers stay aligned, blank cells genuinely mean "never directly compared" (spot-check one
-   you know was only inferred transitively), the comparison history list reads clearly, and the
-   season timeline's point order looks chronologically sensible (especially for a show with a mix of
-   dated and undated episodes).
-2. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
+1. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
    design. Can't be meaningfully verified by just clicking around today (the 24h throttle means a
    freshly-imported show won't actually re-sync for a day), so the real check is patient rather than
    immediate: next time a tracked show is known to have a new episode/season on TMDB, confirm it
@@ -304,7 +296,7 @@ in Bucket 4, rather than being done piecemeal now.
    (check the `shows` table has a populated `last_synced_at` column) and that a show page still loads
    normally post-push (the added `ensureShowSynced` call is fail-open, so even a broken TMDB call
    shouldn't break the page — but confirm that's actually true live, not just in tests).
-3. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
+2. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
    list (auth, search/import, dashboard, show detail page, the rankings page, cold start,
    comparative placement, re-ranking, removing a show all confirmed working end to end). What's
    genuinely still untested/unconfirmed, carried forward rather than chased right now:
@@ -636,6 +628,13 @@ keeps this file fast to read at the start of every session instead of growing fo
   each merge: 252/252 then 265/265 tests (13 new), clean typecheck/lint/build throughout, new routes
   confirmed compiling. Both pushed. **All of Tier A items 2, 9, 10, 11 are now built** — queued
   together in Bucket 2 for one combined hands-on check.
+- 2026-07-18: Same session, continued. Kayvan hands-on confirmed the whole combined batch working
+  properly (clickable ranking-flow titles + return-to-ranking, the win/loss matrix, comparison
+  history list, and season timeline) — removed from Bucket 2. **This closes out Tier A entirely** —
+  every item from both the first (2026-07-17) and second (2026-07-18) design reviews is now either
+  built, declined-but-revisitable (item 1), or moved to Tier B (item 4/Collections). Next session has
+  no obvious "next Tier A item" waiting — picking a fresh priority (Bucket 4 backlog, Tier B, or the
+  still-unreviewed Deviations Awaiting Review) is itself the next decision to make.
 - 2026-07-18: Same session, continued. Kayvan asked to pick up Tier A item 1's remaining scope
   (smart comparison selection) next. Before writing anything, PM flagged that neither `AppSpec.md`
   nor `DevelopmentPlan.md` had ever specified a real mechanism for it, only the goal — walked Kayvan
