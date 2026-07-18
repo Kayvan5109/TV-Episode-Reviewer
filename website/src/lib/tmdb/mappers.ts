@@ -6,9 +6,11 @@
 
 import { posterUrlFromPath } from './client';
 import type {
+  EpisodeCredits,
   EpisodeSummary,
   ShowDetails,
   ShowSearchResult,
+  TmdbEpisodeCredits,
   TmdbSeasonEpisode,
   TmdbShowDetails,
   TmdbTvSearchResult,
@@ -52,5 +54,35 @@ export function mapShowDetails(details: TmdbShowDetails): ShowDetails {
     numberOfSeasons: details.number_of_seasons,
     genres: details.genres.map((genre) => genre.name),
     status: details.status,
+  };
+}
+
+/** De-dupes crew names by exact match, preserving first-seen order — used for both directors and writers. */
+function dedupeNames(names: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const name of names) {
+    if (!seen.has(name)) {
+      seen.add(name);
+      result.push(name);
+    }
+  }
+  return result;
+}
+
+/**
+ * Reshapes a raw per-episode credits response into the small set this app actually displays:
+ * directors/writers (crew filtered by exact `job` match, de-duped by name) and up to the first 8
+ * cast members' names (TMDB already returns cast in billing order, so no re-sorting here).
+ */
+export function mapEpisodeCredits(raw: TmdbEpisodeCredits): EpisodeCredits {
+  return {
+    directors: dedupeNames(
+      raw.crew.filter((member) => member.job === 'Director').map((member) => member.name)
+    ),
+    writers: dedupeNames(
+      raw.crew.filter((member) => member.job === 'Writer').map((member) => member.name)
+    ),
+    cast: raw.cast.slice(0, 8).map((member) => member.name),
   };
 }

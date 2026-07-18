@@ -7,6 +7,9 @@ import { AppHeader } from '@/components/AppHeader';
 import { getEpisodeComparisonRecord, getShowRankingDisplay } from '@/lib/ranking-session';
 import type { EpisodeComparisonRecord } from '@/lib/ranking-session';
 import { isSeasonFinale } from '@/lib/shows/seasonFinale';
+import { tmdbFetch } from '@/lib/tmdb/client';
+import { mapEpisodeCredits } from '@/lib/tmdb/mappers';
+import type { EpisodeCredits, TmdbEpisodeCredits } from '@/lib/tmdb/types';
 
 import { ReRankButton } from '../../ReRankButton';
 import { formatEpisode } from '../../rank/[episodeId]/episodeDisplay';
@@ -23,6 +26,7 @@ interface ShowRow {
   id: string;
   title: string;
   status: string | null;
+  tmdb_show_id: number;
 }
 
 interface EpisodeRow {
@@ -75,16 +79,19 @@ function formatAirDate(dateString: string): string {
  * Episode detail page: title, season/episode number, air date, synopsis, a hero still image
  * (falling back to the season poster when this specific episode has no still), a "Season finale"
  * badge when applicable, this user's personal win/loss/tie comparison record, and this episode's
- * ranking status (score + re-rank, cold-start bucket, or a "Rank this episode" link) — see
- * `Docs/AppSpec.md`/`Docs/STATUS.md`'s Tier A item 8(a)/(b)/(c) plus the rank/re-rank button added
- * alongside them. Deliberately doesn't build credits/cast yet — that's a separate follow-up item.
+ * ranking status (score + re-rank, cold-start bucket, or a "Rank this episode" link), and
+ * director/writer/cast credits — see `Docs/AppSpec.md`/`Docs/STATUS.md`'s Tier A item 8(a)/(b)/(c)/
+ * (d) plus the rank/re-rank button added alongside them.
  *
  * Reads `shows`/`episodes` via the *session-aware* client — global reference data any signed-in
  * user can read (see `supabase/migrations/20260715000000_initial_schema.sql`). The episode read is
  * scoped to both `id` and `show_id` — a stale/wrong-show link 404s instead of silently rendering an
  * episode that belongs to a different show than the one in the URL. `getEpisodeComparisonRecord`/
  * `getShowRankingDisplay` (from `@/lib/ranking-session`) are, by contrast, genuinely per-user —
- * both derive the signed-in user themselves.
+ * both derive the signed-in user themselves. Credits are fetched live, server-side, on every page
+ * view (no DB column, no caching) directly from TMDB's per-episode credits endpoint, and fail open:
+ * a TMDB error just means no credits section renders, same convention `ensureShowSynced` uses
+ * elsewhere in this app.
  */
 export default async function EpisodeDetailPage({
   params,
@@ -104,7 +111,7 @@ export default async function EpisodeDetailPage({
 
   const { data: show } = await supabase
     .from('shows')
-    .select('id, title, status')
+    .select('id, title, status, tmdb_show_id')
     .eq('id', showId)
     .maybeSingle();
 
@@ -155,6 +162,24 @@ export default async function EpisodeDetailPage({
     rankingDisplay && !rankingDisplay.done
       ? rankingDisplay.coldStartPending.find((entry) => entry.episodeId === episodeId)
       : undefined;
+
+  // Live, uncached, server-only fetch — no DB column, no persistence. Fail-open: any error (TMDB
+  // down, missing token, unexpected 404) just means no credits section renders, same convention
+  // `ensureShowSynced` uses elsewhere in this app.
+  let credits: EpisodeCredits | null = null;
+  if (episode) {
+    try {
+      const rawCredits = await tmdbFetch<TmdbEpisodeCredits>(
+        `/tv/${showRow.tmdb_show_id}/season/${episode.season_number}/episode/${episode.episode_number}/credits`
+      );
+      credits = mapEpisodeCredits(rawCredits);
+    } catch {
+      credits = null;
+    }
+  }
+  const hasCredits =
+    credits !== null &&
+    (credits.directors.length > 0 || credits.writers.length > 0 || credits.cast.length > 0);
 
   return (
     <>
@@ -238,6 +263,25 @@ export default async function EpisodeDetailPage({
                 <p className="text-sm text-black/60 dark:text-white/60">
                   {formatComparisonRecord(comparisonRecord)}
                 </p>
+              )}
+              {hasCredits && credits && (
+                <div className="flex flex-col gap-1">
+                  {credits.directors.length > 0 && (
+                    <p className="text-sm text-black/60 dark:text-white/60">
+                      Directed by {credits.directors.join(', ')}
+                    </p>
+                  )}
+                  {credits.writers.length > 0 && (
+                    <p className="text-sm text-black/60 dark:text-white/60">
+                      Written by {credits.writers.join(', ')}
+                    </p>
+                  )}
+                  {credits.cast.length > 0 && (
+                    <p className="text-sm text-black/60 dark:text-white/60">
+                      Starring {credits.cast.join(', ')}
+                    </p>
+                  )}
+                </div>
               )}
             </div>
           )}
