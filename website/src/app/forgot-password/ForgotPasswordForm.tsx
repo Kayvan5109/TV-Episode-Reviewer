@@ -3,12 +3,23 @@
 import Link from 'next/link';
 import { useActionState } from 'react';
 
-import { login, type LoginFormState } from './actions';
+import { forgotPassword, type ForgotPasswordFormState } from './actions';
 
-const initialState: LoginFormState = undefined;
+const initialState: ForgotPasswordFormState = undefined;
 
-export function LoginForm() {
-  const [state, formAction, pending] = useActionState(login, initialState);
+export function ForgotPasswordForm() {
+  const [state, formAction, pending] = useActionState(forgotPassword, initialState);
+
+  if (state?.status === 'sent') {
+    return (
+      <div className="flex w-full max-w-sm flex-col gap-3 text-center">
+        <p>If that email has an account, we&apos;ve sent a link to reset the password. Check your inbox.</p>
+        <Link href="/login" className="underline">
+          Back to login
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <form action={formAction} className="flex w-full max-w-sm flex-col gap-4">
@@ -26,21 +37,7 @@ export function LoginForm() {
         />
       </div>
 
-      <div className="flex flex-col gap-1">
-        <label htmlFor="password" className="text-sm font-medium">
-          Password
-        </label>
-        <input
-          id="password"
-          name="password"
-          type="password"
-          required
-          autoComplete="current-password"
-          className="rounded border border-black/20 px-3 py-2 dark:border-white/30"
-        />
-      </div>
-
-      {state?.error && (
+      {state?.status === 'error' && (
         <p role="alert" className="text-sm text-red-600 dark:text-red-400">
           {state.error}
         </p>
@@ -51,19 +48,13 @@ export function LoginForm() {
         disabled={pending}
         className="rounded bg-black px-4 py-2 text-white disabled:opacity-50 dark:bg-white dark:text-black"
       >
-        {pending ? 'Logging in…' : 'Log in'}
+        {pending ? 'Sending…' : 'Send reset link'}
       </button>
 
       <p className="text-sm">
-        Don&apos;t have an account?{' '}
-        <Link href="/signup" className="underline">
-          Sign up
-        </Link>
-      </p>
-
-      <p className="text-sm">
-        <Link href="/forgot-password" className="underline">
-          Forgot your password?
+        Remembered your password?{' '}
+        <Link href="/login" className="underline">
+          Log in
         </Link>
       </p>
     </form>

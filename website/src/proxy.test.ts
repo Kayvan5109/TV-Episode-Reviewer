@@ -106,6 +106,59 @@ describe('proxy', () => {
     });
   });
 
+  describe('code-exchange branch with `&type=recovery` (Supabase\'s stock password-reset link)', () => {
+    it('redirects to /reset-password instead of /dashboard when type=recovery and the exchange succeeds', async () => {
+      exchangeCodeForSession.mockResolvedValue({ error: null });
+
+      const response = await proxy(requestFor('/', { code: 'the-code-value', type: 'recovery' }));
+
+      expect(exchangeCodeForSession).toHaveBeenCalledWith('the-code-value');
+      expect(response.headers.get('location')).toBe('http://localhost/reset-password');
+    });
+
+    it('copies every cookie written during the exchange onto the /reset-password redirect, with no query string carried over', async () => {
+      exchangeCodeForSession.mockImplementation(async () => {
+        capturedSetAll?.(
+          [{ name: 'sb-access-token', value: 'access-token-value', options: { path: '/', httpOnly: true } }],
+          {}
+        );
+        return { error: null };
+      });
+
+      const response = await proxy(requestFor('/', { code: 'abc123', type: 'recovery' }));
+
+      expect(response.headers.get('location')).toBe('http://localhost/reset-password');
+      const setCookieHeaders = response.headers.getSetCookie();
+      expect(
+        setCookieHeaders.some((header) => header.startsWith('sb-access-token=access-token-value'))
+      ).toBe(true);
+    });
+
+    it('still redirects to /login?error=confirmation-failed when a recovery exchange fails', async () => {
+      exchangeCodeForSession.mockResolvedValue({ error: { message: 'invalid or expired code' } });
+
+      const response = await proxy(requestFor('/', { code: 'bad-code', type: 'recovery' }));
+
+      expect(response.headers.get('location')).toBe('http://localhost/login?error=confirmation-failed');
+    });
+
+    it('still redirects to /dashboard (unchanged behavior) for any non-"recovery" type value', async () => {
+      exchangeCodeForSession.mockResolvedValue({ error: null });
+
+      const response = await proxy(requestFor('/', { code: 'abc123', type: 'email' }));
+
+      expect(response.headers.get('location')).toBe('http://localhost/dashboard');
+    });
+
+    it('still redirects to /dashboard (unchanged behavior) when type is absent entirely', async () => {
+      exchangeCodeForSession.mockResolvedValue({ error: null });
+
+      const response = await proxy(requestFor('/', { code: 'abc123' }));
+
+      expect(response.headers.get('location')).toBe('http://localhost/dashboard');
+    });
+  });
+
   describe('session refresh / route protection (no `code` param)', () => {
     it('does not attempt a code exchange when there is no code param', async () => {
       await proxy(requestFor('/'));

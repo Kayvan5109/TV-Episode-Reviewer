@@ -22,7 +22,10 @@
  * 3. Handle Supabase's *default/stock* email-confirmation link pattern (`<site>?code=<uuid>`) via
  *    `exchangeCodeForSession` — see `handleCodeExchange` below for why this lives here rather than
  *    in `src/app/page.tsx`, and why `src/app/auth/confirm/route.ts` (a *different* confirmation-
- *    link pattern) still exists alongside it.
+ *    link pattern) still exists alongside it. The same stock-link mechanism is also how Supabase's
+ *    default "Reset password" email works (`<site>?code=<uuid>&type=recovery`), so this same code
+ *    path handles password recovery too — see the `type=recovery` branch near the end of
+ *    `handleCodeExchange` for how the two are told apart and sent to different destinations.
  */
 
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
@@ -36,7 +39,12 @@ const REDIRECT_IF_AUTHENTICATED_ROUTES = ['/signup'];
 
 /**
  * Handles the `?code=<uuid>` query param Supabase's *default/built-in* email provider's stock
- * "Confirm signup" template links to (`{{ .SiteURL }}?code=<uuid>`, landing on the site root).
+ * "Confirm signup" template links to (`{{ .SiteURL }}?code=<uuid>`, landing on the site root) —
+ * and, by the same mechanism, its stock "Reset password" template, which links to the exact same
+ * pattern with `&type=recovery` appended (`{{ .SiteURL }}?code=<uuid>&type=recovery`). Both share
+ * this one function because both hand back a PKCE `code` that's exchanged for a session the exact
+ * same way; they're only told apart — and sent to different destinations — right at the end, by the
+ * `type=recovery` check below.
  *
  * Why this exists alongside `src/app/auth/confirm/route.ts`: that route handles the *other*
  * confirmation-link pattern (`token_hash`/`type`, via `verifyOtp()`), which requires a *custom*
@@ -90,11 +98,22 @@ async function handleCodeExchange(request: NextRequest, code: string) {
     return NextResponse.redirect(new URL('/login?error=confirmation-failed', request.url));
   }
 
-  // `new URL('/dashboard', request.url)` discards the original request's query string entirely
-  // (it replaces the whole path+search, keeping only protocol/host from `request.url`) — so the
-  // single-use `code` is never carried onto the redirect target, and can't be resubmitted via a
-  // refresh once the browser lands on `/dashboard`.
-  const response = NextResponse.redirect(new URL('/dashboard', request.url));
+  // Without this check, a password-recovery link would silently fall through to the same
+  // destination as signup confirmation: the exchange above would still succeed (Supabase's
+  // recovery flow does grant a real, if narrowly-scoped-in-intent, session), so the user would land
+  // straight on `/dashboard`, already signed in, having never seen a "set a new password" screen —
+  // meaning their password would never actually get changed and they'd just silently end up logged
+  // in via a stale/leaked reset link. `type=recovery` is the one signal Supabase's stock recovery
+  // link adds to distinguish itself from a signup-confirmation link (see this function's doc
+  // comment); `/reset-password`'s own `updateUser({ password })` call depends on the exact same
+  // session cookies being copied onto the response below as the `/dashboard` case does.
+  const destination = request.nextUrl.searchParams.get('type') === 'recovery' ? '/reset-password' : '/dashboard';
+
+  // `new URL(destination, request.url)` discards the original request's query string entirely (it
+  // replaces the whole path+search, keeping only protocol/host from `request.url`) — so the
+  // single-use `code` (and `type`) is never carried onto the redirect target, and can't be
+  // resubmitted via a refresh once the browser lands there.
+  const response = NextResponse.redirect(new URL(destination, request.url));
   cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
   return response;
 }
