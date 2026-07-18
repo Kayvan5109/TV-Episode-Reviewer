@@ -86,10 +86,11 @@ natural next-session starting point.
 
 **New session, 2026-07-18 (continued same date).** Confirmed clean state, then built and merged Tier
 A item 5 (dashboard per-show progress bar, `634b9d2`) — design confirmed with Kayvan first (visual
-bar + percentage + `(X/Y)` fraction) before building. See History for full detail. Now in Bucket 2
-for hands-on check, alongside the still-untestable throttled TMDB re-sync. Remaining Tier A queue:
-items 1 (smart comparison selection), 2 (stats/visualizations), 4 (collections), 8 (episode pages).
-Deviations Awaiting Review are all still open and unactioned.
+bar + percentage + `(X/Y)` fraction) before building. Kayvan hands-on confirmed it working on live
+Vercel same session — removed from Bucket 2. Only the still-untestable throttled TMDB re-sync remains
+there. Remaining Tier A queue: items 1 (smart comparison selection), 2 (stats/visualizations), 4
+(collections), 8 (episode pages) — deciding which to pick up next. Deviations Awaiting Review are all
+still open and unactioned.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -189,12 +190,7 @@ this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of t
 in Bucket 4, rather than being done piecemeal now.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **Dashboard per-show progress bar, built 2026-07-18, not yet hands-on checked** — confirm on live
-   Vercel that each show in "My Shows" shows a sensible bar/percentage/fraction (including a show
-   with zero episodes ranked yet, one mid-cold-start, and one fully done), and that the whole row is
-   still clickable through to the show page (the progress row was added inside the existing `Link`,
-   not as a separate element).
-2. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
+1. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
    design. Can't be meaningfully verified by just clicking around today (the 24h throttle means a
    freshly-imported show won't actually re-sync for a day), so the real check is patient rather than
    immediate: next time a tracked show is known to have a new episode/season on TMDB, confirm it
@@ -203,7 +199,7 @@ in Bucket 4, rather than being done piecemeal now.
    (check the `shows` table has a populated `last_synced_at` column) and that a show page still loads
    normally post-push (the added `ensureShowSynced` call is fail-open, so even a broken TMDB call
    shouldn't break the page — but confirm that's actually true live, not just in tests).
-3. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
+2. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
    list (auth, search/import, dashboard, show detail page, the rankings page, cold start,
    comparative placement, re-ranking, removing a show all confirmed working end to end). What's
    genuinely still untested/unconfirmed, carried forward rather than chased right now:
