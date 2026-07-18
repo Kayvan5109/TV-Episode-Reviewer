@@ -11,14 +11,18 @@ History. Everything else in it is unactioned, on purpose: this is a next-session
 task (what to freeze, what to fix, what to accept), not something to rush through at end-of-session
 budget. **Read it before scoping any new feature work.**
 
-Last updated: 2026-07-18, end of a long session (stopped at ~87% usage). Cleared all of Bucket 1
-(6 items — see History for each), then ran the critical review above, then fixed its one live
-security issue directly (self-reviewed, not the full reviewer pipeline, given budget — logged as a
-Deviation). Clean stopping point: working tree clean, everything pushed, nothing running. **Next
-session**: read `CriticalReview.md` first and make real decisions on it before touching Tier A —
-that review exists specifically to be acted on, not filed away. Password reset stays deliberately
-deferred (single user, not urgent). The worktree-isolation bug (3 of 6 dispatches this session
-produced no real isolation) is still un-investigated — see Deviations Awaiting Review.
+Last updated: 2026-07-18, a fresh session opened by Kayvan asking a direct question ("how do we
+handle new episodes of shows being added?") before anything else got picked up from the queue below.
+Investigated first rather than assuming: confirmed a real, previously-unflagged gap — a show's
+episode list was imported from TMDB exactly once, at add-time, and never refreshed, so new
+seasons/episodes airing later were silently never picked up by either "My Shows" or the show page.
+Not in `CriticalReview.md`, not anywhere in this file's prior History — genuinely new. Built,
+reviewed, merged, and pushed a fix the same session (throttled 24h auto-resync) — see History. Tier
+A (below) and `CriticalReview.md`'s open findings are both still exactly where the last session left
+them — this session's work was additive, not a continuation of that queue. The worktree-isolation
+bug (3 of 6 dispatches producing no real isolation, previous session) is still un-investigated — see
+Deviations Awaiting Review. This session's own agent dispatches (2 of 2) both got real, registered
+worktrees — no new data point either way on root cause, just no recurrence this time.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -92,10 +96,19 @@ this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of t
 in Bucket 4, rather than being done piecemeal now.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **Privacy notice page, built 2026-07-18, not yet hands-on checked.** Low-priority (static content
+1. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
+   design. Can't be meaningfully verified by just clicking around today (the 24h throttle means a
+   freshly-imported show won't actually re-sync for a day), so the real check is patient rather than
+   immediate: next time a tracked show is known to have a new episode/season on TMDB, confirm it
+   actually shows up on `/shows/[showId]` or the dashboard without re-adding the show. In the
+   meantime, worth at least confirming the migration applied cleanly to the live Supabase project
+   (check the `shows` table has a populated `last_synced_at` column) and that a show page still loads
+   normally post-push (the added `ensureShowSynced` call is fail-open, so even a broken TMDB call
+   shouldn't break the page — but confirm that's actually true live, not just in tests).
+2. **Privacy notice page, built 2026-07-18, not yet hands-on checked.** Low-priority (static content
    page, nothing functional to break) — just confirm the footer's "Privacy" link works from a
    signed-out page too (e.g. `/login`), not only while signed in.
-2. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
+3. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
    list (auth, search/import, dashboard, show detail page, the rankings page, cold start,
    comparative placement, re-ranking, removing a show all confirmed working end to end). What's
    genuinely still untested/unconfirmed, carried forward rather than chased right now:
@@ -248,6 +261,46 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-18: Kayvan opened a fresh session by asking directly how the app handles new episodes of
+  tracked shows being added, and whether "My Shows" and the show page keep up with that. Investigated
+  before answering: confirmed `importShowFromTmdb` (`website/src/lib/shows/importShow.ts`) only ever
+  runs once, at the moment a show is added via search (`shows/search/actions.ts`'s `addShow`) — every
+  other read path (`/shows/[showId]`, `/shows/[showId]/rankings`, the dashboard's "My Shows") reads
+  straight from Postgres and never calls TMDB again, and re-searching an already-added show
+  deliberately shows "Go to show" instead of "Add show" specifically to *avoid* a second import call
+  — so there was no accidental refresh path either. A real, previously-unflagged gap: not in
+  `CriticalReview.md`, not anywhere in this file's prior History. Presented the finding plus several
+  possible fixes (view-triggered throttled auto-refresh, a manual refresh button, both together, or a
+  Vercel Cron nightly job) rather than picking one unilaterally, since the tradeoffs (TMDB call
+  volume, added infra, UX cadence) were genuinely Kayvan's call — he chose throttled auto-refresh on
+  page view, no new infra, matching this project's low-ceremony-setup preference.
+  Built via the full correctness-critical pipeline (this touches persistence + networking): new
+  `shows.last_synced_at timestamptz` column (migration `20260718020000_shows_last_synced_at.sql`,
+  `not null default now()` deliberately, so existing rows backfill to "assume fresh" rather than
+  forcing an immediate re-sync storm on every already-imported show the moment the migration lands),
+  stamped by `importShowFromTmdb` on every upsert (both the original import and any later refresh). A
+  new `ensureShowSynced` helper (`website/src/lib/shows/refreshShow.ts`) re-runs the (already
+  idempotent) import only when `last_synced_at` is more than 24h old, and is deliberately fail-open —
+  any TMDB error is caught and logged, never allowed to break the page render, matching the existing
+  pattern in `searchAnnotation.ts`. Wired into the three read-only display pages (`/shows/[showId]`,
+  `/shows/[showId]/rankings`, the dashboard) with the sync call placed *before* each page's episode
+  query so a stale show's newly-picked-up episodes appear in the same render, not just the next one.
+  Deliberately **not** wired into the active ranking flow (`/shows/[showId]/rank/[episodeId]` and its
+  actions) — that route should keep reading whatever episode set already exists rather than being a
+  sync trigger point mid-comparison; confirmed via `git diff` that route has zero changes.
+  Independent reviewer (fresh worktree read, not the implementer's own summary) hand-traced the
+  staleness boundary (confirmed exactly-24h-old is *not* yet stale, 24h+1ms *is*, and the test suite
+  genuinely exercises that boundary rather than just coarse fresh/stale cases), confirmed fail-open is
+  real by tracing the try/catch (not just the doc comment) and confirming the test actually rejects
+  the mocked TMDB call, confirmed the migration's multi-line `comment on column` string literal is
+  valid Postgres (same proven pattern as the prior `shows_genres` migration), and flagged one
+  accepted, not-a-bug cost worth knowing: `importShowFromTmdb` fetches each season sequentially, so a
+  stale show with many seasons adds real one-time latency to whichever page triggers its resync (the
+  dashboard's `Promise.all` parallelizes *across* shows but not within one show's own season fetches).
+  No fixes needed — verdict was ship as-is. Re-ran tests/typecheck/lint/build fresh in the final
+  merged `main` (not just the agent's worktree) before pushing: 207/207, clean typecheck, clean lint,
+  clean build. Not yet hands-on confirmed live — see Bucket 2, and note the 24h throttle means that
+  can't happen immediately by just clicking around.
 - 2026-07-18: Requested a dedicated, deliberately harsh full-project critical review — "as honest as
   possible so we can make the best product possible." One agent (Opus) read every doc, the actual
   ranking/auth code (not just docs' claims about it), migrations, and git history, then wrote
