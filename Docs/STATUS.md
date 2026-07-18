@@ -104,10 +104,14 @@ item 9). Kayvan then hands-on confirmed the whole item-8 batch working on live V
 Bucket 2 — and logged two more ideas, both placed in Tier A (items 10/11): clickable episode titles
 on the comparison screen with a way back into the ranking flow, and swapping the ranking screens'
 season poster art for the episode's own still image (enabled by item 8a's new column, which Kayvan
-hadn't realized existed until seeing it on the episode page). Remaining: Tier A items 1 (smart
-comparison selection), 2 (stats/visualizations), 4 (collections), 9 (season-completed badge), 10
-(clickable comparison-screen titles), 11 (episode stills on ranking screens). Deviations Awaiting
-Review are all still open and unactioned.
+hadn't realized existed until seeing it on the episode page). Kayvan then asked to build items 9, 11,
+and 2 (in that priority) at 33% session usage remaining. Built and merged via two sequential
+dispatches (avoided running in parallel since both touched the show page): items 9 + 11 bundled
+together (`af173f1`), then a scoped-down first slice of item 2 — tier list, season heatmap,
+gatekeeper stat, deliberately deferring the win/loss matrix and comparison graph (`8f5e183`). Both
+now in Bucket 2 for hands-on check. Remaining: Tier A items 1 (smart comparison selection), 2's
+deferred pieces (win/loss matrix, comparison graph, season timeline), 4 (collections), 10 (clickable
+comparison-screen titles). Deviations Awaiting Review are all still open and unactioned.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -137,15 +141,23 @@ front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
    actually gets asked next, which is correctness-critical (touches live ranking-algorithm behavior)
    and needs the full implementer-then-independent-reviewer pipeline, unlike the pure-display change
    that just shipped with implementer + PM review only.
-2. **Statistics view + alternate visualizations** of a show's existing rankings (e.g. a tier list,
-   heatmap, or season timeline) — sequence after item 2, since "most/least confident episode" is a
-   natural stat once confidence exists. Purely additive over data `getShowRankingDisplay` already
-   computes; no new persistence logic. **Expanded 2026-07-18**: also covers a comparison/relationship
-   graph, a win/loss matrix (every matchup), a season-quality heatmap, and a "gatekeeper episode" stat
-   (biggest score gap between adjacent ranked episodes) — all cheap, pure visualizations over data
-   already stored (`episode_comparisons` plus existing derived scores), nothing new to fetch. Tier
-   lists specifically are confirmed **auto-generated only** — no manual user editing/override, decided
-   2026-07-18.
+2. **Statistics view + alternate visualizations** of a show's existing rankings. **Expanded
+   2026-07-18**: covers a tier list, season-quality heatmap, gatekeeper-episode stat, a win/loss
+   matrix (every matchup), a season timeline, and a comparison/relationship graph — all cheap, pure
+   visualizations over data already stored, nothing new to fetch. Tier lists specifically are
+   confirmed **auto-generated only** — no manual user editing/override, decided 2026-07-18.
+   **First slice built and merged 2026-07-18** (`8f5e183`), now in Bucket 2 for hands-on check: new
+   route `/shows/[showId]/stats` (linked from the show page) with (a) an auto-generated tier list —
+   S/A/B/C/D by rank-position quintile, not absolute score (absolute `scoreForPosition` scores
+   compress for small shows, so tiering by rank position instead keeps a top/bottom tier populated
+   regardless of show size — see `website/src/lib/ranking/stats.ts`'s `assignTiers`); (b) a
+   season-quality heatmap (average score per season, colored via the `dataviz` skill's documented
+   sequential ramp, normalized to each show's own season-average range rather than the absolute 1-10
+   domain, with the numeric average always shown as text too, never color-only); (c) the gatekeeper-
+   episode stat (biggest score gap between two *adjacent* ranked positions). **Deliberately deferred
+   to a follow-up, not built yet**: the win/loss matrix (every matchup) and the comparison/
+   relationship graph — both more UI-complex than the three pieces above and worth their own design
+   pass rather than being rushed into this batch. Season timeline also still unbuilt.
 3. ~~**Richer comparison screen**~~ — **built and merged 2026-07-18** (`f763f5f`), now in Bucket 2
    for the migration + hands-on check. Two-column layout: the
    episode being placed (`subject`) on the left, the episode it's being compared against
@@ -226,17 +238,10 @@ front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
    IMDb/RT/Metacritic links and streaming availability are optional later phases, not v1. Average
    community ranking and rating distribution are explicitly out of scope until Tier B (the social
    layer) exists. **All of item 8's sub-items are now built.**
-9. **Per-season "completed" badge on the show page** — added 2026-07-18, Kayvan's idea, placed here
-   (PM's call) rather than folded into item 2 (stats/visualizations): this is a simple completion
-   indicator, not an analysis-style visualization, and it's cheap/self-contained like items 5/6/7
-   were, so it fits the queue's small-item pattern better than item 2's bigger, less-defined scope.
-   When every episode in a season has been ranked/judged (has a score or a cold-start bucket — same
-   "some opinion given" definition the dashboard progress bar and show page's own overall-progress
-   line already use), show a visual indicator next to that season's heading on `/shows/[showId]`
-   (exact treatment — badge/checkmark/text, matching this app's existing badge conventions — is a
-   build-time call, not a design decision needing sign-off first, same as items 5/6/7). Purely
-   additive: derivable entirely from data the show page already loads per episode (the same
-   `scoreByEpisode`/`bucketByEpisode` maps it already builds), no schema change, no new query.
+9. ~~**Per-season "completed" badge on the show page**~~ — **built and merged 2026-07-18**
+   (`af173f1`), now in Bucket 2 for hands-on check. A "Complete" badge (same styling as the
+   cold-start bucket labels) next to a season's heading on `/shows/[showId]` whenever every episode
+   in it has a score or a cold-start bucket.
 10. **Clickable episode titles on the comparison screen, with a way back into the ranking flow** —
     added 2026-07-18, Kayvan's idea, placed here (PM's call): builds directly on episode pages (item
     8, just finished) and the ranking UI, same class of work as the rest of this queue. On the
@@ -253,22 +258,31 @@ front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
     comparison, no new state needs to be stored. Feel-based UI + navigation, not correctness-critical
     (doesn't touch scoring/the ranking algorithm itself) — implementer + direct PM review, same
     treatment as the rest of this queue, not the full independent-reviewer pipeline.
-11. **Show an episode's own still image instead of the season poster on the ranking screens** —
-    added 2026-07-18, Kayvan's idea (he wasn't aware `still_url` existed until seeing it on the new
-    episode pages), placed here (PM's call): trivial now that item 8(a) already added
-    `episodes.still_url` — the comparison screen's `EpisodeColumn`/cold-start's `SeasonPoster` (in
-    `rank/[episodeId]/`) currently render `season_poster_url`; swap to `still_url`, falling back to
-    `season_poster_url` when an episode has no still (same fallback convention the episode detail
-    page already established), rather than season poster art shared across every episode in the
-    season. Purely additive — no schema change, `still_url` is already selected/available wherever
-    `season_poster_url` currently is or trivially added to the same query.
+11. ~~**Show an episode's own still image instead of the season poster on the ranking screens**~~ —
+    **built and merged 2026-07-18** (`af173f1`, same dispatch as item 9), now in Bucket 2 for
+    hands-on check. Both the comparison screen (`ComparisonPrompt`'s `PosterButton`) and cold-start's
+    `SeasonPoster` (in `rank/[episodeId]/page.tsx`) now render `still_url ?? season_poster_url`,
+    same fallback convention the episode detail page already established. Confirmed via grep that
+    no other `season_poster_url` usage in the ranking flow was missed.
 
 Dark mode + per-show accent theming (also proposed in the same review) is **deliberately not in
 this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of the visual-design pass
 in Bucket 4, rather than being done piecemeal now.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
+1. **Season-completed badge + episode stills on ranking screens (items 9/11), built 2026-07-18, not
+   yet hands-on checked** — no migration needed for either. Confirm: a fully-ranked/judged season
+   shows a "Complete" badge on `/shows/[showId]` and a partially-ranked one doesn't; the comparison
+   and cold-start screens show each episode's own still image where one exists, falling back to the
+   season poster otherwise.
+2. **Stats page (item 2 first slice), built 2026-07-18, not yet hands-on checked** — new
+   `/shows/[showId]/stats`, linked from the show page. Confirm: the tier list groups episodes
+   sensibly (check a show with only a handful of ranked episodes too, where some tiers should be
+   empty by design), the season heatmap's colors are legible in both light and dark mode with the
+   numeric average always visible as text, and the gatekeeper sentence names the right two episodes
+   and gap size (or the whole stats page shows "not enough ranked episodes yet" for a show still
+   fully in cold start).
+3. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
    design. Can't be meaningfully verified by just clicking around today (the 24h throttle means a
    freshly-imported show won't actually re-sync for a day), so the real check is patient rather than
    immediate: next time a tracked show is known to have a new episode/season on TMDB, confirm it
@@ -277,7 +291,7 @@ in Bucket 4, rather than being done piecemeal now.
    (check the `shows` table has a populated `last_synced_at` column) and that a show page still loads
    normally post-push (the added `ensureShowSynced` call is fail-open, so even a broken TMDB call
    shouldn't break the page — but confirm that's actually true live, not just in tests).
-2. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
+4. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
    list (auth, search/import, dashboard, show detail page, the rankings page, cold start,
    comparative placement, re-ranking, removing a show all confirmed working end to end). What's
    genuinely still untested/unconfirmed, carried forward rather than chased right now:
@@ -528,6 +542,42 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-18: Same session, continued, at 33% session usage. Kayvan asked to build three Tier A
+  items together: item 9 (season-completed badge), item 11 (episode stills on ranking screens), and
+  item 2 (stats/visualizations), leaving the implementation approach up to the PM. Ran two sequential
+  dispatches rather than parallel ones, since both would touch `shows/[showId]/page.tsx` and running
+  them concurrently risked a merge conflict:
+  - **Items 9 + 11 bundled** (`af173f1`) — both small, no schema change. Item 9: a "Complete" badge
+    next to a season's heading on the show page whenever every episode in it has a score or
+    cold-start bucket (same badge styling already used elsewhere). Item 11: comparison screen
+    (`ComparisonPrompt`'s `PosterButton`) and cold-start (`SeasonPoster`) now render `still_url ??
+    season_poster_url` instead of `season_poster_url` alone — grepped the codebase first to confirm
+    no other `season_poster_url` usage in the ranking flow was missed. PM reviewed the full diff,
+    verified worktree isolation held, re-ran tests/typecheck/lint/build fresh on `main`: 239/239
+    tests (unchanged — both are display-only changes to already-untested surfaces), clean across the
+    board. Pushed.
+  - **Item 2, scoped down to a first slice** (`8f5e183`) — the full item 2 backlog (tier list,
+    heatmap, gatekeeper stat, win/loss matrix, season timeline, comparison graph) was deliberately
+    not all attempted in one dispatch; PM chose to build the three cheapest/most well-defined pieces
+    now (tier list, season-quality heatmap, gatekeeper stat) and explicitly defer the win/loss matrix
+    and comparison/relationship graph, both more UI-complex and better served by their own design
+    pass later. New pure, unit-tested functions in `website/src/lib/ranking/stats.ts`
+    (`assignTiers` — quintile-based by rank *position*, not absolute score, since
+    `scoreForPosition`'s absolute range compresses for small shows; `seasonAverageScores`;
+    `findGatekeeperGap`, 13 new tests) and a new route `/shows/[showId]/stats` (linked from the show
+    page). The implementer loaded the `dataviz` skill before writing the heatmap's color code, per
+    that skill's own trigger condition — used its documented sequential ramp (verbatim palette hex
+    values, not invented), applied its light/dark "flips anchor" rule, normalized color relative to
+    each show's own season-average range (not the absolute 1-10 domain, for the same small-show-
+    compression reason driving the tier-list design), and picked per-cell text color by WCAG
+    contrast (the skill's documented exception for labels inside a colored fill) while always
+    showing the numeric average as text regardless of color. PM reviewed the full diff directly
+    (the quintile math, the season-average/gatekeeper logic, and the color/contrast helpers all
+    checked by hand), verified worktree isolation held, re-ran tests/typecheck/lint/build fresh on
+    `main`: 252/252 tests (13 new), clean typecheck, clean lint, clean build (new route confirmed).
+    Pushed.
+  Both dispatches now in Bucket 2 for hands-on check. Item 2's win/loss matrix, comparison graph, and
+  season timeline remain unbuilt, next up whenever item 2 is picked back up.
 - 2026-07-18: Same session, continued. Kayvan hands-on confirmed the full item-8 batch (finale
   badge, win/loss record, rank/re-rank button, credits) working on live Vercel — removed from
   Bucket 2. Logged two more ideas, both placed in Tier A (PM's call) as items 10/11, both building
