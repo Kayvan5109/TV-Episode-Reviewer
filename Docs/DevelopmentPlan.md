@@ -32,7 +32,9 @@ understanding, most-resolved-first:
    episode just gets a coarse bucket: **liked**, **disliked**, or **neutral** — three buckets, to
    match Beli, not a binary liked/disliked choice (decided 2026-07-15; reconfirmed 2026-07-15 after
    a brief mix-up in a later write-up implied only two buckets — the three-bucket version is what's
-   built and what stands).
+   built and what stands). **Exception, built 2026-07-18**: a show whose *total* episode count is
+   below 4 only cold-starts its first episode — see "Decided 2026-07-17, built 2026-07-18" below for
+   the full mechanics and reasoning.
 2. **Comparative placement**: once a show has 4+ ranked episodes, a new episode is placed via true
    binary-insertion-style comparison — compared against a midpoint episode in the current ranking,
    with each "better/worse/neutral" answer narrowing the range, converging in roughly log2(n)
@@ -143,7 +145,7 @@ doesn't currently record *how* an episode's final placement was reached, only wh
 happened. Capturing that would mean a real (if small) algorithm/schema change — worth a v2 once the
 simple version is live and its rough edges are felt in practice, not before.
 
-### Decided 2026-07-17, not yet built: small shows skip cold-start bucketing after episode 1
+### Decided 2026-07-17, built 2026-07-18: small shows skip cold-start bucketing after episode 1
 
 Real hands-on testing surfaced a sharp observation: a 3-episode show, all three ranked "neutral"
 during cold start, produced three visibly different scores (7.4 / 8.7 / 10.0) — because

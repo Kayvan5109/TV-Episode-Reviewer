@@ -3,19 +3,17 @@
 **Read this file first** — before the other docs, before doing anything else. It's the single
 "what's actually going on right now" pointer, kept short and current on purpose.
 
-Last updated: 2026-07-17. **Clean deliberate stop, for session budget (80%).** No code was written
-after the mid-session stop below — everything since then has been planning/design, safe to pick up
-cold. In order: (1) a large hands-on testing round confirmed most of the day's work is working
-correctly (see History) and surfaced 4 new confirmed-wanted items (cold-start refinement, nav link +
-progress counter, season posters, genres) — designed/decided but deliberately not started, to avoid
-running out mid-task; (2) a separate design-review document (from another Claude session) got read
-and triaged into three tiers — "Tier A" (5 small ideas) is decided and queued *after* item (1)'s four
-items, not ahead of them; the proposed Elo/Glicko algorithm swap was explicitly declined (see
-`DevelopmentPlan.md`); (3) Tier B (the social layer — profiles, following, community rank, taste
-similarity, comments, shareable collections) got a full, detailed, buildable design at Kayvan's
-request — see `AppSpec.md`'s "Tier B Detailed Design," **still not scheduled or committed to being
-built**, design-only. Bucket 1 below is the complete, literal next-session plan for what *is*
-queued, in order. No agent is running.
+Last updated: 2026-07-18. Built and merged the small-show cold-start fix (former Bucket 1 item 1) —
+see History for the full account. Implementer agent built it, an independent reviewer agent
+fresh-eyes-confirmed it against `DevelopmentPlan.md`'s spec and re-ran all checks itself, PM applied
+the reviewer's small polish suggestions and re-verified fresh before committing directly to `main`
+(`1edff1b`). **Not yet pushed, and not yet hands-on tested in a real browser** — see Bucket 2, that's
+the literal next thing to do. A real process issue surfaced mid-session and needs a look — see
+Deviations Awaiting Review: the implementer agent's `isolation: "worktree"` didn't actually produce
+an isolated worktree (no `.git`, and its registered branch had zero code changes on it); the agent's
+edits landed directly on `main`'s working tree instead. No harm this time (nothing else was being
+edited concurrently), but worth understanding before the next parallel-agent dispatch. No agent is
+running.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -24,25 +22,12 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence (work in this order). Every item below was decided
-2026-07-17 (see History) — none were started; this is the literal next-session plan, in two parts:
-items 1-7 first (from the day's hands-on testing round), then items 8-12 ("Tier A," from a separate
-design review, deliberately queued after, not ahead of, items 1-7):**
+2026-07-17 (see History) — this is the literal next-session plan, in two parts: items 1-6 first
+(from the day's hands-on testing round; item 1 of that original set — the cold-start fix — is done,
+see History and Bucket 2), then items 7-11 ("Tier A," from a separate design review, deliberately
+queued after, not ahead of, items 1-6):**
 
-1. **Cold-start refinement: small shows skip bucketing after episode 1.** Do this one first, with a
-   full session's budget available — it's the biggest and most correctness-critical item here, and
-   the one most likely to need real back-and-forth if something doesn't check out. Full design
-   already written up in `DevelopmentPlan.md`'s Discussion section
-   ("Decided 2026-07-17, not yet built: small shows skip cold-start bucketing after episode 1") —
-   read that section in full before starting, it has the exact mechanics
-   (`effectiveColdStartThreshold`), the reasoning, and the known implementation cost (signature
-   changes to `isColdStart`/`addColdStartEpisode`/`addComparativeEpisode` in
-   `@/lib/ranking/engine.ts`, rippling into every call site in `ranking-session/session.ts`). This
-   touches the ranking algorithm itself — per `ProcessAndRoles.md`, that gets the full
-   implementer-agent-then-independent-reviewer-agent treatment, not just a PM read-through like most
-   of today's other work. Needs real new test coverage (small-show end-to-end case) alongside proof
-   that normal-size-show behavior is completely unchanged. Hands-on check after: a 1-3 episode show
-   should ask a real comparison for episode 2 onward, not another liked/disliked/neutral bucket.
-2. **Search Shows nav link + episode-ranked progress counter** — two small, independent, no-design-
+1. **Search Shows nav link + episode-ranked progress counter** — two small, independent, no-design-
    decision-needed UI additions, bundle into one agent:
    - Add a "Search Shows" link to `AppHeader`, to the left of "Dashboard", going straight to
      `/shows/search`.
@@ -52,7 +37,7 @@ design review, deliberately queued after, not ahead of, items 1-7):**
      (`display.ranked`) or also cold-start-judged-but-not-yet-placed ones
      (`display.ranked.length + display.coldStartPending.length`); the latter is closer to "the user
      has given an opinion on it," which is probably what a progress counter should mean.
-3. **Season poster art in the comparison screen** — TMDB's per-season endpoint
+2. **Season poster art in the comparison screen** — TMDB's per-season endpoint
    (`/tv/{id}/season/{season_number}`, already called during import for episode data) includes a
    season-level `poster_path` sibling to its `episodes` array — this likely doesn't need a *new*
    TMDB call, just capturing a field from a response already being fetched. Needs: a new nullable
@@ -61,51 +46,51 @@ design review, deliberately queued after, not ahead of, items 1-7):**
    rather than a relation), updated import logic to populate it, and the comparison screen
    (`rank/[episodeId]/page.tsx`/`ComparisonPrompt.tsx`) showing each side's season poster next to
    its episode label. Purely additive (new nullable column, no behavior change to existing data) —
-   implementer + PM review, not the full algorithm-level rigor of item 1.
-4. **Genres on the show page** — TMDB's `/tv/{series_id}` show-details endpoint includes a
+   implementer + PM review, not the full algorithm-level rigor the cold-start fix needed.
+3. **Genres on the show page** — TMDB's `/tv/{series_id}` show-details endpoint includes a
    `genres: [{id, name}]` array; nothing genre-related is stored today. Needs a new column on
    `shows` (a `text[]` of genre names is simplest — this app doesn't need genre-level relational
    querying yet, just display, per Kayvan's own "groundwork for later" framing), updated import
    logic, and display on `/shows/[showId]`. Explicitly *not* wiring up any sorting/filtering yet —
    that's future work once actually designed. Purely additive — implementer + PM review.
-5. **TMDB attribution** — small, quick. Required attribution text somewhere in the app (e.g.
+4. **TMDB attribution** — small, quick. Required attribution text somewhere in the app (e.g.
    `AppHeader` or a footer) per TMDB's API terms — see `Risks.md`.
-6. **Password reset flow** — currently doesn't exist at all. `resetPasswordForEmail` + a set-new-
+5. **Password reset flow** — currently doesn't exist at all. `resetPasswordForEmail` + a set-new-
    password page. Same correctness-critical rigor as the rest of auth (read the code directly, real
    email click-through check) — this is `proxy.ts`/cookie territory again.
-7. **Privacy notice** — short static page, what's collected + the three third parties involved
+6. **Privacy notice** — short static page, what's collected + the three third parties involved
    (Supabase, TMDB, Vercel). Draft the content with Kayvan rather than inventing it.
 
 **Then, "Tier A" — a small batch pulled from an external design review, decided 2026-07-17, queued
 *after* everything above** (see `AppSpec.md`'s "External Design Review — Triage" and
 `DevelopmentPlan.md`'s Discussion section for the full reasoning behind each):
 
-8. **Keyboard shortcuts** on the cold-start and comparison screens (e.g. arrow keys or number keys
+7. **Keyboard shortcuts** on the cold-start and comparison screens (e.g. arrow keys or number keys
    for liked/disliked/neutral and better/worse/about-the-same) — small, no design decision needed.
-9. **Ranking confidence** ("your Breaking Bad rankings are 87% stable") — the strongest idea from
+8. **Ranking confidence** ("your Breaking Bad rankings are 87% stable") — the strongest idea from
    the review. Concrete v1 formula already written up in `DevelopmentPlan.md` (decisive-comparison
    count relative to `log2(showEpisodeCount)`, no schema changes needed) — read that before
    building, it also documents a known v1 limitation (doesn't yet detect tie-break-fallback
    placements) that's deliberately not being solved yet.
-10. **Statistics view + alternate visualizations** of a show's existing rankings (e.g. a tier list,
-    heatmap, or season timeline) — sequence after item 9, since "most/least confident episode" is a
-    natural stat once confidence exists. Purely additive over data `getShowRankingDisplay` already
-    computes; no new persistence logic.
-11. **Richer comparison screen**: episode synopsis + cast shown alongside each side. Needs a bit
+9. **Statistics view + alternate visualizations** of a show's existing rankings (e.g. a tier list,
+   heatmap, or season timeline) — sequence after item 8, since "most/least confident episode" is a
+   natural stat once confidence exists. Purely additive over data `getShowRankingDisplay` already
+   computes; no new persistence logic.
+10. **Richer comparison screen**: episode synopsis + cast shown alongside each side. Needs a bit
     more TMDB plumbing than the others (episode-level synopsis and cast credits aren't imported
-    today) — scope this properly before starting rather than assuming it's as small as item 8.
-12. **Collections** — user-created private lists of episodes across shows (e.g. "Best Pilot
+    today) — scope this properly before starting rather than assuming it's as small as item 7.
+11. **Collections** — user-created private lists of episodes across shows (e.g. "Best Pilot
     Episodes"). Independent of the rest of this batch, can slot in anywhere. Keep to private-only
     for now — a *shareable* version needs public-link infrastructure that doesn't exist yet (see
     the Tier B note in `AppSpec.md`).
-13. **Per-show progress bar on the dashboard** — added 2026-07-17: each show in "My Shows" gets a
+12. **Per-show progress bar on the dashboard** — added 2026-07-17: each show in "My Shows" gets a
     progress indicator (episodes ranked so far) right on the dashboard list itself, not just on the
-    show's own page (item 2 above is the per-show-page counter; this is the dashboard-list version —
+    show's own page (item 1 above is the per-show-page counter; this is the dashboard-list version —
     related but distinct, both worth building). Overlaps an idea already sitting in `AppSpec.md`'s
     original brainstorm list ("Poster art + progress indicator per show" on the dashboard) — same
     underlying data (`getShowRankingDisplay` per show), just surfaced one level up. Purely additive,
     no design decision needed.
-14. **"Date ranked" next to each episode's name on the show page** — added 2026-07-17. No schema
+13. **"Date ranked" next to each episode's name on the show page** — added 2026-07-17. No schema
     change needed: `episode_rankings.created_at` already means exactly this — it's set once, the
     first time a row exists for that episode (its first cold-start judgment, or the day it was
     first comparatively placed), and survives untouched through later position-shuffling upserts
@@ -123,7 +108,13 @@ this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of t
 in Bucket 4, rather than being done piecemeal now.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
+1. **Small-show cold-start fix, built 2026-07-18, not yet hands-on tested in a real browser.** This
+   is the next thing to do. Check: a 1-3 total-episode show should ask a real
+   better/worse/about-the-same comparison for episode 2 onward, not another liked/disliked/neutral
+   bucket; episode 1 should still get the coarse bucket question. See History for what's already
+   been verified (180+ tests, typecheck, lint, build, independent agent review) — this is purely the
+   "does it actually feel right in the browser" check that automated tests can't cover.
+2. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
    list (auth, search/import, dashboard, show detail page, the rankings page, cold start,
    comparative placement, re-ranking, removing a show all confirmed working end to end). What's
    genuinely still untested/unconfirmed, carried forward rather than chased right now:
@@ -138,8 +129,9 @@ in Bucket 4, rather than being done piecemeal now.
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
 (empty for now — every question posed 2026-07-17 is resolved: remove-show/re-ranking's scope, the
-cold-start small-show fix's design (see Bucket 1 item 1 and `DevelopmentPlan.md`), poster art and
-genres both confirmed "build it," and episode count in search explicitly declined — see Bucket 4.)
+cold-start small-show fix's design (see `DevelopmentPlan.md`, now built — see History 2026-07-18),
+poster art and genres both confirmed "build it," and episode count in search explicitly declined —
+see Bucket 4.)
 
 **Bucket 4 — Backlog, logged, not being chased:**
 1. Shared test-fixture format to keep the TypeScript (website) and Swift (iOS) ranking-algorithm
@@ -165,9 +157,10 @@ genres both confirmed "build it," and episode count in search explicitly decline
    you. Consider a lightweight free-tier setup (e.g. Sentry) before wider testing. Flagged 2026-07-16.
 6. **Visual design** — still zero design polish, bare Tailwind defaults throughout. Flagged
    2026-07-16 as a real gap before wider testing, deliberately deferred past piece 2b.
-7. ~~Small-show exact score precision~~ — **superseded 2026-07-17**: the specific 3-episode
-   all-neutral example (scores 10/8.7/7.4) led to a real, decided fix — see Bucket 1 item 1 and
-   `DevelopmentPlan.md`'s Discussion section. That fix substantially shrinks this class of issue but
+7. ~~Small-show exact score precision~~ — **superseded 2026-07-17, fix built 2026-07-18**: the
+   specific 3-episode all-neutral example (scores 10/8.7/7.4) led to a real, decided fix — see
+   `DevelopmentPlan.md`'s Discussion section and History 2026-07-18. That fix substantially shrinks
+   this class of issue but
    doesn't fully eliminate it (a genuine pairwise "neutral" comparison still breaks the tie to a
    specific adjacent position, everywhere in the app, not just in cold start) — going further
    (real tied scores) was discussed and explicitly declined as a bigger, not-currently-worthwhile
@@ -201,6 +194,22 @@ Solo judgment calls made mid-session that weren't slept on get logged here and s
 start of the next session for a second look — even solo, "I decided this at 11pm without thinking
 it through" is worth a deliberate re-check, not silent acceptance.
 
+- 2026-07-18: **Process issue, not a judgment call, but needs a look before the next parallel-agent
+  dispatch.** The implementer agent for the small-show cold-start fix was spawned with
+  `isolation: "worktree"`, but the resulting worktree had no `.git` at all (a plain directory copy,
+  not a registered git worktree), and the branch that *was* registered for it
+  (`worktree-agent-a0fa4db2e4cd1b7bd`) had zero code changes on it. The agent's actual edits landed
+  directly as uncommitted changes on `main`'s own working tree instead — discovered only because the
+  independent reviewer agent went looking for a branch to diff against and found none. Caught before
+  any harm (nothing else was being edited by hand at the same time, so nothing collided), and the
+  changes themselves were correct and got reviewed/committed normally — but `ProcessAndRoles.md`'s
+  explicit rule ("real code changes happen in an isolated git worktree per agent... never directly
+  against the main working tree") silently didn't hold this time. Possibly related to this
+  environment's known Windows file-lock issue with worktree cleanup (see the recurring
+  `failed to delete '.git/worktrees/agent-*'` warnings on every commit, going back to at least
+  2026-07-15) — or a separate bug in how the worktree got created in the first place. Worth actually
+  investigating next session before trusting `isolation: "worktree"` again for something where a
+  real collision would matter (e.g. genuinely parallel agents touching overlapping files).
 - 2026-07-15: Implementer agent made 7 judgment calls while building the ranking-algorithm prototype
   (`website/src/lib/ranking/`), each marked `JUDGMENT CALL` in the source (now merged to `main`).
   Most-important-first:
@@ -238,6 +247,32 @@ it through" is worth a deliberate re-check, not silent acceptance.
 Deviations are fully cleared and reviewed — see `ProcessAndRoles.md`'s documented convention. This
 keeps this file fast to read at the start of every session instead of growing forever.)
 
+- 2026-07-18: Built and merged the small-show cold-start fix (`Docs/DevelopmentPlan.md`'s "Decided
+  2026-07-17, built 2026-07-18: small shows skip cold-start bucketing after episode 1") — a show
+  with fewer than `COLD_START_THRESHOLD` (4) total episodes now only cold-start-buckets its first
+  episode; every episode after that goes through real pairwise comparative placement instead of
+  another liked/disliked/neutral bucket. Normal-size shows (4+ episodes) are unchanged. Given the
+  full rigor `ProcessAndRoles.md` calls out for the ranking algorithm specifically: an implementer
+  agent built it (new `effectiveColdStartThreshold` in `constants.ts`; `totalShowEpisodeCount`
+  threaded through `isColdStart`/`addColdStartEpisode`/`addComparativeEpisode`/`rankNewEpisode` in
+  `engine.ts` and every call site in `ranking-session/session.ts`), then a second, independent
+  reviewer agent fresh-eyes-verified it against the design doc directly (hand-traced the threshold
+  logic, confirmed no missed call sites anywhere in `website/src`, confirmed normal-size-show
+  behavior collapses to the old flat-threshold behavior exactly, re-ran every check itself rather
+  than trusting the implementer's report) and confirmed it correct with only minor non-blocking
+  notes: a test comment in `session.test.ts` that had gone stale relative to this exact change, two
+  doc-comments in `session.ts` still describing behavior purely in terms of the old flat constant,
+  and a coverage gap (the global `getNextRankingStep` path wasn't separately exercised for a small
+  show, only the per-episode `getNextStepForEpisode` path was). PM applied all of these directly
+  (rewrote the stale comment, updated the two doc-comments, added one new test covering the
+  `getNextRankingStep` path for a 3-episode show) and re-ran `npm test`/`npx tsc --noEmit`/
+  `npm run lint`/`npm run build` fresh again before committing — 181/181 tests, clean typecheck,
+  clean lint, clean build. Committed directly to `main` (`1edff1b`) rather than merging a branch,
+  because of a separate process problem the reviewer surfaced — see Deviations Awaiting Review. Also
+  committed one small pending doc change that had been sitting uncommitted since the previous
+  session (`Docs/STATUS.md`'s Tier A item 14, "date ranked" — decided last session, never actually
+  committed). **Not yet pushed** (no remote push happened this session) **and not yet hands-on
+  tested in a real browser** — see Bucket 2, that's the literal next thing to do.
 - 2026-07-17: Resolved all 5 of the original engagement/growth ideas from earlier the same session
   (paused mid-discussion when the QA round took over) — see `AppSpec.md`'s new "Original 5-Idea
   Engagement Brainstorm — Resolved" section. Shareable ranking cards: **denied**, not being
