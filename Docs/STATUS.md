@@ -524,12 +524,20 @@ it through" is worth a deliberate re-check, not silent acceptance.
   security work** — at 87% session usage, spawning and waiting on a second agent risked not landing
   the fix at all before running out. Did it solo instead: added an early `getUser()` 401 gate to both
   `/api/tmdb/search` and `/api/tmdb/[showId]/episodes`, updated the tests whose premise the fix
-  invalidated, re-ran all checks fresh (199/199). Self-review only. Worth a genuine fresh-eyes look
-  next session: confirm the gate is checked *before* any TMDB call in both routes (not just present
-  somewhere in the function), confirm no legitimate caller broke (the web client same-origin-fetches
-  `/api/tmdb/search` so cookies flow automatically — verify this holds after a real hands-on
-  `/shows/search` check, not just from reading the code), and confirm `/api/tmdb/[showId]/episodes`
-  really has no current caller that would now 401 unexpectedly.
+  invalidated, re-ran all checks fresh (199/199). Self-review only.
+  **Resolved, same-day fresh-eyes review completed 2026-07-18 (later same session).** All three
+  open questions checked out clean, no new issues found: (1) the gate runs before any TMDB call in
+  both routes — confirmed by direct code read, by both routes' existing unit tests (which assert
+  `expect(fetchSpy).not.toHaveBeenCalled()` when unauthenticated — stronger proof than "returns 401"
+  alone), and by a live curl against a running local dev server with no auth cookie (both routes
+  returned `401 {"error":"Not signed in."}` instantly); (2) no legitimate caller broke —
+  `/api/tmdb/search` has exactly one caller in the whole app (`ShowSearchForm.tsx`), a same-origin
+  `fetch()` with no `credentials` override, so the session cookie flows automatically by browser
+  default (not independently re-verified via an actual logged-in browser session, since that needs
+  real credentials — low residual risk given how standard this mechanism is); (3)
+  `/api/tmdb/[showId]/episodes` genuinely has zero callers anywhere in the current app (confirmed by
+  grepping all of `website/src`) — it's unused proxy infrastructure today, not a route the 401 gate
+  could have broken. This Deviation is now fully closed out.
 - 2026-07-18: **Process issue, not a judgment call, recurred a third time — now clearly not rare,
   worth actually investigating rather than just noting.** The implementer agent for the small-show
   cold-start fix was spawned with `isolation: "worktree"`, but the resulting worktree had no `.git`
