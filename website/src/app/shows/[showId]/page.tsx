@@ -165,6 +165,11 @@ export default async function ShowDetailPage({
                   })()}
                 </p>
               )}
+              {display && display.confidence !== null && (
+                <p className="text-sm text-black/60 dark:text-white/60">
+                  Your {showRow.title} rankings are {Math.round(display.confidence)}% stable.
+                </p>
+              )}
               {display?.done && (
                 <p className="text-sm font-medium text-green-700 dark:text-green-400">Ranking complete</p>
               )}

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { COLD_START_THRESHOLD } from '@/lib/ranking/constants';
 import { scoreForPosition } from '@/lib/ranking/score';
+import { showConfidence } from '@/lib/ranking/confidence';
 
 /**
  * A small in-memory fake standing in for the session-aware Supabase client, covering exactly the
@@ -595,6 +596,17 @@ describe('getShowRankingDisplay', () => {
     expect(step).toEqual({ type: 'alreadyRanked' });
     // ranked = [ids[1], ids[2], ids[0]]
 
+    // Reconstructed history mirrors exactly what reconstructShowRankingState builds from the three
+    // submitted comparisons above (both sides recorded, inverted per episode's own perspective) —
+    // used to compute the expected confidence via the same pure showConfidence function under test,
+    // rather than hand-deriving/hardcoding a float.
+    const expectedHistory = new Map<string, { with: string; result: 'better' | 'worse' | 'neutral' }[]>([
+      [ids[1], [{ with: ids[0], result: 'better' }, { with: ids[2], result: 'better' }]],
+      [ids[0], [{ with: ids[1], result: 'worse' }, { with: ids[2], result: 'worse' }]],
+      [ids[2], [{ with: ids[1], result: 'worse' }, { with: ids[0], result: 'better' }]],
+    ]);
+    const expectedConfidence = showConfidence([ids[1], ids[2], ids[0]], expectedHistory, 3);
+
     await expect(getShowRankingDisplay(SHOW_ID)).resolves.toEqual({
       done: true,
       ranked: [
@@ -602,6 +614,7 @@ describe('getShowRankingDisplay', () => {
         { episodeId: ids[2], score: scoreForPosition(2, 3) },
         { episodeId: ids[0], score: scoreForPosition(3, 3) },
       ],
+      confidence: expectedConfidence,
     });
   });
 
@@ -612,6 +625,15 @@ describe('getShowRankingDisplay', () => {
     await submitComparisonAnswer(SHOW_ID, subject, 'B', 'worse');
     await submitComparisonAnswer(SHOW_ID, subject, 'C', 'better');
 
+    // Reconstructed history mirrors exactly what reconstructShowRankingState builds from the two
+    // submitted comparisons above (A and D were never compared, so they have no history at all).
+    const expectedHistory = new Map<string, { with: string; result: 'better' | 'worse' | 'neutral' }[]>([
+      [subject, [{ with: 'B', result: 'worse' }, { with: 'C', result: 'better' }]],
+      ['B', [{ with: subject, result: 'better' }]],
+      ['C', [{ with: subject, result: 'worse' }]],
+    ]);
+    const expectedConfidence = showConfidence(['A', 'B', subject, 'C', 'D'], expectedHistory, 5);
+
     await expect(getShowRankingDisplay(SHOW_ID)).resolves.toEqual({
       done: true,
       ranked: [
@@ -621,7 +643,51 @@ describe('getShowRankingDisplay', () => {
         { episodeId: 'C', score: scoreForPosition(4, 5) },
         { episodeId: 'D', score: scoreForPosition(5, 5) },
       ],
+      confidence: expectedConfidence,
     });
+  });
+
+  it('reports null confidence while nothing has gone through comparative placement yet', async () => {
+    const ids = seedEpisodes(COLD_START_THRESHOLD + 2);
+    await submitColdStartAnswer(SHOW_ID, ids[0], 'liked');
+
+    const display = await getShowRankingDisplay(SHOW_ID);
+    expect(display.done).toBe(false);
+    if (display.done) return;
+    expect(display.confidence).toBeNull();
+  });
+
+  it('keeps confidence low (0) when every recorded comparison is neutral — no decisive information', async () => {
+    seedComparativePool(0); // A, B, C, D already ranked, nothing left unranked
+    fake.comparisons.push(
+      { id: 'n1', user_id: 'user-1', episode_a_id: 'A', episode_b_id: 'B', result: 'neutral' },
+      { id: 'n2', user_id: 'user-1', episode_a_id: 'B', episode_b_id: 'C', result: 'neutral' },
+      { id: 'n3', user_id: 'user-1', episode_a_id: 'C', episode_b_id: 'D', result: 'neutral' }
+    );
+
+    const display = await getShowRankingDisplay(SHOW_ID);
+    expect(display.done).toBe(true);
+    if (!display.done) return;
+    expect(display.confidence).toBe(0);
+  });
+
+  it('rises toward 100 as decisive comparisons accumulate, capped there rather than exceeding it', async () => {
+    seedComparativePool(0); // A, B, C, D ranked; log2(4) = 2
+    fake.comparisons.push(
+      { id: 'd1', user_id: 'user-1', episode_a_id: 'A', episode_b_id: 'B', result: 'a_better' },
+      { id: 'd2', user_id: 'user-1', episode_a_id: 'A', episode_b_id: 'C', result: 'a_better' },
+      { id: 'd3', user_id: 'user-1', episode_a_id: 'B', episode_b_id: 'C', result: 'a_better' },
+      { id: 'd4', user_id: 'user-1', episode_a_id: 'B', episode_b_id: 'D', result: 'a_better' },
+      { id: 'd5', user_id: 'user-1', episode_a_id: 'C', episode_b_id: 'D', result: 'a_better' },
+      { id: 'd6', user_id: 'user-1', episode_a_id: 'D', episode_b_id: 'A', result: 'b_better' }
+    );
+
+    // Every episode now has >= 2 decisive comparisons, meeting log2(4)=2 — each episodeConfidence
+    // is capped at 100, so the show average is exactly 100, not something that overshoots it.
+    const display = await getShowRankingDisplay(SHOW_ID);
+    expect(display.done).toBe(true);
+    if (!display.done) return;
+    expect(display.confidence).toBe(100);
   });
 });
 

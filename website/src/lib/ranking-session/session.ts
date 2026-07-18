@@ -28,6 +28,7 @@ import {
 } from '@/lib/ranking/engine';
 import type { ColdStartBucket, ComparisonResult, EpisodeId, ShowRankingState } from '@/lib/ranking/types';
 import { scoreForPosition } from '@/lib/ranking/score';
+import { showConfidence } from '@/lib/ranking/confidence';
 import { makeReplayComparator } from './comparator';
 import { reconstructShowRankingState, type ComparisonRow, type RankingRow } from './reconstruct';
 import { NeedsComparisonInput, type NextRankingStep } from './types';
@@ -445,12 +446,13 @@ export async function getNextStepForEpisode(
  * start (with their bucket), and which haven't been touched at all.
  */
 export type ShowRankingDisplay =
-  | { done: true; ranked: { episodeId: EpisodeId; score: number }[] }
+  | { done: true; ranked: { episodeId: EpisodeId; score: number }[]; confidence: number | null }
   | {
       done: false;
       ranked: { episodeId: EpisodeId; score: number }[];
       coldStartPending: { episodeId: EpisodeId; bucket: ColdStartBucket }[];
       unranked: EpisodeId[];
+      confidence: number | null;
     };
 
 /**
@@ -469,6 +471,12 @@ export type ShowRankingDisplay =
  * judging every episode and *never* enters comparative placement — none of its episodes ever get a
  * `rank_position` at all, so that condition would (wrongly) never be true for such a show even
  * once ranking is fully done. `currentDisplayOrder` already knows how to handle both cases.
+ *
+ * `confidence` (see `@/lib/ranking/confidence`'s `showConfidence`) is `null` whenever
+ * `state.ranked.length === 0` — nothing has gone through comparative placement yet (either no
+ * episodes at all, or a show still fully in cold start / too small to ever leave it), so there's
+ * no confidence signal to report at all, not a misleadingly-low 0%. Computed purely from
+ * `state.history`/`state.ranked`, both already loaded here — no new database query.
  */
 export async function getShowRankingDisplay(showId: string): Promise<ShowRankingDisplay> {
   const supabase = await createSupabaseServerClient();
@@ -479,13 +487,18 @@ export async function getShowRankingDisplay(showId: string): Promise<ShowRanking
 
   if (step.type === 'done') {
     const reloaded = await loadShowRankingState(supabase, userId, showId);
-    const order = currentDisplayOrder(reloaded.state);
+    const state = reloaded.state;
+    const order = currentDisplayOrder(state);
     return {
       done: true,
       ranked: order.map((episodeId, index) => ({
         episodeId,
         score: scoreForPosition(index + 1, order.length),
       })),
+      confidence:
+        state.ranked.length === 0
+          ? null
+          : showConfidence(state.ranked, state.history, state.ranked.length),
     };
   }
 
@@ -502,6 +515,10 @@ export async function getShowRankingDisplay(showId: string): Promise<ShowRanking
     })),
     coldStartPending: state.coldStart.map(({ episodeId, bucket }) => ({ episodeId, bucket })),
     unranked: loaded.episodeIdsInOrder.filter((id) => !rankedSet.has(id) && !coldStartSet.has(id)),
+    confidence:
+      state.ranked.length === 0
+        ? null
+        : showConfidence(state.ranked, state.history, state.ranked.length),
   };
 }
 
