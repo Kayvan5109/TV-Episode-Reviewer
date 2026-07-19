@@ -6,12 +6,21 @@ import { showConfidence } from '@/lib/ranking/confidence';
 
 /**
  * A small in-memory fake standing in for the session-aware Supabase client, covering exactly the
- * calls `session.ts` makes: `.auth.getUser()`, and `.from(table)` chains for
+ * calls `session.ts` makes: `.auth.getUser()`, `.from(table)` chains for
  * `episodes`/`episode_rankings`/`episode_comparisons` (select/eq/in/order reads, insert/upsert
- * writes). Modeled as a real (tiny) in-memory database — rows actually get inserted/updated and
- * later reads reflect it — rather than hand-scripting per-call return values, since the flows
- * under test (cold start -> threshold crossing -> comparative placement -> tie-break) span many
- * sequential reads/writes and a faithful fake is far less brittle than enumerating each call.
+ * writes), and `.rpc('delete_show_ranking_data', ...)` (mirrors
+ * `supabase/migrations/20260719000000_delete_show_ranking_data.sql`'s Postgres function). Modeled
+ * as a real (tiny) in-memory database — rows actually get inserted/updated and later reads reflect
+ * it — rather than hand-scripting per-call return values, since the flows under test (cold start ->
+ * threshold crossing -> comparative placement -> tie-break) span many sequential reads/writes and a
+ * faithful fake is far less brittle than enumerating each call.
+ *
+ * Reads for `episode_rankings`/`episode_comparisons` no longer chain `.in('episode_id'/..., ...)`
+ * in production code (see Docs/STATUS.md Bucket 1 item 1 — that pattern is what blew up the query
+ * URL for a large show) — `session.ts` now filters down to a show's episodes in application code
+ * after an `.eq('user_id', ...)`-only fetch. `.in()` support stays on `FakeQueryBuilder` regardless
+ * (still needed for `.in()` deletes, e.g. `deleteComparisonsInvolving`), it's simply unused by those
+ * two particular read call sites now.
  *
  * Read chains are "thenable" builders (`select().eq().order()` etc. resolve when awaited directly,
  * with no terminal call) since that's exactly how `session.ts` uses them — mirrors real
@@ -179,6 +188,32 @@ class FakeSupabase {
       };
     }
     throw new Error(`Unexpected table in test: ${table}`);
+  }
+
+  /**
+   * Mirrors `delete_show_ranking_data(p_show_id, p_user_id)` (see
+   * `supabase/migrations/20260719000000_delete_show_ranking_data.sql`): deletes every
+   * `episode_comparisons` row for `p_user_id` touching any of `p_show_id`'s episodes on either side,
+   * plus every `episode_rankings` row for `p_user_id` on those episodes — entirely server-side, no
+   * id list involved, exactly like the real Postgres function's subqueries through `episodes.show_id`.
+   */
+  async rpc(fnName: string, params: Record<string, unknown>): Promise<{ error: null }> {
+    if (fnName === 'delete_show_ranking_data') {
+      const showId = params.p_show_id as string;
+      const userId = params.p_user_id as string;
+      const episodeIds = new Set(
+        this.episodes.filter((episode) => episode.show_id === showId).map((episode) => episode.id)
+      );
+      this.comparisons = this.comparisons.filter(
+        (row) =>
+          !(row.user_id === userId && (episodeIds.has(row.episode_a_id) || episodeIds.has(row.episode_b_id)))
+      );
+      this.rankings = this.rankings.filter(
+        (row) => !(row.user_id === userId && episodeIds.has(row.episode_id))
+      );
+      return { error: null };
+    }
+    throw new Error(`Unexpected rpc in test: ${fnName}`);
   }
 }
 
@@ -730,6 +765,55 @@ describe('getShowRankingDisplay', () => {
     expect(display.done).toBe(true);
     if (!display.done) return;
     expect(display.confidence).toBe(100);
+  });
+});
+
+describe('application-side episode filtering on reads (no .in() at the DB layer)', () => {
+  it('ignores this user\'s episode_rankings/episode_comparisons rows for a different show, both in getShowRankingDisplay\'s output and in replay history driving the next question', async () => {
+    seedComparativePool(1); // show-1: A, B, C, D ranked 1-4, X1 unranked
+
+    // A second show's own episode + ranking + comparison data, same user. Since
+    // loadShowRankingState no longer scopes its query by `.in('episode_id'/..., ...)` (see
+    // Docs/STATUS.md Bucket 1 item 1), it fetches *all* of this user's rows across every show and
+    // must filter down to show-1's episodes in application code — this is the one behavior that
+    // used to be free (the DB's own `.in()` did it) and is now non-obvious enough to need a
+    // dedicated test. If the filtering were missing or wrong, 'other-ep' would leak in as a fifth
+    // ranked episode below, and/or the unrelated P-vs-Q comparison would leak into show-1's replay
+    // history and change which episode X1 gets asked about next.
+    fake.episodes.push(
+      { id: 'other-ep', show_id: 'show-2', season_number: 1, episode_number: 1 },
+      { id: 'P', show_id: 'show-2', season_number: 1, episode_number: 2 },
+      { id: 'Q', show_id: 'show-2', season_number: 1, episode_number: 3 }
+    );
+    fake.rankings.push({
+      user_id: 'user-1',
+      episode_id: 'other-ep',
+      rank_position: 1,
+      cold_start_bucket: null,
+      cold_start_sequence: null,
+      created_at: SEED_CREATED_AT,
+    });
+    fake.comparisons.push({
+      id: 'other-show-cmp',
+      user_id: 'user-1',
+      episode_a_id: 'P',
+      episode_b_id: 'Q',
+      result: 'a_better',
+    });
+
+    const display = await getShowRankingDisplay(SHOW_ID);
+    expect(display.done).toBe(false);
+    if (display.done) return;
+
+    // 'other-ep' must not leak in as a fifth ranked episode of show-1.
+    expect(display.ranked.map((entry) => entry.episodeId)).toEqual(['A', 'B', 'C', 'D']);
+    expect(display.unranked).toEqual(['X1']);
+
+    // Binary search over show-1's own ranked list still starts at mid index 1 -> B, exactly as the
+    // "resolves without a tie-break" describe block's first assertion — proves the unrelated P/Q
+    // comparison row (a different show entirely) never made it into show-1's reconstructed history.
+    const step = await getNextStepForEpisode(SHOW_ID, 'X1');
+    expect(step).toEqual({ type: 'compare', subject: 'X1', reference: 'B' });
   });
 });
 

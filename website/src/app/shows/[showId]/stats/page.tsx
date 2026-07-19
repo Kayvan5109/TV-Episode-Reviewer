@@ -253,31 +253,25 @@ export default async function StatsPage({
   const hasStats = display !== null && display.ranked.length > 0;
 
   // `episode_comparisons` rows for this show's episodes, this user only — needed for the win/loss
-  // matrix and comparison-history sections below. Same "both sides, no hand-built OR filter, dedupe
-  // by row id" pattern as `ranking-session/session.ts`'s `loadShowRankingState` (a comparison
-  // between two episodes that are *both* in this show's episode list would otherwise be returned by
-  // both queries). Only fetched when there's actually ranked data to build a matrix from.
+  // matrix and comparison-history sections below. No `.in('episode_a_id'/'episode_b_id', episodeIds)`
+  // here — see Docs/STATUS.md Bucket 1 item 1: embedding every episode id of a show as a literal id
+  // list in the query URL eventually exceeds Supabase/PostgREST's URL-length limit for shows with
+  // enough episodes. `.eq('user_id', user.id)` alone already bounds this to one person's lifetime
+  // comparison data; filtering down to this show's episodes (either side) happens in application
+  // code instead, via `episodeIdSet`. That also means a comparison between two episodes *both* in
+  // this show's list can only ever come back once, so the old "query both sides, dedupe by row id"
+  // dance (which existed specifically to route around the id-list problem) collapses into one query.
+  // Only fetched when there's actually ranked data to build a matrix from.
   let comparisons: ComparisonRow[] = [];
   if (hasStats) {
-    const episodeIds = episodes.map((episode) => episode.id);
-    const [aSide, bSide] = await Promise.all([
-      supabase
-        .from('episode_comparisons')
-        .select('id, episode_a_id, episode_b_id, result')
-        .eq('user_id', user.id)
-        .in('episode_a_id', episodeIds),
-      supabase
-        .from('episode_comparisons')
-        .select('id, episode_a_id, episode_b_id, result')
-        .eq('user_id', user.id)
-        .in('episode_b_id', episodeIds),
-    ]);
+    const episodeIdSet = new Set(episodes.map((episode) => episode.id));
+    const { data: comparisonRowsRaw, error: comparisonsError } = await supabase
+      .from('episode_comparisons')
+      .select('id, episode_a_id, episode_b_id, result')
+      .eq('user_id', user.id);
 
-    if (aSide.error) {
-      throw new Error(`Failed to load episode comparisons (episode_a_id side): ${aSide.error.message}`);
-    }
-    if (bSide.error) {
-      throw new Error(`Failed to load episode comparisons (episode_b_id side): ${bSide.error.message}`);
+    if (comparisonsError) {
+      throw new Error(`Failed to load episode comparisons: ${comparisonsError.message}`);
     }
 
     type RawComparisonRow = {
@@ -287,18 +281,13 @@ export default async function StatsPage({
       result: ComparisonRow['result'];
     };
 
-    const comparisonRowsById = new Map<string, ComparisonRow>();
-    for (const row of [
-      ...((aSide.data ?? []) as RawComparisonRow[]),
-      ...((bSide.data ?? []) as RawComparisonRow[]),
-    ]) {
-      comparisonRowsById.set(row.id, {
+    comparisons = ((comparisonRowsRaw ?? []) as RawComparisonRow[])
+      .filter((row) => episodeIdSet.has(row.episode_a_id) || episodeIdSet.has(row.episode_b_id))
+      .map((row) => ({
         episodeAId: row.episode_a_id,
         episodeBId: row.episode_b_id,
         result: row.result,
-      });
-    }
-    comparisons = [...comparisonRowsById.values()];
+      }));
   }
 
   return (
