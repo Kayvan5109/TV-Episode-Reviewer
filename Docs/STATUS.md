@@ -216,6 +216,30 @@ independently re-ran typecheck/lint/tests (286/286) in the worktree before mergi
 diff against the confirmed design, merged and pushed (`41468bb`). Not yet hands-on checked — added to
 Bucket 2 below.
 
+**Same session, continued — Bucket 1's mobile/responsive item.** With 24% session usage spent (much
+more budget than the 29% remaining that deferred this item originally), started the mobile audit PM
+had planned. Couldn't get a live screenshot pipeline running quickly in this environment (no
+`chromium-cli`, no Playwright browser installed/cached — would've meant a ~150MB one-time download for
+a single audit task) — pivoted to reading the actual Tailwind markup on each flagged page directly
+instead, which is enough to spot concrete narrow-viewport risks (unwrapped flex rows, fixed-width
+buttons competing with growing text, missing responsive breakpoints). Found real candidates (`AppHeader`
+nav bar, the show page header, episode list rows, the dashboard's "Logged in as" row) but before
+dispatching any fixes, Kayvan looked at the live site and **walked back "terrible"** — the actual,
+confirmed complaint was much narrower: on the show page, a long show title overlaps the "Remove show"/
+"Rank all" buttons on a phone, because that header row had no responsive breakpoint at all (poster+title
+and the button column were forced onto one row at every width). **This is a real, useful correction to
+this file's own prior framing** — "the mobile version is terrible" (this file's words, quoting Kayvan's
+original framing) overstated what was actually a single specific, narrow layout bug, not a whole-app
+audit-and-fix job. Fixed with one small, tightly-scoped implementer dispatch: the header row now stacks
+vertically below the `sm` breakpoint (title block above, buttons below, each full-width — no more
+overlap regardless of title length) and restores today's exact side-by-side row at `sm:` and up, reusing
+the identical `flex-col ... sm:flex-row` pattern already proven on the comparison screen
+(`ComparisonPrompt.tsx`). One-line class change, verified (286/286 tests, clean typecheck/lint), merged
+and pushed (`376d705`). **Not yet hands-on confirmed on a real phone** — added to Bucket 2. The broader
+"audit every page" mobile item is downgraded accordingly (see Punch List) — the other candidates found
+during the aborted audit (`AppHeader`, episode list rows, dashboard's login row) are real but unconfirmed
+as actual pain points, not the same "the whole site is terrible" scope this file previously carried.
+
 ## Punch List (ranked — read this section first for "what's actually next")
 
 Every open item gets triaged into exactly one bucket the moment it surfaces, per
@@ -223,17 +247,11 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence:**
-1. **Mobile/responsive fix — confirmed by Kayvan 2026-07-18, the sole remaining Bucket 1 item now
-   that "Rank all" mode is built** (see History; moved here originally from Bucket 4, where it was
-   previously the sole next-session priority). Not just a "check" — "the mobile version of the
-   website is terrible" (Kayvan's words), a real,
-   confirmed problem. A proper fix means auditing essentially every page (dashboard, show page's
-   poster+episode list, the comparison screen's two-column layout, the stats page's win/loss matrix
-   specifically since that one's wide by design, episode detail page, auth pages), likely two
-   implementer dispatches (the ranking-flow pages and the stats page's wide-table content are
-   different shapes of problem), then Kayvan's own hands-on test on a real phone before it's done.
-   Deliberately not started 2026-07-18 — flagged at 71% session usage remaining as too big to fit
-   properly alongside closing the session out cleanly.
+(empty for now — the mobile/responsive item that sat here is resolved down to its actual scope, see
+Bucket 2 item 1 and Bucket 4's new item below. The original "audit every page" framing came from
+Kayvan's own "the mobile version of the website is terrible," which Kayvan walked back 2026-07-18 on
+looking at the live site again — the real, confirmed complaint was one specific bug, not a whole-app
+problem. See History for the full account.)
 
 **"Tier A" — a small batch pulled from an external design review, decided 2026-07-17, now the
 front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
@@ -407,12 +425,18 @@ in Bucket 4, rather than being done piecemeal now.
    should disappear rather than show an empty "Season N" heading; a query matching nothing anywhere
    should show a "No episodes match" message; and a season's "Complete" badge should stay correct even
    when a search hides some of that season's episodes (unit-tested, but worth eyeballing live too).
-3. **Sentry error monitoring, built 2026-07-18, blocked on Kayvan creating a Sentry project** — code
+3. **Show page header mobile overlap fix, built and merged 2026-07-18 (`376d705`), not yet hands-on
+   checked.** See History for the full account (this replaced the old whole-app "mobile is terrible"
+   Bucket 1 item once Kayvan's actual complaint turned out to be this one specific bug). Check on a
+   real phone: open a show with a long title, confirm the title no longer overlaps "Remove show"/
+   "Rank all" — the two now stack vertically (title block above, buttons below) at phone width, and
+   the layout should look exactly as it did before at desktop width.
+4. **Sentry error monitoring, built 2026-07-18, blocked on Kayvan creating a Sentry project** — code
    is merged and verified (build/tests/lint all clean with the DSN unset), but nothing will actually
    report until `NEXT_PUBLIC_SENTRY_DSN` is set locally *and* on Vercel. Once set: trigger a real
    test error (temporarily `throw` in a Server Action, per `.env.local.example`'s note) and confirm
    it shows up in the Sentry dashboard within a minute, then remove the test throw.
-4. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
+5. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
    design. Can't be meaningfully verified by just clicking around today (the 24h throttle means a
    freshly-imported show won't actually re-sync for a day), so the real check is patient rather than
    immediate: next time a tracked show is known to have a new episode/season on TMDB, confirm it
@@ -421,7 +445,7 @@ in Bucket 4, rather than being done piecemeal now.
    (check the `shows` table has a populated `last_synced_at` column) and that a show page still loads
    normally post-push (the added `ensureShowSynced` call is fail-open, so even a broken TMDB call
    shouldn't break the page — but confirm that's actually true live, not just in tests).
-5. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
+6. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
    list (auth, search/import, dashboard, show detail page, the rankings page, cold start,
    comparative placement, re-ranking, removing a show all confirmed working end to end). What's
    genuinely still untested/unconfirmed, carried forward rather than chased right now:
@@ -557,6 +581,18 @@ see Bucket 4.)
     only re-comparing the new episode against the existing All Star order — not yet decided, a
     build-time design call). Not scheduled; a real future item that needs its own design pass before
     it's buildable, not just a build slot.
+16. **Other narrow-viewport candidates spotted during the 2026-07-18 mobile-audit-that-wasn't** — code-
+    reading only, none confirmed as actual pain points (unlike Bucket 2 item 3's show-page-header bug,
+    which Kayvan explicitly confirmed live): `AppHeader`'s nav bar (title + 3 links in one
+    `justify-between` row, no wrap — appears on every authenticated page, so worth a look first if
+    anything here ever gets picked up), the show page's episode list rows (`EpisodeListWithFilters.tsx`
+    — episode number + title + "Ranked date" vs. score/rank/button, same no-wrap shape as the header bug
+    that just got fixed), and the dashboard's "Logged in as {email}" + "Log out" row (same shape again,
+    worse with a long real email address). Everything else checked during that pass (the comparison
+    screen, the stats page's win/loss matrix and season timeline, the episode detail page, the login
+    page) already had some form of responsive handling and looked fine on paper. Deliberately not
+    chased — pick up only if one of these turns out to actually bother Kayvan in real use, same
+    "confirm the real complaint before scoping a fix" lesson this session just learned.
 
 **Bucket 5 — Rework flagged for a later phase, not being worked now:**
 (empty for now)
