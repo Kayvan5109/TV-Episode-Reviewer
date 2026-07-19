@@ -549,24 +549,21 @@ see Bucket 4.)
    it in live search would mean an extra TMDB call per result on every debounced keystroke search —
    Kayvan chose to keep search fast over having this, given episode count is already visible once a
    show's been added.
-9. **A less-silent message on a stale post-back resubmission** — raised 2026-07-17. Right now a
-   stale resubmission (browser back to an already-answered question, submitting again) silently
-   redirects to the show page with no explanation, even if the user's second click was a genuinely
-   different answer than their first — discussed with Kayvan and agreed this is the *correct*
-   behavior (a stale page shouldn't be trusted to write a change, and the deliberate way to change
-   an already-recorded answer is the re-ranking feature, not an accidental stale resubmit), but a
-   brief "this was already ranked, nothing changed" message instead of a silent redirect would be a
-   nice small polish. Not urgent enough to build now.
-10. **Season rankings — redesigned 2026-07-18, still not scheduled.** Original idea (added
-    2026-07-18 from the second design review): rank whole seasons against each other head-to-head,
-    reusing the binary-insertion engine at season granularity via a new comparison UI flow. **Kayvan
-    dropped that mechanism**: instead, a season's ranking is simply *derived* from its own episodes'
-    existing rankings (e.g., average score) rather than a separate season-vs-season comparison
-    process. This shrinks the real remaining scope a lot — `website/src/lib/ranking/stats.ts`'s
-    `seasonAverageScores` (built for the stats page's season-quality heatmap) already computes
-    almost exactly this; a future "season rankings" view would mostly be presenting that same
-    derived data sorted/framed as a ranked list of seasons ("Season 3 is your #1 season"), not new
-    comparison infrastructure or algorithm work. Still backlogged, not picked up this session.
+9. ~~**A less-silent message on a stale post-back resubmission**~~ — raised 2026-07-17, **built and
+   merged 2026-07-18** (`b5db845`, see History and Bucket 2 item 4b): a "This episode was already
+   ranked — nothing changed." message now renders instead of a silent redirect, on whichever page
+   the stale-resubmission redirect lands on. Removed from Bucket 4.
+10. ~~**Season rankings**~~ — **effectively built 2026-07-18** as part of the same-day derived
+    season-rank badge (see History and Bucket 2 item 4c): `website/src/lib/ranking/stats.ts`'s new
+    `rankSeasons` plus a `#N` badge (tooltip: average score) on each season's heading on the show
+    page delivers exactly the "shrunk scope" described below — presenting `seasonAverageScores`'
+    derived data sorted/framed as a ranked list of seasons. Original idea (added 2026-07-18 from the
+    second design review) was to rank whole seasons head-to-head via a new comparison UI flow;
+    Kayvan dropped that mechanism in favor of the derived approach that's now built. Removed from
+    Bucket 4 — not a separate dedicated "season rankings" page, just the badge, which was judged
+    sufficient (a dedicated page would be pure re-presentation of the same data with no new
+    information, and nothing in this feature's original write-up asked for a standalone page
+    specifically). Revisit only if Kayvan wants a fuller standalone view later.
 11. **Import** (IMDb ratings, Letterboxd-style exports, TV Time, Trakt, streaming watch history) —
     added 2026-07-18, same source. Real third-party integration work, one per service, each with its
     own auth/API shape. Whenever picked up, start with a single service rather than all of them.
