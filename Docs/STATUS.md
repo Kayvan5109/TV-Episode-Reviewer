@@ -655,6 +655,39 @@ see Bucket 4.)
     page) already had some form of responsive handling and looked fine on paper. Deliberately not
     chased — pick up only if one of these turns out to actually bother Kayvan in real use, same
     "confirm the real complaint before scoping a fix" lesson this session just learned.
+17. **Pre-populated popular shows on the search page, paired with a genre filter — both added
+    2026-07-18, Kayvan's idea.** Right now `/shows/search` (`website/src/app/shows/search/`) shows
+    nothing until the user types a query (only calls TMDB's `/search/tv`, and only fetches
+    `id`/`name`/`poster_path` per result — see `website/src/lib/tmdb/types.ts`'s `TmdbTvSearchResult`).
+    Idea: show a pre-populated grid of popular shows on that page before any search happens, to help a
+    user who "can't think of anything at the moment," plus a genre filter so a user without a specific
+    show in mind can browse by genre instead. **Confirmed feasible — TMDB does have popularity data**,
+    and both pieces share one underlying endpoint: TMDB's `/discover/tv` supports `sort_by=
+    popularity.desc` (the "popular shows" list, with no genre filter — this is the default/no-filter
+    case) and `with_genres={id}` (the genre filter, same endpoint, same sort). This is a **new TMDB
+    call type** this app doesn't make today (`/search/tv` and `/tv/{id}` are the only two currently
+    wired up — see `website/src/lib/tmdb/client.ts`/`types.ts`), plus TMDB's small, stable genre
+    id-to-name list (`/genre/tv/list`, or just hardcoded since it rarely changes) to build the filter
+    control and translate a selected genre name to the id `with_genres` needs. Real, scoped, buildable
+    — not yet designed in detail (e.g. how many popular shows to show, whether the genre filter also
+    applies once a search query is typed or only to the pre-populated browse view) — not scheduled.
+18. **Tier B: pre-selected episode tags (e.g. "bottle episode," "clip episode") — added 2026-07-18,
+    Kayvan's idea, logged with an explicit flag to discuss further before building, per Kayvan's own
+    request** ("make a note that we should discuss it further before implementation before it comes
+    up"). Users tag their own episodes from a fixed, app-defined list of common episode tropes; once
+    enough episodes have tags, this enables personal metrics like "you rank bottle episodes highly."
+    **Worth reconciling with an existing decision before this gets built, not silently treated as
+    new**: `AppSpec.md`'s Second Design Review Triage already declined a related idea — "general
+    episode-type/theme tagging for community-ranking slices" (same bottle-episode/holiday-episode
+    framing) — for exactly this shape of reason: "no scalable, non-manual data source." That decline
+    was about tagging being *manually curated centrally* (the developer or some curator tagging every
+    episode of every show, which doesn't scale for a solo project) and aimed at *community* slices.
+    This new idea is a different mechanism — each user tags their *own* episodes, self-service, from a
+    constrained pre-set list rather than free-form — which sidesteps the original "who does the manual
+    tagging" objection, but raises new open questions worth discussing before scheduling: how much
+    friction per-episode tagging adds to the core ranking flow, whether the tag list is fixed forever
+    or ever grows, and whether "you rank bottle episodes highly"-style stats are worth the UI surface
+    for a single-user (today) app. Not scheduled; flagged for discussion, not a decided build.
 
 **Bucket 5 — Rework flagged for a later phase, not being worked now:**
 (empty for now)
