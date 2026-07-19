@@ -240,7 +240,9 @@ export interface TimelinePoint {
 }
 
 /**
- * Chronological ordering for the season-timeline chart. Sorts primarily by `air_date` — plain
+ * Chronological comparator shared by `buildSeasonTimelineOrder` (below) and `@/lib/ranking/
+ * rankAllOrder`'s "Rank all" queue ordering — both need the exact same "oldest/earliest first"
+ * semantics, just applied to different callers' data shapes. Sorts primarily by `air_date` — plain
  * string comparison is correct here since the column is always ISO `YYYY-MM-DD`. Episodes missing
  * `air_date` (pre-migration imports) fall back to season/episode order, which is itself already a
  * complete, monotonic ordering over every episode — so an undated episode simply lands in its
@@ -250,7 +252,25 @@ export interface TimelinePoint {
  *
  * Kept deliberately simple: no attempt to interpolate a synthetic date for undated episodes, and no
  * separate "two groups" handling — one comparator, applied uniformly, is enough for a personal-use
- * app at this scale.
+ * app at this scale. Exported (rather than kept private to this module) specifically so callers with
+ * a different data shape than `TimelinePoint`/`TimelineEpisodeInfo` can reuse this exact logic
+ * instead of re-implementing the same fallback rule.
+ */
+export function compareEpisodeChronologically(
+  infoA: TimelineEpisodeInfo,
+  infoB: TimelineEpisodeInfo
+): number {
+  if (infoA.airDate && infoB.airDate && infoA.airDate !== infoB.airDate) {
+    return infoA.airDate < infoB.airDate ? -1 : 1;
+  }
+  if (infoA.seasonNumber !== infoB.seasonNumber) return infoA.seasonNumber - infoB.seasonNumber;
+  return infoA.episodeNumber - infoB.episodeNumber;
+}
+
+/**
+ * Chronological ordering for the season-timeline chart. See `compareEpisodeChronologically` above
+ * for the actual comparison rule; this just applies it to `TimelinePoint`s via their looked-up
+ * `TimelineEpisodeInfo`.
  */
 export function buildSeasonTimelineOrder(
   ranked: readonly TimelinePoint[],
@@ -261,10 +281,6 @@ export function buildSeasonTimelineOrder(
     const infoB = episodeInfoById.get(b.episodeId);
     if (!infoA || !infoB) return 0; // defensive; shouldn't happen — same invariant as `seasonAverageScores`
 
-    if (infoA.airDate && infoB.airDate && infoA.airDate !== infoB.airDate) {
-      return infoA.airDate < infoB.airDate ? -1 : 1;
-    }
-    if (infoA.seasonNumber !== infoB.seasonNumber) return infoA.seasonNumber - infoB.seasonNumber;
-    return infoA.episodeNumber - infoB.episodeNumber;
+    return compareEpisodeChronologically(infoA, infoB);
   });
 }

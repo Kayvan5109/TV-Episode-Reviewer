@@ -5,6 +5,7 @@ import { notFound, redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/serverSession';
 import { AppHeader } from '@/components/AppHeader';
 import { getShowRankingDisplay } from '@/lib/ranking-session';
+import { orderOldestFirst } from '@/lib/ranking/rankAllOrder';
 import { ensureShowSynced } from '@/lib/shows/refreshShow';
 
 import { RemoveShowButton } from './RemoveShowButton';
@@ -31,6 +32,7 @@ interface EpisodeRow {
   season_number: number;
   episode_number: number;
   title: string;
+  air_date: string | null;
 }
 
 const BUCKET_LABELS: Record<string, string> = {
@@ -97,7 +99,7 @@ export default async function ShowDetailPage({
 
   const { data: episodesData, error: episodesError } = await supabase
     .from('episodes')
-    .select('id, season_number, episode_number, title')
+    .select('id, season_number, episode_number, title, air_date')
     .eq('show_id', showId)
     .order('season_number', { ascending: true })
     .order('episode_number', { ascending: true });
@@ -115,6 +117,14 @@ export default async function ShowDetailPage({
   // fetch itself succeeded — an empty/errored episode list has nothing for `getShowRankingDisplay`
   // to say anyway.
   const display = !episodesError && episodes.length > 0 ? await getShowRankingDisplay(showId) : null;
+
+  // "Rank all" entry point: the oldest-by-air-date unranked episode, if any. Only meaningful (and
+  // only rendered) when there's at least one fully-untouched episode left — `display.unranked`
+  // already excludes anything ranked or mid-cold-start, matching the per-episode "Rank" links above.
+  const rankAllEpisodeId =
+    display && !display.done && display.unranked.length > 0
+      ? orderOldestFirst(episodes, display.unranked)[0]
+      : undefined;
 
   const scoreByEpisode = new Map<string, number>();
   const rankByEpisode = new Map<string, number>();
@@ -182,6 +192,14 @@ export default async function ShowDetailPage({
               )}
               {display?.done && (
                 <p className="text-sm font-medium text-green-700 dark:text-green-400">Ranking complete</p>
+              )}
+              {rankAllEpisodeId && (
+                <Link
+                  href={`/shows/${showId}/rank/${rankAllEpisodeId}?mode=rankAll`}
+                  className="text-sm underline"
+                >
+                  Rank all
+                </Link>
               )}
               <Link href={`/shows/${showId}/rankings`} className="text-sm underline">
                 See episodes ranked best to worst

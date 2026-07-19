@@ -119,15 +119,21 @@ function ComparisonColumn({
  *
  * Same pending/error UX as before: interaction is disabled while a submission is in flight, and a
  * thrown error is surfaced as an alert below the row.
+ *
+ * `rankAllMode` is passed straight through to `submitComparison` unchanged — this component makes
+ * no decisions based on it itself, it's purely threaded from the rank page's `mode` search param
+ * down to the action that needs it (see `actions.ts`).
  */
 export function ComparisonPrompt({
   showId,
   subject,
   reference,
+  rankAllMode,
 }: {
   showId: string;
   subject: EpisodeDisplay;
   reference: EpisodeDisplay;
+  rankAllMode: boolean;
 }) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -135,7 +141,7 @@ export function ComparisonPrompt({
   function handlePick(result: ComparisonResult) {
     setError(null);
     startTransition(async () => {
-      const outcome = await submitComparison(showId, subject.id, reference.id, result);
+      const outcome = await submitComparison(showId, subject.id, reference.id, result, rankAllMode);
       if (outcome?.error) {
         setError(outcome.error);
       }

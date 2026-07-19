@@ -101,10 +101,18 @@ function EpisodeColumn({ episode, showId }: { episode: EpisodeRow; showId: strin
  */
 export default async function RankEpisodePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ showId: string; episodeId: string }>;
+  searchParams: Promise<{ mode?: string }>;
 }) {
   const { showId, episodeId } = await params;
+  const { mode } = await searchParams;
+  // "Rank all" mode: set by the show page's "Rank all" link (see `shows/[showId]/page.tsx`) and
+  // threaded down to `ColdStartPicker`/`ComparisonPrompt` so their submissions (`actions.ts`) know
+  // to auto-advance to the next oldest-unranked episode instead of returning to the show page —
+  // see `actions.ts`'s `nextRankAllDestination` for where that actually happens.
+  const rankAllMode = mode === 'rankAll';
 
   const supabase = await createSupabaseServerClient();
   const {
@@ -162,7 +170,13 @@ export default async function RankEpisodePage({
         )}
 
         {!episodesError && episode && (
-          <RankEpisodeStep showId={showId} episodeId={episodeId} episode={episode} episodesById={episodesById} />
+          <RankEpisodeStep
+            showId={showId}
+            episodeId={episodeId}
+            episode={episode}
+            episodesById={episodesById}
+            rankAllMode={rankAllMode}
+          />
         )}
 
         <Link href={`/shows/${showId}`} className="text-sm underline underline-offset-2">
@@ -183,11 +197,13 @@ async function RankEpisodeStep({
   episodeId,
   episode,
   episodesById,
+  rankAllMode,
 }: {
   showId: string;
   episodeId: string;
   episode: EpisodeRow;
   episodesById: Map<string, EpisodeRow>;
+  rankAllMode: boolean;
 }) {
   const step = await getNextStepForEpisode(showId, episodeId);
 
@@ -199,7 +215,12 @@ async function RankEpisodeStep({
     return (
       <div className="flex w-full max-w-4xl flex-col items-center gap-6">
         {reference ? (
-          <ComparisonPrompt showId={showId} subject={episode} reference={reference} />
+          <ComparisonPrompt
+            showId={showId}
+            subject={episode}
+            reference={reference}
+            rankAllMode={rankAllMode}
+          />
         ) : (
           // Defensive fallback only — `step.reference` should always be one of this show's own
           // episodes, already loaded into `episodesById`. Without the reference episode's own
@@ -229,7 +250,7 @@ async function RankEpisodeStep({
     stepContent = (
       <div className="flex w-full max-w-2xl flex-col items-center gap-4">
         <p className="text-sm text-black/60 dark:text-white/60">Did you like this episode?</p>
-        <ColdStartPicker showId={showId} episodeId={episodeId} />
+        <ColdStartPicker showId={showId} episodeId={episodeId} rankAllMode={rankAllMode} />
       </div>
     );
   }
