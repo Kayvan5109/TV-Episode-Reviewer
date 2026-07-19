@@ -8,8 +8,8 @@ import { getShowRankingDisplay } from '@/lib/ranking-session';
 import { orderOldestFirst } from '@/lib/ranking/rankAllOrder';
 import { ensureShowSynced } from '@/lib/shows/refreshShow';
 
+import { EpisodeListWithFilters, type EpisodeWithStatus } from './EpisodeListWithFilters';
 import { RemoveShowButton } from './RemoveShowButton';
-import { ReRankButton } from './ReRankButton';
 
 export const metadata: Metadata = {
   title: 'Show — Episode Ranker',
@@ -33,17 +33,6 @@ interface EpisodeRow {
   episode_number: number;
   title: string;
   air_date: string | null;
-}
-
-const BUCKET_LABELS: Record<string, string> = {
-  liked: 'Liked',
-  neutral: 'Neutral',
-  disliked: 'Disliked',
-};
-
-/** Matches `rank/[episodeId]/page.tsx`'s own `formatEpisode` — used here for `ReRankButton`'s confirm message. */
-function formatEpisode(episode: EpisodeRow): string {
-  return `S${episode.season_number}E${episode.episode_number} — ${episode.title}`;
 }
 
 /**
@@ -106,13 +95,6 @@ export default async function ShowDetailPage({
 
   const episodes = (episodesData ?? []) as EpisodeRow[];
 
-  const seasons = new Map<number, EpisodeRow[]>();
-  for (const episode of episodes) {
-    const seasonEpisodes = seasons.get(episode.season_number) ?? [];
-    seasonEpisodes.push(episode);
-    seasons.set(episode.season_number, seasonEpisodes);
-  }
-
   // Only worth asking for ranking status if there's actually something to rank and the episode
   // fetch itself succeeded — an empty/errored episode list has nothing for `getShowRankingDisplay`
   // to say anyway.
@@ -144,10 +126,22 @@ export default async function ShowDetailPage({
     }
   }
 
-  /** e.g. "Jul 15" — concise, no year (all ranking data is recent enough that the year is noise). */
-  function formatRankedDate(iso: string): string {
-    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  }
+  // Flattened, plain-object view of `episodes` + the four ranking-status lookups above, handed to
+  // `EpisodeListWithFilters` (a Client Component) instead of the `Map`s themselves — plain
+  // objects/arrays serialize cleanly as Server→Client Component props, and the client component
+  // needs a flat array to re-derive filtered season groupings live as the user filters/searches
+  // (see that file's own doc comment).
+  const episodesWithStatus: EpisodeWithStatus[] = episodes.map((episode) => ({
+    id: episode.id,
+    season_number: episode.season_number,
+    episode_number: episode.episode_number,
+    title: episode.title,
+    air_date: episode.air_date,
+    score: scoreByEpisode.get(episode.id),
+    rank: rankByEpisode.get(episode.id),
+    bucket: bucketByEpisode.get(episode.id),
+    createdAt: createdAtByEpisode.get(episode.id),
+  }));
 
   return (
     <>
@@ -225,83 +219,7 @@ export default async function ShowDetailPage({
         )}
 
         {!episodesError && episodes.length > 0 && (
-          <div className="flex w-full max-w-2xl flex-col gap-6">
-            {[...seasons.entries()]
-              .sort(([a], [b]) => a - b)
-              .map(([seasonNumber, seasonEpisodes]) => (
-                <div key={seasonNumber} className="flex flex-col gap-2">
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-lg font-medium">Season {seasonNumber}</h2>
-                    {seasonEpisodes.every(
-                      (ep) => scoreByEpisode.has(ep.id) || bucketByEpisode.has(ep.id)
-                    ) && (
-                      <span className="rounded bg-black/5 px-2 py-1 text-xs text-black/70 dark:bg-white/10 dark:text-white/70">
-                        Complete
-                      </span>
-                    )}
-                  </div>
-                  <ol className="flex flex-col gap-2">
-                    {seasonEpisodes.map((episode) => {
-                      const score = scoreByEpisode.get(episode.id);
-                      const rank = rankByEpisode.get(episode.id);
-                      const bucket = bucketByEpisode.get(episode.id);
-                      const createdAt = createdAtByEpisode.get(episode.id);
-                      return (
-                        <li
-                          key={episode.id}
-                          className="flex items-center justify-between gap-3 rounded border border-black/10 p-2 text-sm dark:border-white/20"
-                        >
-                          <span className="flex gap-3">
-                            <span className="text-black/50 dark:text-white/50">
-                              E{episode.episode_number}
-                            </span>
-                            <Link
-                              href={`/shows/${showId}/episodes/${episode.id}`}
-                              className="underline underline-offset-2"
-                            >
-                              {episode.title}
-                            </Link>
-                            {createdAt !== undefined && (
-                              <span className="text-black/40 dark:text-white/40">
-                                Ranked {formatRankedDate(createdAt)}
-                              </span>
-                            )}
-                          </span>
-                          {score !== undefined ? (
-                            <span className="flex items-center gap-3">
-                              <span className="font-medium">
-                                {score.toFixed(1)}
-                                {rank !== undefined && (
-                                  <span className="ml-1 font-normal text-black/50 dark:text-white/50">
-                                    (#{rank})
-                                  </span>
-                                )}
-                              </span>
-                              <ReRankButton
-                                showId={showId}
-                                episodeId={episode.id}
-                                episodeLabel={formatEpisode(episode)}
-                              />
-                            </span>
-                          ) : bucket !== undefined ? (
-                            <span className="rounded bg-black/5 px-2 py-1 text-xs text-black/70 dark:bg-white/10 dark:text-white/70">
-                              {BUCKET_LABELS[bucket] ?? bucket}
-                            </span>
-                          ) : (
-                            <Link
-                              href={`/shows/${showId}/rank/${episode.id}`}
-                              className="rounded bg-black px-3 py-1 text-xs text-white dark:bg-white dark:text-black"
-                            >
-                              Rank
-                            </Link>
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ol>
-                </div>
-              ))}
-          </div>
+          <EpisodeListWithFilters showId={showId} episodes={episodesWithStatus} />
         )}
       </div>
     </>
