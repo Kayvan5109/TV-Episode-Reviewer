@@ -296,6 +296,27 @@ same way (a fresh `signOut` throw): **confirmed working, error appeared promptly
 the temporary throw (`e865c96`), sign-out restored to normal. Sentry error monitoring is now genuinely
 done — see Bucket 2 for the final state.
 
+**Session ended here at Kayvan's request, 70%+ usage.** Everything above is merged to `main` and pushed
+to `origin` — `git status`/`git log` clean, local matches remote (`4c224f3` at close). Nothing left
+uncommitted, no background agents left running. This was a long, productive session: built and shipped
+"Rank all" mode (plus a button restyle and a later returnToRank gap fix), season filter + episode
+search, a mobile header-overlap fix (after correcting an overstated "whole app is terrible" framing down
+to its real, confirmed scope), a stale-resubmission notice, a derived season-rank badge, a dashboard
+#1-episode display, and the popular-shows-browse-plus-genre-filter search page — plus found and fixed a
+real, non-obvious Sentry/Vercel platform bug (Edge-only flush safety net silently no-op'ing on the
+Node.js runtime this app actually uses) while verifying Sentry error monitoring end-to-end. Also did a
+fair amount of pure docs work: consolidated Tier B into one real queued Bucket 4 entry, extended All
+Stars Mode's write-up with two new pieces of detail and resolved its visibility question, logged three
+new backlog ideas (popular shows/genre filter — since built — plus Tier B episode tagging, explicitly
+flagged for discussion first), and reconciled two Bucket 4 items that a build had already delivered but
+hadn't been marked done. **The Punch List below is current as of session close**: Bucket 1 empty, Bucket
+2 has a full page of hands-on-check items (all built and merged, none yet confirmed by Kayvan on live
+Vercel) plus the two still-genuinely-blocked items (TMDB re-sync needs a real new episode to test
+against; nothing else is blocked), Bucket 3 empty, Bucket 4 has real backlog including Tier B (queued,
+not started) and All Stars Mode (queued, needs its own design pass). Kayvan said there's a new task
+coming next, separate from this punch list — next session (or the rest of this one) should pick that up
+fresh rather than assuming it's a continuation of tonight's queue.
+
 ## Punch List (ranked — read this section first for "what's actually next")
 
 Every open item gets triaged into exactly one bucket the moment it surfaces, per
@@ -879,6 +900,20 @@ it through" is worth a deliberate re-check, not silent acceptance.
   scope of what was asked. Worth a second look next session, especially the choice to trust Supabase
   with auth/account security rather than building that in-house — see `TechArchitecture.md`'s Why
   section and `Risks.md` for the reasoning.
+- 2026-07-18: **A strong, clean data point for the recurring `isolation: "worktree"` bug logged
+  above** — not a judgment call itself, but worth recording since it directly bears on whether that
+  bug is still a live concern. This session ran 10 separate `isolation: "worktree"` implementer/fixer
+  dispatches (Rank all mode, its button restyle, season filter/search, the mobile header fix, the
+  bundled rank-all-gap/stale-notice/season-badge fix, the dashboard #1-episode display, the
+  popular-shows search page, the Sentry test throw, the Sentry flush fix, and the Sentry revert) plus
+  one independent-reviewer dispatch (no worktree needed, made no changes). Checked `git worktree list`
+  after every single one, per the standing mitigation — **all 10 got real, properly registered,
+  correctly isolated worktrees with zero recurrence of either failure mode** (no missing-`.git`
+  worktree, no "verified real worktree but edits still land on `main`"). Not proof the bug is fixed —
+  this project's own history shows it can go quiet for a stretch and then recur (see the entries
+  above, spanning 2026-07-15 through 2026-07-18) — but a genuinely good run worth having on record
+  rather than only remembering the bad ones. Keep checking `git worktree list` after every dispatch
+  regardless; don't relax that habit based on this one clean session.
 
 ## History
 
