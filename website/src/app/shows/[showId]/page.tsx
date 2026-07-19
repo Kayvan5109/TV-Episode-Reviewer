@@ -193,14 +193,6 @@ export default async function ShowDetailPage({
               {display?.done && (
                 <p className="text-sm font-medium text-green-700 dark:text-green-400">Ranking complete</p>
               )}
-              {rankAllEpisodeId && (
-                <Link
-                  href={`/shows/${showId}/rank/${rankAllEpisodeId}?mode=rankAll`}
-                  className="text-sm underline"
-                >
-                  Rank all
-                </Link>
-              )}
               <Link href={`/shows/${showId}/rankings`} className="text-sm underline">
                 See episodes ranked best to worst
               </Link>
@@ -209,7 +201,17 @@ export default async function ShowDetailPage({
               </Link>
             </div>
           </div>
-          <RemoveShowButton showId={showId} showTitle={showRow.title} />
+          <div className="flex flex-col items-end gap-2">
+            <RemoveShowButton showId={showId} showTitle={showRow.title} />
+            {rankAllEpisodeId && (
+              <Link
+                href={`/shows/${showId}/rank/${rankAllEpisodeId}?mode=rankAll`}
+                className="whitespace-nowrap rounded border border-blue-600 px-3 py-1.5 text-sm text-blue-600 dark:border-blue-400 dark:text-blue-400"
+              >
+                Rank all
+              </Link>
+            )}
+          </div>
         </div>
 
         {episodesError && (
