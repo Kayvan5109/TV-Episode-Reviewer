@@ -14,6 +14,10 @@ import { createSupabaseServerClient } from '@/lib/supabase/serverSession';
  * `createSupabaseServerClient`.
  */
 export async function signOut() {
+  // TEMPORARY — verifying Sentry error capture in production. Remove this line once confirmed in the
+  // Sentry dashboard (see website/.env.local.example's note on NEXT_PUBLIC_SENTRY_DSN).
+  throw new Error('sentry test');
+
   const supabase = await createSupabaseServerClient();
   await supabase.auth.signOut();
 
