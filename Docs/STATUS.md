@@ -265,6 +265,37 @@ to resolve title/season for those ids, rendered as "Best: {title} (S{season})" o
 progress-bar row. 291/291 tests, PM independently re-verified, fast-forward merged and pushed
 (`2a3c78a`). Not yet hands-on checked — added to Bucket 2, Bucket 1 empty again.
 
+**Same session, at 50% usage: recommended and built the search page's popular-shows browse view +
+genre filter** (Bucket 4 item 17). Before recommending, reconciled two Bucket 4 items that today's
+earlier bundled build had already delivered but hadn't been marked done (season rankings, the
+stale-resubmission message) — both removed from the backlog. Kayvan logged three more backlog ideas
+mid-session (popular-shows-on-search paired with a genre filter, both confirmed feasible via TMDB's
+`/discover/tv`; a Tier B episode-tagging idea explicitly flagged for discussion before building, cross-
+referenced against a prior related-but-distinct decline) — all logged in Bucket 4 before picking the
+next build. Classified the search-page work as correctness-critical (real networking/API integration,
+new TMDB proxy routes, and this project has a real prior incident here — `CriticalReview.md` Finding
+3.1, an open TMDB proxy) — implementer + independent reviewer, not just PM self-review.
+
+**Same session: Kayvan set up a real Sentry project and redeployed**, unblocking Bucket 2's Sentry
+item. First test (a temporary `throw` in `signOut`, per this app's own documented verification steps)
+showed the error in Vercel's own function logs but **not** in Sentry — investigated by reading
+`@sentry/nextjs`/`@sentry/core`'s actual installed source (not assumed from training data, since this
+app's own `AGENTS.md` warns this Next.js version may differ): found `Sentry.captureRequestError`
+(what `onRequestError` was wired to) never awaits its own flush — it delegates to `@sentry/core`'s
+`vercelWaitUntil`, which is hard-gated to `typeof EdgeRuntime === 'string'`, i.e. **only does anything
+on Vercel's Edge runtime**. This app's Server Actions/Route Handlers/Server Components all run on the
+standard **Node.js** runtime, so the flush silently no-ops and Vercel freezes the function before the
+abandoned promise can send anything. A second data point refined this mid-investigation: the original
+test event *did* eventually arrive in Sentry, ~6 minutes late — meaning the pipe/DSN/project setup was
+never actually broken, just unreliably delayed (the flush apparently completes if the underlying
+connection happens to stay alive long enough, with no guarantee). **Fixed** by replacing the direct
+`onRequestError = Sentry.captureRequestError` export in `website/src/instrumentation.ts` with a thin
+async wrapper that calls it, then explicitly `await`s `Sentry.flush(2000)` itself — Next.js's own
+bundled docs for `onRequestError` document exactly this "await your async work" pattern. Re-tested the
+same way (a fresh `signOut` throw): **confirmed working, error appeared promptly this time.** Reverted
+the temporary throw (`e865c96`), sign-out restored to normal. Sentry error monitoring is now genuinely
+done — see Bucket 2 for the final state.
+
 ## Punch List (ranked — read this section first for "what's actually next")
 
 Every open item gets triaged into exactly one bucket the moment it surfaces, per
@@ -462,11 +493,15 @@ in Bucket 4, rather than being done piecemeal now.
    one comparatively-ranked episode should show "Best: {episode title} (S{season})" on its progress
    row on the dashboard, matching that show's actual #1 episode (compare against the show page's own
    ranking display); a show still fully in cold start (nothing ranked yet) should show nothing new.
-6. **Sentry error monitoring, built 2026-07-18, blocked on Kayvan creating a Sentry project** — code
-   is merged and verified (build/tests/lint all clean with the DSN unset), but nothing will actually
-   report until `NEXT_PUBLIC_SENTRY_DSN` is set locally *and* on Vercel. Once set: trigger a real
-   test error (temporarily `throw` in a Server Action, per `.env.local.example`'s note) and confirm
-   it shows up in the Sentry dashboard within a minute, then remove the test throw.
+6. ~~**Sentry error monitoring**~~ — **fully done, 2026-07-18.** Kayvan created a Sentry project and
+   set `NEXT_PUBLIC_SENTRY_DSN` locally and on Vercel. First verification attempt surfaced a real bug
+   (see History for the full investigation): `onRequestError`'s flush never actually completed on
+   Vercel's Node.js runtime (`@sentry/core`'s `vercelWaitUntil` only works on Edge runtime), so
+   events either never arrived or arrived minutes late. Fixed in `website/src/instrumentation.ts` —
+   `onRequestError` now explicitly `await`s `Sentry.flush(2000)` instead of relying on the SDK's
+   broken auto-detection. Re-verified with a second test throw: confirmed prompt delivery this time.
+   Temporary test throw reverted (`e865c96`), sign-out restored. Removed from Bucket 2 — nothing left
+   to do here.
 7. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
    design. Can't be meaningfully verified by just clicking around today (the 24h throttle means a
    freshly-imported show won't actually re-sync for a day), so the real check is patient rather than
@@ -488,6 +523,14 @@ in Bucket 4, rather than being done piecemeal now.
    - Direct-URL edge cases: visiting an already-ranked episode's rank URL directly.
    These are all low-priority, not blocking — pick up naturally during normal use rather than a
    dedicated pass.
+9. **Popular shows browse view + genre filter on `/shows/search`, built and merged 2026-07-18
+   (`9c9df76`), not yet hands-on checked.** See History for the full design. Implementer +
+   independent reviewer both passed (auth gate traced line-by-line on both new routes, no security
+   regression in the shared "already added" annotation logic, 302/302 tests). Check on live Vercel:
+   visiting `/shows/search` with an empty query shows a grid of popular shows (not a blank page); a
+   genre filter narrows that grid; typing a search query hides the browse grid and falls back to
+   normal search (unchanged); clearing the query back to empty brings the browse grid back; "Add
+   show"/"Rank episodes →" behave identically on browse results as on search results.
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
 (empty for now — every question posed 2026-07-17 is resolved: remove-show/re-ranking's scope, the
@@ -652,22 +695,13 @@ see Bucket 4.)
     page) already had some form of responsive handling and looked fine on paper. Deliberately not
     chased — pick up only if one of these turns out to actually bother Kayvan in real use, same
     "confirm the real complaint before scoping a fix" lesson this session just learned.
-17. **Pre-populated popular shows on the search page, paired with a genre filter — both added
-    2026-07-18, Kayvan's idea.** Right now `/shows/search` (`website/src/app/shows/search/`) shows
-    nothing until the user types a query (only calls TMDB's `/search/tv`, and only fetches
-    `id`/`name`/`poster_path` per result — see `website/src/lib/tmdb/types.ts`'s `TmdbTvSearchResult`).
-    Idea: show a pre-populated grid of popular shows on that page before any search happens, to help a
-    user who "can't think of anything at the moment," plus a genre filter so a user without a specific
-    show in mind can browse by genre instead. **Confirmed feasible — TMDB does have popularity data**,
-    and both pieces share one underlying endpoint: TMDB's `/discover/tv` supports `sort_by=
-    popularity.desc` (the "popular shows" list, with no genre filter — this is the default/no-filter
-    case) and `with_genres={id}` (the genre filter, same endpoint, same sort). This is a **new TMDB
-    call type** this app doesn't make today (`/search/tv` and `/tv/{id}` are the only two currently
-    wired up — see `website/src/lib/tmdb/client.ts`/`types.ts`), plus TMDB's small, stable genre
-    id-to-name list (`/genre/tv/list`, or just hardcoded since it rarely changes) to build the filter
-    control and translate a selected genre name to the id `with_genres` needs. Real, scoped, buildable
-    — not yet designed in detail (e.g. how many popular shows to show, whether the genre filter also
-    applies once a search query is typed or only to the pre-populated browse view) — not scheduled.
+17. ~~**Pre-populated popular shows on the search page, paired with a genre filter**~~ — added
+    2026-07-18, Kayvan's idea, **built and merged 2026-07-18** (`9c9df76`, see History and Bucket 2
+    item 9 for the full account). TMDB's `/discover/tv` (`sort_by=popularity.desc`, optional
+    `with_genres`) powers both pieces via two new proxy routes (`/api/tmdb/discover`,
+    `/api/tmdb/genres`), first page only (~20 results, no pagination for v1). The genre filter was
+    scoped to apply only to the browse view, never to typed search results (TMDB's `/search/tv` has
+    no genre param). Removed from Bucket 4 — now in Bucket 2 for hands-on check.
 18. **Tier B: pre-selected episode tags (e.g. "bottle episode," "clip episode") — added 2026-07-18,
     Kayvan's idea, logged with an explicit flag to discuss further before building, per Kayvan's own
     request** ("make a note that we should discuss it further before implementation before it comes
