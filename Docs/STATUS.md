@@ -336,6 +336,26 @@ built or scheduled from this** — it's purely a reference for whenever the visu
 ended here for real, at Kayvan's request ("end for the day") — `git status`/`git log` confirmed clean,
 local matches remote (`78b9edb`), no worktrees or background agents left running, nothing to push.
 
+**New session, 2026-07-19.** Opened per procedure (`STATUS.md` first). With Bucket 1/3 empty and
+Bucket 2's remaining items blocked on Kayvan's own hands-on verification, this was a genuine "pick a
+direction" moment rather than an obvious next build — presented options rather than picking
+unilaterally. Kayvan chose two non-building tasks: do the pending Bucket 2 hands-on checks, and
+investigate the recurring worktree-isolation bug (Deviations Awaiting Review). Both done, no new app
+code touched this stretch:
+- **Hands-on checks**: Kayvan confirmed all three checkable Bucket 2 items working on live Vercel —
+  the rank-all/stale-notice/season-badge bundle (`b5db845`), the dashboard #1-episode display
+  (`2a3c78a`), and the popular-shows browse + genre filter (`9c9df76`) — all removed from Bucket 2.
+  One new backlog item surfaced: the stale-resubmission notice works correctly but should be more
+  visually prominent (Bucket 4 item 19). The throttled TMDB re-sync remains the only still-blocked
+  Bucket 2 item (needs a real new episode/season on TMDB to test against).
+- **Worktree bug investigation**: confirmed this is a real, currently-open upstream Claude Code bug
+  (GitHub #76197, filed 2026-07-09), not anything specific to this project or machine — see the new
+  2026-07-19 entry in Deviations Awaiting Review for the full account, including a caught fabrication
+  (a first research pass claimed a specific fixed version number that didn't hold up under a real
+  GitHub search — corrected before it could be trusted). No fix available from this side; the
+  project's existing mitigation is already the right response. Nothing left to action here.
+Bucket 2 is now down to just the TMDB re-sync (externally blocked). Bucket 1 and 3 remain empty.
+
 ## Punch List (ranked — read this section first for "what's actually next")
 
 Every open item gets triaged into exactly one bucket the moment it surfaces, per
@@ -518,21 +538,15 @@ in Bucket 4, rather than being done piecemeal now.
 3. ~~**Show page header mobile overlap fix, built and merged 2026-07-18 (`376d705`)**~~ — **hands-on
    confirmed working on a real phone, same session** (long title no longer overlaps "Remove show"/
    "Rank all"; desktop layout unchanged). Removed from Bucket 2.
-4. **Three small builds, merged 2026-07-18 (`b5db845`), not yet hands-on checked**: (a) the "Rank
-   all" `returnToRank` gap above; (b) a "This episode was already ranked — nothing changed." message
-   on a stale resubmission (browser-back double-submit), shown on whichever page the redirect lands
-   on; (c) a derived season-rank badge (`#N`, tooltip shows the season's average score) next to each
-   season's heading on the show page. Check on live Vercel: (a) rank-all mode, click a title,
-   return, confirm auto-advance still works; (b) deliberately resubmit a stale ranking answer (e.g.
-   browser back after answering, submit again) and confirm the notice shows instead of a silent
-   redirect; (c) a show with 2+ ranked seasons shows `#1`/`#2`/etc. badges next to season headings,
-   matching the seasons' actual average scores (also coexists sensibly with the "Complete" badge on
-   seasons where both apply).
-5. **Dashboard #1-episode display, built and merged 2026-07-18 (`2a3c78a`), not yet hands-on
-   checked.** See History for the full design. Check on live Vercel: any tracked show with at least
-   one comparatively-ranked episode should show "Best: {episode title} (S{season})" on its progress
-   row on the dashboard, matching that show's actual #1 episode (compare against the show page's own
-   ranking display); a show still fully in cold start (nothing ranked yet) should show nothing new.
+4. ~~**Three small builds, merged 2026-07-18 (`b5db845`)**~~ — **hands-on confirmed working on live
+   Vercel, 2026-07-19**: (a) rank-all mode, click a title mid-session, "↩ Return to ranking" lands
+   back on the same question, auto-advance intact; (b) stale resubmission (browser-back
+   double-submit) shows "This episode was already ranked — nothing changed." instead of a silent
+   redirect; (c) season-rank `#N` badges match actual season average scores. Removed from Bucket 2.
+   Kayvan flagged (b)'s notice should be **more visually prominent** than it is today — logged as a
+   new Bucket 4 backlog item rather than fixed now.
+5. ~~**Dashboard #1-episode display, built and merged 2026-07-18 (`2a3c78a`)**~~ — **hands-on
+   confirmed working on live Vercel, 2026-07-19.** Removed from Bucket 2.
 6. ~~**Sentry error monitoring**~~ — **fully done, 2026-07-18.** Kayvan created a Sentry project and
    set `NEXT_PUBLIC_SENTRY_DSN` locally and on Vercel. First verification attempt surfaced a real bug
    (see History for the full investigation): `onRequestError`'s flush never actually completed on
@@ -563,14 +577,10 @@ in Bucket 4, rather than being done piecemeal now.
    - Direct-URL edge cases: visiting an already-ranked episode's rank URL directly.
    These are all low-priority, not blocking — pick up naturally during normal use rather than a
    dedicated pass.
-9. **Popular shows browse view + genre filter on `/shows/search`, built and merged 2026-07-18
-   (`9c9df76`), not yet hands-on checked.** See History for the full design. Implementer +
-   independent reviewer both passed (auth gate traced line-by-line on both new routes, no security
-   regression in the shared "already added" annotation logic, 302/302 tests). Check on live Vercel:
-   visiting `/shows/search` with an empty query shows a grid of popular shows (not a blank page); a
-   genre filter narrows that grid; typing a search query hides the browse grid and falls back to
-   normal search (unchanged); clearing the query back to empty brings the browse grid back; "Add
-   show"/"Rank episodes →" behave identically on browse results as on search results.
+9. ~~**Popular shows browse view + genre filter on `/shows/search`, built and merged 2026-07-18
+   (`9c9df76`)**~~ — **hands-on confirmed working on live Vercel, 2026-07-19** (empty-query browse
+   grid, genre filter, fallback to normal search on typing, Add/Rank buttons all behave correctly).
+   Removed from Bucket 2.
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
 (empty for now — every question posed 2026-07-17 is resolved: remove-show/re-ranking's scope, the
@@ -773,6 +783,10 @@ see Bucket 4.)
     friction per-episode tagging adds to the core ranking flow, whether the tag list is fixed forever
     or ever grows, and whether "you rank bottle episodes highly"-style stats are worth the UI surface
     for a single-user (today) app. Not scheduled; flagged for discussion, not a decided build.
+19. **Stale-resubmission notice isn't prominent enough** — raised 2026-07-19 by Kayvan during hands-on
+    check of Bucket 2 item 4b (the "This episode was already ranked — nothing changed." message).
+    Functionally correct, confirmed working, but the display itself should be made more visually
+    prominent. Not scoped or built yet — small, low-risk display-only tweak whenever picked up.
 
 **Bucket 5 — Rework flagged for a later phase, not being worked now:**
 (empty for now)
@@ -947,6 +961,33 @@ it through" is worth a deliberate re-check, not silent acceptance.
   above, spanning 2026-07-15 through 2026-07-18) — but a genuinely good run worth having on record
   rather than only remembering the bad ones. Keep checking `git worktree list` after every dispatch
   regardless; don't relax that habit based on this one clean session.
+- 2026-07-19: **Confirmed this is a real, currently-open upstream Claude Code bug, not something
+  specific to this project or its environment.** Kayvan asked to investigate the worktree bug at the
+  start of a fresh session. Two research passes, cross-checked against each other rather than trusted
+  individually (per this project's own "verify subagent claims before recommending from them" habit):
+  a `claude-code-guide` agent's first pass claimed a specific documented fix landed in v2.1.203/v2.1.210
+  — those version numbers and changelog details could not be verified and read as fabricated
+  (hallucinated specifics dressed up as documentation), so **do not trust that claim**. A direct
+  `WebSearch`/`WebFetch` pass against the real `anthropics/claude-code` GitHub repo found the actual
+  match: **Issue #76197**, "Agent isolation:'worktree' cwd pin drifts back to main repo mid-run —
+  git-mutating commands land in wrong repo" — filed 2026-07-09, still open, no fix or maintainer-
+  confirmed workaround as of this check. Its description matches this project's exact symptom: cwd is
+  correctly pinned to a real, verified worktree at launch, holds for ordinary tool calls, then silently
+  drifts back to the main repo checkout partway through the agent's run, so later
+  edits/git-mutating-commands land on `main` instead — not a setup failure, a mid-run drift. The
+  reporter hit it on **macOS**, not Windows, which is a useful negative data point: this project had
+  been implicitly wondering whether it was Windows/OneDrive-specific (already ruled out for the
+  *separate* deletion-failure symptom, see the 2026-07-18 entry above) — this confirms the drift
+  variant is cross-platform, a harness-level bug, not an artifact of this machine or repo. Several
+  related open issues exist (#42282, #57767, #50109, #40968) describing adjacent worktree-CWD
+  reliability problems, suggesting this whole area is a known-weak part of the harness rather than one
+  isolated bug. **No fix available from this side** — it's upstream, not something to patch in this
+  repo. Practical conclusion: the project's existing mitigation (check `git worktree list` and
+  `git status` on `main` after every dispatch, reconcile in place if edits landed on `main` and match
+  the agent's reported scope with nothing unrelated mixed in) is already the correct response and
+  matches what the GitHub issue's own reporter had to do manually — there isn't a better mitigation
+  available today. Worth periodically re-checking issue #76197 for a status change, not worth further
+  local investigation.
 
 ## History
 
