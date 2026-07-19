@@ -235,10 +235,15 @@ vertically below the `sm` breakpoint (title block above, buttons below, each ful
 overlap regardless of title length) and restores today's exact side-by-side row at `sm:` and up, reusing
 the identical `flex-col ... sm:flex-row` pattern already proven on the comparison screen
 (`ComparisonPrompt.tsx`). One-line class change, verified (286/286 tests, clean typecheck/lint), merged
-and pushed (`376d705`). **Not yet hands-on confirmed on a real phone** — added to Bucket 2. The broader
-"audit every page" mobile item is downgraded accordingly (see Punch List) — the other candidates found
-during the aborted audit (`AppHeader`, episode list rows, dashboard's login row) are real but unconfirmed
-as actual pain points, not the same "the whole site is terrible" scope this file previously carried.
+and pushed (`376d705`). The broader "audit every page" mobile item is downgraded accordingly (see Punch
+List) — the other candidates found during the aborted audit (`AppHeader`, episode list rows, dashboard's
+login row) are real but unconfirmed as actual pain points, not the same "the whole site is terrible"
+scope this file previously carried. Kayvan confirmed both this fix (on a real phone) and the season
+filter/search build (from earlier this same session) working — both removed from Bucket 2. At 30%
+session usage spent, asked what's next; **queue is genuinely empty** (Bucket 1 and 3 both empty, Bucket
+2's remaining items are either blocked on Kayvan — Sentry project creation — or blocked on time/external
+state — the TMDB re-sync needs a show to actually get a new episode/season), so this is a real "pick
+something" moment rather than an obvious next item.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -417,20 +422,12 @@ in Bucket 4, rather than being done piecemeal now.
    through that round-trip. Narrow (only hit by clicking a title *during* a rank-all session, and
    recoverable by just clicking "Rank all" again from the show page). Worth deciding whether it's
    worth a small follow-up fix, or leave logged here since it's cheap to work around by hand.
-2. **Season filter + episode search on the show page, built and merged 2026-07-18 (`41468bb`), not
-   yet hands-on checked.** See History for the full design. Check on live Vercel, on a show with
-   multiple seasons: the season `<select>` narrows the visible list to just that season; the search
-   box filters live (no submit) on title fragments, bare episode numbers, and "sXeY"-style codes;
-   the two combine (picking a season then searching narrows further); a season fully hidden by search
-   should disappear rather than show an empty "Season N" heading; a query matching nothing anywhere
-   should show a "No episodes match" message; and a season's "Complete" badge should stay correct even
-   when a search hides some of that season's episodes (unit-tested, but worth eyeballing live too).
-3. **Show page header mobile overlap fix, built and merged 2026-07-18 (`376d705`), not yet hands-on
-   checked.** See History for the full account (this replaced the old whole-app "mobile is terrible"
-   Bucket 1 item once Kayvan's actual complaint turned out to be this one specific bug). Check on a
-   real phone: open a show with a long title, confirm the title no longer overlaps "Remove show"/
-   "Rank all" — the two now stack vertically (title block above, buttons below) at phone width, and
-   the layout should look exactly as it did before at desktop width.
+2. ~~**Season filter + episode search on the show page, built and merged 2026-07-18
+   (`41468bb`)**~~ — **hands-on confirmed working on live Vercel, same session.** Removed from
+   Bucket 2.
+3. ~~**Show page header mobile overlap fix, built and merged 2026-07-18 (`376d705`)**~~ — **hands-on
+   confirmed working on a real phone, same session** (long title no longer overlaps "Remove show"/
+   "Rank all"; desktop layout unchanged). Removed from Bucket 2.
 4. **Sentry error monitoring, built 2026-07-18, blocked on Kayvan creating a Sentry project** — code
    is merged and verified (build/tests/lint all clean with the DSN unset), but nothing will actually
    report until `NEXT_PUBLIC_SENTRY_DSN` is set locally *and* on Vercel. Once set: trigger a real
