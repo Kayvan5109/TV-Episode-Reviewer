@@ -97,17 +97,38 @@ async function nextRankAllDestination(showId: string): Promise<string> {
 }
 
 /**
+ * Appends a query param to a URL that may or may not already have one — `nextRankAllDestination`
+ * can hand back either a bare `/shows/${showId}` path or one that already carries `?mode=rankAll`,
+ * so this can't just always use `?` or always use `&`.
+ */
+function appendQueryParam(url: string, key: string, value: string): string {
+  return `${url}${url.includes('?') ? '&' : '?'}${key}=${value}`;
+}
+
+/**
  * Redirects after an 'alreadyRanked' result — the one place this decision is made, shared by both
  * the catch-block stale-resubmission checks and the success-path checks in both `submitColdStart`
  * and `submitComparison` below (four call sites total, all needing identical behavior here). Plain
  * "back to the show page" when `rankAllMode` is false (unchanged single-episode behavior); straight
  * into the next unranked episode's rank page, still in rank-all mode, when it's true.
  *
+ * `notice`, when passed, is appended to the computed destination as a `notice` query param (e.g.
+ * `'staleResubmission'` -> `&notice=staleResubmission`) — used only by the two catch-block call
+ * sites below, where the resubmission that triggered this redirect never actually got recorded (the
+ * original `submitColdStartAnswer`/`submitComparisonAnswer` call threw), unlike the two success-path
+ * call sites, which reach 'alreadyRanked' immediately after a real, successful write and so have
+ * nothing stale to report.
+ *
  * Declared to return `Promise<never>` since `redirect()` always throws — it never actually returns
  * a value to its caller, matching every other `redirect(...)` call site in this file.
  */
-async function redirectAfterAlreadyRanked(showId: string, rankAllMode: boolean): Promise<never> {
-  redirect(rankAllMode ? await nextRankAllDestination(showId) : `/shows/${showId}`);
+async function redirectAfterAlreadyRanked(
+  showId: string,
+  rankAllMode: boolean,
+  notice?: 'staleResubmission'
+): Promise<never> {
+  const destination = rankAllMode ? await nextRankAllDestination(showId) : `/shows/${showId}`;
+  redirect(notice ? appendQueryParam(destination, 'notice', notice) : destination);
 }
 
 /**
@@ -150,7 +171,7 @@ export async function submitColdStart(
     // through to the original error below, unchanged.
     const current = await getNextStepForEpisode(showId, episodeId).catch(() => null);
     if (current?.type === 'alreadyRanked') {
-      await redirectAfterAlreadyRanked(showId, rankAllMode);
+      await redirectAfterAlreadyRanked(showId, rankAllMode, 'staleResubmission');
     }
 
     return {
@@ -195,7 +216,7 @@ export async function submitComparison(
     // falls through unchanged.
     const current = await getNextStepForEpisode(showId, subjectId).catch(() => null);
     if (current?.type === 'alreadyRanked') {
-      await redirectAfterAlreadyRanked(showId, rankAllMode);
+      await redirectAfterAlreadyRanked(showId, rankAllMode, 'staleResubmission');
     }
 
     return {

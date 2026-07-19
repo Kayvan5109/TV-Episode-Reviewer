@@ -17,6 +17,20 @@ export interface EpisodeWithStatus {
   createdAt?: string;
 }
 
+/**
+ * One season's derived rank relative to the show's other seasons (see `@/lib/ranking/stats`'s
+ * `rankSeasons`), flattened to a plain array — same "plain array/object, not a `Map`" convention
+ * this file's own `episodes` prop already follows for crossing the Server->Client Component
+ * boundary. Only seasons with at least one ranked episode appear here at all (`seasonAverageScores`'
+ * own contract) — a season with zero ranked episodes has no average to rank and gets no badge.
+ */
+export interface SeasonRankInfo {
+  seasonNumber: number;
+  /** 1-based rank among this show's seasons that have at least one ranked episode; 1 = best. */
+  rank: number;
+  averageScore: number;
+}
+
 const BUCKET_LABELS: Record<string, string> = {
   liked: 'Liked',
   neutral: 'Neutral',
@@ -100,16 +114,28 @@ export function filterEpisodes(
  * renders. Keeping these separate is the whole point — the "Complete" badge must reflect the
  * season's real completeness regardless of what the search box currently hides (see this task's
  * spec), so it's computed from `fullSeasons`, never from the filtered list.
+ *
+ * `seasonRanks` (see `SeasonRankInfo`) drives a second badge, "#N", next to a season's "Complete"
+ * badge when both apply — same "a property of the season as a whole" reasoning as "Complete": it's
+ * derived from every ranked episode in the season regardless of the current search/season filter,
+ * so it's looked up by season number directly rather than recomputed from any filtered grouping.
  */
 export function EpisodeListWithFilters({
   showId,
   episodes,
+  seasonRanks,
 }: {
   showId: string;
   episodes: EpisodeWithStatus[];
+  seasonRanks: SeasonRankInfo[];
 }) {
   const [selectedSeason, setSelectedSeason] = useState<number | 'all'>('all');
   const [query, setQuery] = useState('');
+
+  const seasonRankByNumber = useMemo(
+    () => new Map(seasonRanks.map((info) => [info.seasonNumber, info])),
+    [seasonRanks]
+  );
 
   const seasonNumbers = useMemo(
     () => [...new Set(episodes.map((episode) => episode.season_number))].sort((a, b) => a - b),
@@ -158,69 +184,80 @@ export function EpisodeListWithFilters({
       ) : (
         [...filteredSeasons.entries()]
           .sort(([a], [b]) => a - b)
-          .map(([seasonNumber, seasonEpisodes]) => (
-            <div key={seasonNumber} className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-medium">Season {seasonNumber}</h2>
-                {isSeasonComplete(fullSeasons.get(seasonNumber) ?? []) && (
-                  <span className="rounded bg-black/5 px-2 py-1 text-xs text-black/70 dark:bg-white/10 dark:text-white/70">
-                    Complete
-                  </span>
-                )}
-              </div>
-              <ol className="flex flex-col gap-2">
-                {seasonEpisodes.map((episode) => (
-                  <li
-                    key={episode.id}
-                    className="flex items-center justify-between gap-3 rounded border border-black/10 p-2 text-sm dark:border-white/20"
-                  >
-                    <span className="flex gap-3">
-                      <span className="text-black/50 dark:text-white/50">E{episode.episode_number}</span>
-                      <Link
-                        href={`/shows/${showId}/episodes/${episode.id}`}
-                        className="underline underline-offset-2"
-                      >
-                        {episode.title}
-                      </Link>
-                      {episode.createdAt !== undefined && (
-                        <span className="text-black/40 dark:text-white/40">
-                          Ranked {formatRankedDate(episode.createdAt)}
-                        </span>
-                      )}
+          .map(([seasonNumber, seasonEpisodes]) => {
+            const seasonRank = seasonRankByNumber.get(seasonNumber);
+            return (
+              <div key={seasonNumber} className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-medium">Season {seasonNumber}</h2>
+                  {isSeasonComplete(fullSeasons.get(seasonNumber) ?? []) && (
+                    <span className="rounded bg-black/5 px-2 py-1 text-xs text-black/70 dark:bg-white/10 dark:text-white/70">
+                      Complete
                     </span>
-                    {episode.score !== undefined ? (
-                      <span className="flex items-center gap-3">
-                        <span className="font-medium">
-                          {episode.score.toFixed(1)}
-                          {episode.rank !== undefined && (
-                            <span className="ml-1 font-normal text-black/50 dark:text-white/50">
-                              (#{episode.rank})
-                            </span>
-                          )}
+                  )}
+                  {seasonRank && (
+                    <span
+                      title={`Average score: ${seasonRank.averageScore.toFixed(1)}`}
+                      className="rounded bg-black/5 px-2 py-1 text-xs text-black/70 dark:bg-white/10 dark:text-white/70"
+                    >
+                      #{seasonRank.rank}
+                    </span>
+                  )}
+                </div>
+                <ol className="flex flex-col gap-2">
+                  {seasonEpisodes.map((episode) => (
+                    <li
+                      key={episode.id}
+                      className="flex items-center justify-between gap-3 rounded border border-black/10 p-2 text-sm dark:border-white/20"
+                    >
+                      <span className="flex gap-3">
+                        <span className="text-black/50 dark:text-white/50">E{episode.episode_number}</span>
+                        <Link
+                          href={`/shows/${showId}/episodes/${episode.id}`}
+                          className="underline underline-offset-2"
+                        >
+                          {episode.title}
+                        </Link>
+                        {episode.createdAt !== undefined && (
+                          <span className="text-black/40 dark:text-white/40">
+                            Ranked {formatRankedDate(episode.createdAt)}
+                          </span>
+                        )}
+                      </span>
+                      {episode.score !== undefined ? (
+                        <span className="flex items-center gap-3">
+                          <span className="font-medium">
+                            {episode.score.toFixed(1)}
+                            {episode.rank !== undefined && (
+                              <span className="ml-1 font-normal text-black/50 dark:text-white/50">
+                                (#{episode.rank})
+                              </span>
+                            )}
+                          </span>
+                          <ReRankButton
+                            showId={showId}
+                            episodeId={episode.id}
+                            episodeLabel={formatEpisode(episode)}
+                          />
                         </span>
-                        <ReRankButton
-                          showId={showId}
-                          episodeId={episode.id}
-                          episodeLabel={formatEpisode(episode)}
-                        />
-                      </span>
-                    ) : episode.bucket !== undefined ? (
-                      <span className="rounded bg-black/5 px-2 py-1 text-xs text-black/70 dark:bg-white/10 dark:text-white/70">
-                        {BUCKET_LABELS[episode.bucket] ?? episode.bucket}
-                      </span>
-                    ) : (
-                      <Link
-                        href={`/shows/${showId}/rank/${episode.id}`}
-                        className="rounded bg-black px-3 py-1 text-xs text-white dark:bg-white dark:text-black"
-                      >
-                        Rank
-                      </Link>
-                    )}
-                  </li>
-                ))}
-              </ol>
-            </div>
-          ))
+                      ) : episode.bucket !== undefined ? (
+                        <span className="rounded bg-black/5 px-2 py-1 text-xs text-black/70 dark:bg-white/10 dark:text-white/70">
+                          {BUCKET_LABELS[episode.bucket] ?? episode.bucket}
+                        </span>
+                      ) : (
+                        <Link
+                          href={`/shows/${showId}/rank/${episode.id}`}
+                          className="rounded bg-black px-3 py-1 text-xs text-white dark:bg-white dark:text-black"
+                        >
+                          Rank
+                        </Link>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            );
+          })
       )}
     </div>
   );

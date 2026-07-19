@@ -6,9 +6,10 @@ import { createSupabaseServerClient } from '@/lib/supabase/serverSession';
 import { AppHeader } from '@/components/AppHeader';
 import { getShowRankingDisplay } from '@/lib/ranking-session';
 import { orderOldestFirst } from '@/lib/ranking/rankAllOrder';
+import { rankSeasons, seasonAverageScores } from '@/lib/ranking/stats';
 import { ensureShowSynced } from '@/lib/shows/refreshShow';
 
-import { EpisodeListWithFilters, type EpisodeWithStatus } from './EpisodeListWithFilters';
+import { EpisodeListWithFilters, type EpisodeWithStatus, type SeasonRankInfo } from './EpisodeListWithFilters';
 import { RemoveShowButton } from './RemoveShowButton';
 
 export const metadata: Metadata = {
@@ -53,13 +54,21 @@ interface EpisodeRow {
  * isn't scoped to "shows this particular user added". Ranking status, by contrast, is genuinely
  * per-user (`getShowRankingDisplay`, from `@/lib/ranking-session`, scopes it via the signed-in
  * user itself).
+ *
+ * Accepts an optional `notice` query param — set to `'staleResubmission'` by `actions.ts`'s
+ * `redirectAfterAlreadyRanked` when a stale resubmission (e.g. browser back to an already-answered
+ * ranking question) landed here instead of recording anything, so the user isn't left wondering
+ * whether their click did something. Informational, not an error — nothing actually went wrong.
  */
 export default async function ShowDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ showId: string }>;
+  searchParams: Promise<{ notice?: string }>;
 }) {
   const { showId } = await params;
+  const { notice } = await searchParams;
 
   const supabase = await createSupabaseServerClient();
   const {
@@ -126,6 +135,24 @@ export default async function ShowDetailPage({
     }
   }
 
+  // Derived season ranking (`Docs/STATUS.md`'s "season rank badge" item): each season's rank
+  // relative to the show's other seasons, purely from already-ranked episodes' scores — no new
+  // comparison flow, no schema change. `episodeSeasonById` follows the same pattern
+  // `stats/page.tsx` already uses for the same purpose. Only seasons with at least one ranked
+  // episode get an average (`seasonAverageScores`'s own contract), so a season with zero ranked
+  // episodes simply has no entry in `seasonRanks` below and renders no badge.
+  const episodeSeasonById = new Map(episodes.map((episode) => [episode.id, episode.season_number]));
+  const seasonAverages = display ? seasonAverageScores(display.ranked, episodeSeasonById) : [];
+  const seasonRankById = rankSeasons(seasonAverages);
+  // Plain array, not a `Map` — same "plain array/object, not a `Map`" convention
+  // `EpisodeListWithFilters`'s own doc comment already established for its `episodes` prop, since
+  // this also crosses the Server->Client Component boundary.
+  const seasonRanks: SeasonRankInfo[] = seasonAverages.map(({ seasonNumber, averageScore }) => ({
+    seasonNumber,
+    rank: seasonRankById.get(seasonNumber)!,
+    averageScore,
+  }));
+
   // Flattened, plain-object view of `episodes` + the four ranking-status lookups above, handed to
   // `EpisodeListWithFilters` (a Client Component) instead of the `Map`s themselves — plain
   // objects/arrays serialize cleanly as Server→Client Component props, and the client component
@@ -147,6 +174,11 @@ export default async function ShowDetailPage({
     <>
       <AppHeader />
       <div className="flex flex-1 flex-col items-center gap-6 p-8">
+        {notice === 'staleResubmission' && (
+          <p className="w-full max-w-2xl text-sm text-black/60 dark:text-white/60">
+            This episode was already ranked — nothing changed.
+          </p>
+        )}
         <div className="flex w-full max-w-2xl flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-center gap-4">
             {showRow.poster_url ? (
@@ -219,7 +251,7 @@ export default async function ShowDetailPage({
         )}
 
         {!episodesError && episodes.length > 0 && (
-          <EpisodeListWithFilters showId={showId} episodes={episodesWithStatus} />
+          <EpisodeListWithFilters showId={showId} episodes={episodesWithStatus} seasonRanks={seasonRanks} />
         )}
       </div>
     </>

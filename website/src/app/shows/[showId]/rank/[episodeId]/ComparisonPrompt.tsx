@@ -72,18 +72,23 @@ function PosterButton({
  * (`returnToRankId`), not this column's own `episode.id` — the reference side has no pending
  * ranking step of its own to return to, only the subject does (see the doc comment on
  * `ComparisonPrompt` below). Shared between the `subject` and `reference` sides; only the data and
- * the resulting `ComparisonResult` differ.
+ * the resulting `ComparisonResult` differ. When `rankAllMode` is true, `&mode=rankAll` is also
+ * appended to the title link — otherwise the round trip through the episode detail page's "Return
+ * to ranking" link would silently drop the user out of rank-all mode (see that page's own `mode`
+ * search param handling, and `rank/[episodeId]/page.tsx`'s `EpisodeColumn` doing the same thing).
  */
 function ComparisonColumn({
   episode,
   showId,
   returnToRankId,
+  rankAllMode,
   disabled,
   onPick,
 }: {
   episode: EpisodeDisplay;
   showId: string;
   returnToRankId: string;
+  rankAllMode: boolean;
   disabled: boolean;
   onPick: () => void;
 }) {
@@ -91,7 +96,9 @@ function ComparisonColumn({
     <div className="flex w-full max-w-xs flex-col items-center gap-2 text-center">
       <PosterButton episode={episode} disabled={disabled} onClick={onPick} />
       <Link
-        href={`/shows/${showId}/episodes/${episode.id}?returnToRank=${returnToRankId}`}
+        href={`/shows/${showId}/episodes/${episode.id}?returnToRank=${returnToRankId}${
+          rankAllMode ? '&mode=rankAll' : ''
+        }`}
         className="text-lg font-medium underline underline-offset-2"
       >
         {formatEpisode(episode)}
@@ -156,6 +163,7 @@ export function ComparisonPrompt({
           episode={subject}
           showId={showId}
           returnToRankId={subject.id}
+          rankAllMode={rankAllMode}
           disabled={isPending}
           onPick={() => handlePick(resultForClickedSide('subject'))}
         />
@@ -173,6 +181,7 @@ export function ComparisonPrompt({
           episode={reference}
           showId={showId}
           returnToRankId={subject.id}
+          rankAllMode={rankAllMode}
           disabled={isPending}
           onPick={() => handlePick(resultForClickedSide('reference'))}
         />
