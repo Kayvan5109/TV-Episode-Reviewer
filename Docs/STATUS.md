@@ -544,14 +544,25 @@ see Bucket 4.)
     currently-unaddressed gap (nothing today prevents seeing a whole show's ranked episode list
     regardless of watch progress) — the gap itself hasn't gone away, but Kayvan chose to drop the
     feature idea rather than keep it queued.
-14. **Collections — moved here from Tier A item 4, 2026-07-18, at Kayvan's request** ("its a social
-    aspect"). Previously scoped as a private-only v1 (shareable version deliberately deferred, since
-    that needs public-link infrastructure that doesn't exist yet); Kayvan chose to fold the whole
-    feature into Tier B instead of building a private-only stopgap now, since the *full* (shareable)
-    version's schema and design already exist in `AppSpec.md`'s "Tier B Detailed Design — Social
-    Layer" (`collections`/`collection_items` tables, `/collections` management page, `/c/[shareToken]`
-    public view) — building it once as part of that effort avoids a private-only version now that
-    would need retrofitting for sharing later. Not scheduled; picked up whenever Tier B itself is.
+14. **Tier B — the social layer as a whole, confirmed 2026-07-18 as a real queued item ("should be in
+    the queue to be worked on as well, although not right now").** Full design already exists and is
+    ready to build from whenever it's scheduled — see `AppSpec.md`'s "Tier B Detailed Design — Social
+    Layer" (2026-07-17) for the complete schema/pages/flows. Scope: friends/following + comparing
+    rankings against people you follow, a "community rank" shown alongside "your rank" on episode
+    pages plus a Discover page built on aggregate cross-user data (trending shows, biggest community
+    disagreements, hidden gems), a numeric "taste similarity" score between two users, and shareable
+    collections (`collections`/`collection_items` tables, `/collections` management page,
+    `/c/[shareToken]` public view — this absorbs what was originally Tier A item 4/Collections,
+    **moved here 2026-07-18 at Kayvan's request** rather than built as a private-only stopgap, since
+    the full shareable version's schema already exists in the same Tier B design and a private-only
+    v1 would just need retrofitting later). **One carve-out, already decided**: per-episode
+    discussion/comments/polls — originally part of Tier B's design (`episode_comments`) — is
+    **declined outright**, not just deferred, per the Second Design Review Triage (moderation burden
+    for a solo developer with no moderation tooling; see `AppSpec.md`). Everything else in Tier B
+    still stands. This is a genuine identity shift (every table today is strictly private-per-user
+    via RLS, zero exceptions) gated behind one deliberate decision — "does this app grow a public/
+    social layer at all?" — not something to approve piecemeal. Not scheduled; confirmed real and
+    worth keeping visible in this queue, picked up whenever that decision is made.
 15. **"All Stars Mode" (name TBD)** — added 2026-07-18, Kayvan's idea, placed here (PM's call): a
     much bigger, more open-ended item than most of this bucket, closer in kind to Tier B than a
     small backlog entry, so it's logged with its real scope rather than understated. Once a user has
