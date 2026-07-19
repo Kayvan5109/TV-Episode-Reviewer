@@ -152,6 +152,41 @@ much bigger, not-yet-designed future item (needs new comparison infrastructure, 
 #1 episode ties at score 10 today — can't be built as a pure derived view the way season rankings
 was). Next session opens directly into Bucket 1, item 1.
 
+**New session, 2026-07-18 (continued same date).** Opened straight into Bucket 1 item 1 ("Rank all"
+mode) per the prior session's own instruction. Grounded the feasible-mechanism sketch already in this
+file against the actual code first (`rank/[episodeId]/page.tsx`, `actions.ts`, `session.ts`, the show
+page, `stats.ts`'s air-date comparator) rather than dispatching from the summary alone — confirmed the
+sketch was accurate and buildable as written. Dispatched one implementer agent (`isolation:
+"worktree"`); it built and self-verified cleanly (272/272 tests, clean typecheck/lint/build), and
+`git worktree list` confirmed real isolation the whole time — no recurrence of the worktree-isolation
+bug this dispatch. PM independently re-ran typecheck/lint/tests in the worktree before merging (not
+just trusting the agent's self-report), reviewed the full diff against the confirmed design, then
+fast-forward-merged and pushed (`63cc4ba`). Classified as navigation/control-flow (not
+correctness-critical — no schema or algorithm changes), so implementer + PM review was the right
+pattern, same as items 10/11, not the full independent-reviewer pipeline.
+**What was built**: a "Rank all" link on the show page (shown whenever `display.unranked.length > 0`),
+targeting the oldest-unranked episode by air date (`lib/ranking/rankAllOrder.ts`'s `orderOldestFirst`,
+reusing `stats.ts`'s season-timeline comparator, now extracted as `compareEpisodeChronologically`
+specifically so both callers share one fallback rule). The rank route reads a new `?mode=rankAll`
+search param and threads it down through `ColdStartPicker`/`ComparisonPrompt` into `actions.ts`; the
+one control-flow change is in the `alreadyRanked` branch of `submitColdStart`/`submitComparison` (4
+call sites, now unified into one `redirectAfterAlreadyRanked` helper) — in rank-all mode this redirects
+into the next oldest-unranked episode's rank page instead of the show page, ending naturally on the
+show page once nothing unranked remains. The existing "Return to show page" link (always rendered
+regardless of step) is the only exit affordance, exactly as this file predicted — no new UI beyond the
+one entry link, deliberately minimal.
+**One real gap surfaced by the implementer, not fixed yet, worth a look**: episode titles are
+clickable mid-ranking (item 10, `returnToRank`) and link to the episode detail page's "↩ Return to
+ranking" link — that round-trip does not carry `?mode=rankAll` through, so a user who clicks an episode
+title while in rank-all mode and then clicks back into ranking will silently land back in single-episode
+mode instead of continuing the auto-advance queue. Narrow (only hit by clicking a title *during* a
+rank-all session), not a correctness bug (nothing breaks, you just have to click "Rank all" again from
+the show page), not fixed in this dispatch since it touches a file outside the specified scope
+(episode detail page's `returnToRank` handling) — logged in Bucket 2 alongside the hands-on check
+below rather than chased immediately.
+Now in **Bucket 2** for Kayvan's hands-on check on live Vercel (needs a show with at least one unranked
+episode) — not yet tested. Bucket 1 now has just item 2 (mobile/responsive) left.
+
 ## Punch List (ranked — read this section first for "what's actually next")
 
 Every open item gets triaged into exactly one bucket the moment it surfaces, per
@@ -159,35 +194,10 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence:**
-1. **"Rank all" mode — added 2026-07-18, Kayvan's idea, confirmed highest priority for next
-   session.** A button on the show page that starts an auto-advancing ranking session: click it,
-   land on the ranking screen (cold-start or comparison, whichever applies) for the *oldest*
-   unranked episode by air date; after answering, automatically advance straight to the next-oldest
-   unranked episode's ranking screen, repeating — a frictionless way to rank many episodes in one
-   sitting instead of clicking "Rank" individually every time.
-   **Feasible mechanism (not yet built, a real design worth confirming at build time, but this
-   session's own work already lays the groundwork)**: this app already tried and deliberately
-   removed a similar "whole-show auto-advance" flow once before (see `rank/[episodeId]/page.tsx`'s
-   own doc comment) — hands-on testing found it gave no way to pick a specific episode, no way to
-   see rankings mid-show, and no way back out. This new version avoids the first two complaints by
-   being *opt-in* (the existing per-episode picker on the show page stays fully available
-   alongside it, untouched) and needs to deliberately solve the third (an exit point mid-session) —
-   worth confirming explicitly at build time rather than assuming. The existing
-   `/shows/[showId]/rank/[episodeId]` route already always renders a "Return to show page" link
-   regardless of step, so if "Rank all" mode is built as a query-param-driven variant of that same
-   route (e.g. `?mode=rankAll`, the same pattern item 10's `returnToRank` param already established
-   this session) rather than a new route, that escape hatch comes along for free. Ordering ("oldest
-   unranked episode by air date") can likely reuse or closely mirror `website/src/lib/ranking/
-   stats.ts`'s `buildSeasonTimelineOrder` (already built this session: air-date-primary sort with a
-   documented season/episode-order fallback for episodes missing `air_date`). The one new piece of
-   control-flow logic: when the current episode's step becomes `alreadyRanked` *and* the rank-all
-   mode flag is present, redirect to the next-oldest unranked episode's rank URL (carrying the same
-   mode flag) instead of showing the static "already ranked" message a normal single-episode visit
-   would show. Doesn't touch the ranking algorithm/scoring itself — pure navigation/control-flow
-   layered on top of already-idempotent, already-working routes, similar risk class to item 10.
-2. **Mobile/responsive fix — confirmed by Kayvan 2026-07-18, now second priority behind "Rank all"
-   mode above** (moved here from Bucket 4, where it was previously the sole next-session priority).
-   Not just a "check" — "the mobile version of the website is terrible" (Kayvan's words), a real,
+1. **Mobile/responsive fix — confirmed by Kayvan 2026-07-18, the sole remaining Bucket 1 item now
+   that "Rank all" mode is built** (see History; moved here originally from Bucket 4, where it was
+   previously the sole next-session priority). Not just a "check" — "the mobile version of the
+   website is terrible" (Kayvan's words), a real,
    confirmed problem. A proper fix means auditing essentially every page (dashboard, show page's
    poster+episode list, the comparison screen's two-column layout, the stats page's win/loss matrix
    specifically since that one's wide by design, episode detail page, auth pages), likely two
@@ -350,12 +360,24 @@ this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of t
 in Bucket 4, rather than being done piecemeal now.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **Sentry error monitoring, built 2026-07-18, blocked on Kayvan creating a Sentry project** — code
+1. **"Rank all" mode, built and merged 2026-07-18 (`63cc4ba`), not yet hands-on checked.** See
+   History for the full design. Check on live Vercel: click "Rank all" on a show with at least one
+   unranked episode, confirm it lands on that episode's ranking screen, answer it, confirm it
+   auto-advances straight to the next-oldest-unranked episode (no click back to the show page in
+   between), and confirm it lands cleanly back on the show page once every episode is ranked.
+   **Known gap, not yet fixed**: clicking an episode title mid-rank-all-session (the comparison or
+   cold-start screen's title link, item 10's `returnToRank`) and then clicking "↩ Return to ranking"
+   on the episode detail page drops out of rank-all mode silently — `?mode=rankAll` isn't carried
+   through that round-trip. Narrow (only hit by clicking a title *during* a rank-all session, and
+   recoverable by just clicking "Rank all" again from the show page), not fixed in the same dispatch
+   since it touches the episode detail page's `returnToRank` handling, outside that dispatch's scoped
+   file list. Worth deciding whether it's worth a small follow-up fix once it's been felt hands-on.
+2. **Sentry error monitoring, built 2026-07-18, blocked on Kayvan creating a Sentry project** — code
    is merged and verified (build/tests/lint all clean with the DSN unset), but nothing will actually
    report until `NEXT_PUBLIC_SENTRY_DSN` is set locally *and* on Vercel. Once set: trigger a real
    test error (temporarily `throw` in a Server Action, per `.env.local.example`'s note) and confirm
    it shows up in the Sentry dashboard within a minute, then remove the test throw.
-2. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
+3. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
    design. Can't be meaningfully verified by just clicking around today (the 24h throttle means a
    freshly-imported show won't actually re-sync for a day), so the real check is patient rather than
    immediate: next time a tracked show is known to have a new episode/season on TMDB, confirm it
@@ -364,7 +386,7 @@ in Bucket 4, rather than being done piecemeal now.
    (check the `shows` table has a populated `last_synced_at` column) and that a show page still loads
    normally post-push (the added `ensureShowSynced` call is fail-open, so even a broken TMDB call
    shouldn't break the page — but confirm that's actually true live, not just in tests).
-3. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
+4. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
    list (auth, search/import, dashboard, show detail page, the rankings page, cold start,
    comparative placement, re-ranking, removing a show all confirmed working end to end). What's
    genuinely still untested/unconfirmed, carried forward rather than chased right now:
