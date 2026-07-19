@@ -257,7 +257,13 @@ confirmed via `git merge-base` that the agent's own branch never touched `STATUS
 Merged and pushed (`b5db845`). Not yet hands-on checked — added to Bucket 2. Kayvan then resolved the
 All-Star list's open visibility question (public, via the same `rankings_visibility` toggle as the rest
 of Tier B, no special case) and added a new top-priority idea — the dashboard showing each tracked
-show's #1 episode next to its progress bar — now Bucket 1 item 1.
+show's #1 episode next to its progress bar — placed in Bucket 1 as item 1, then immediately asked to
+build it. One implementer dispatch: reused `getShowRankingDisplay`'s already-computed `ranked[0]`
+(best-to-worst by construction) for each show's #1 episode id, added one new **batched** query
+(`episodes.in('id', [...])`, not one query per show — this page didn't touch `episodes` at all before)
+to resolve title/season for those ids, rendered as "Best: {title} (S{season})" on the existing
+progress-bar row. 291/291 tests, PM independently re-verified, fast-forward merged and pushed
+(`2a3c78a`). Not yet hands-on checked — added to Bucket 2, Bucket 1 empty again.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -266,24 +272,12 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence:**
-1. **Dashboard: show each tracked show's #1-ranked episode — added 2026-07-18, Kayvan's idea,
-   confirmed top priority for next build.** On the dashboard's "My Shows" list
-   (`website/src/app/dashboard/page.tsx`), under each show's name, to the right of that show's
-   existing progress bar row (`{percent}% ({rankedCount}/{total})`), display the title and season of
-   that show's current #1-ranked episode (e.g. something like "Best: Ozymandias (S5)" — exact copy/
-   format is a build-time call, not pinned down here). Only meaningful for a show with at least one
-   comparatively-ranked episode (`display.ranked.length > 0`, i.e. `getShowRankingDisplay`'s `ranked`
-   array is non-empty) — a show still fully in cold start has no #1 yet and should show nothing new.
-   **Feasible mechanism**: the dashboard already calls `getShowRankingDisplay` per tracked show to
-   build `progressByShowId` — `display.ranked[0]` is already that show's #1 episode (rank 1) once
-   `ranked.length > 0`, no new query type needed, just carrying `episodeId` through and resolving it
-   to title/season via a batched episode-title fetch (the dashboard doesn't currently fetch
-   `episodes` at all, only `shows`/`user_shows` — this adds one new batched query, e.g. `.in('id',
-   [...top episode ids across all tracked shows])`, not one query per show). **Worth noting, not
-   acting on yet**: this is exactly the "each show's #1 episode" data Bucket 4 item 15 (All Stars
-   Mode) will also need — no shared code to write now since All Stars isn't scheduled, but whoever
-   builds All Stars later should check whether this dashboard feature already has reusable plumbing
-   before re-deriving it from scratch.
+(empty for now — the dashboard #1-episode item that sat here is built, see Bucket 2 item 1. **Worth
+remembering, not acting on yet**: this is exactly the "each show's #1 episode" data Bucket 4 item 15
+(All Stars Mode) will also need — no shared code was written now since All Stars isn't scheduled, but
+whoever builds All Stars later should check `website/src/app/dashboard/page.tsx`'s
+`topEpisodeIdByShowId`/batched-episode-lookup approach for reusable plumbing before re-deriving it from
+scratch.)
 
 **"Tier A" — a small batch pulled from an external design review, decided 2026-07-17, now the
 front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
@@ -463,12 +457,17 @@ in Bucket 4, rather than being done piecemeal now.
    redirect; (c) a show with 2+ ranked seasons shows `#1`/`#2`/etc. badges next to season headings,
    matching the seasons' actual average scores (also coexists sensibly with the "Complete" badge on
    seasons where both apply).
-5. **Sentry error monitoring, built 2026-07-18, blocked on Kayvan creating a Sentry project** — code
+5. **Dashboard #1-episode display, built and merged 2026-07-18 (`2a3c78a`), not yet hands-on
+   checked.** See History for the full design. Check on live Vercel: any tracked show with at least
+   one comparatively-ranked episode should show "Best: {episode title} (S{season})" on its progress
+   row on the dashboard, matching that show's actual #1 episode (compare against the show page's own
+   ranking display); a show still fully in cold start (nothing ranked yet) should show nothing new.
+6. **Sentry error monitoring, built 2026-07-18, blocked on Kayvan creating a Sentry project** — code
    is merged and verified (build/tests/lint all clean with the DSN unset), but nothing will actually
    report until `NEXT_PUBLIC_SENTRY_DSN` is set locally *and* on Vercel. Once set: trigger a real
    test error (temporarily `throw` in a Server Action, per `.env.local.example`'s note) and confirm
    it shows up in the Sentry dashboard within a minute, then remove the test throw.
-6. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
+7. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
    design. Can't be meaningfully verified by just clicking around today (the 24h throttle means a
    freshly-imported show won't actually re-sync for a day), so the real check is patient rather than
    immediate: next time a tracked show is known to have a new episode/season on TMDB, confirm it
@@ -477,7 +476,7 @@ in Bucket 4, rather than being done piecemeal now.
    (check the `shows` table has a populated `last_synced_at` column) and that a show page still loads
    normally post-push (the added `ensureShowSynced` call is fail-open, so even a broken TMDB call
    shouldn't break the page — but confirm that's actually true live, not just in tests).
-7. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
+8. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
    list (auth, search/import, dashboard, show detail page, the rankings page, cold start,
    comparative placement, re-ranking, removing a show all confirmed working end to end). What's
    genuinely still untested/unconfirmed, carried forward rather than chased right now:
