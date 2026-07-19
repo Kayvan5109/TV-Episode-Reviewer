@@ -593,7 +593,21 @@ see Bucket 4.)
    `.env.local` state). **Needs Kayvan to create a free Sentry project and set this env var** (see
    the next chat message for exact steps) before any errors actually get reported.
 5. **Visual design** — still zero design polish, bare Tailwind defaults throughout. Flagged
-   2026-07-16 as a real gap before wider testing, deliberately deferred past piece 2b.
+   2026-07-16 as a real gap before wider testing, deliberately deferred past piece 2b. **Reconfirmed
+   2026-07-18: Kayvan wants this held off until all pages are added**, not started piecemeal now.
+   Two concrete ideas captured for whenever this is picked up:
+   - **Dashboard show cards**: rather than a binary "highlight fully-done shows green," the card's
+     whole background should fill with green proportional to that show's ranking progress percent —
+     at 100% ranked, the entire card is green. Kayvan's explicit preference over the simpler binary
+     treatment.
+   - **Show page episode rows**: color each episode row as a true heatmap by that episode's relative
+     score within the show — green highest, red lowest, yellow middle, shaded gradient between —
+     mirroring the stats page's existing season-quality heatmap but at per-episode granularity.
+   Same session, dispatched a research agent (read-only, no build) to read this project's full doc set
+   plus the actual current UI code and produce an exhaustive, categorized list of design-direction
+   questions for Kayvan to answer before this gets scoped — see chat for the resulting list once it
+   lands. Not scheduled; this backlog item stays open until that Q&A happens and a real design pass is
+   deliberately picked up.
 6. ~~Small-show exact score precision~~ — **superseded 2026-07-17, fix built 2026-07-18**: the
    specific 3-episode all-neutral example (scores 10/8.7/7.4) led to a real, decided fix — see
    `DevelopmentPlan.md`'s Discussion section and History 2026-07-18. That fix substantially shrinks
