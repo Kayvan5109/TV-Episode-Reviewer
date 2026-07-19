@@ -19,6 +19,25 @@ export interface TmdbTvSearchResponse {
 }
 
 /**
+ * Raw shape (subset) of the GET /discover/tv response envelope — identical to
+ * `TmdbTvSearchResponse` (both endpoints return the same `results: TmdbTvSearchResult[]` envelope,
+ * with the same `id`/`name`/`poster_path` fields this app reads), aliased under its own name rather
+ * than duplicated so route code reads naturally regardless of which TMDB endpoint it's calling.
+ */
+export type TmdbDiscoverResponse = TmdbTvSearchResponse;
+
+/** Raw shape of one TV genre from GET /genre/tv/list. */
+export interface TmdbGenre {
+  id: number;
+  name: string;
+}
+
+/** Raw shape of the GET /genre/tv/list response envelope. */
+export interface TmdbGenreListResponse {
+  genres: TmdbGenre[];
+}
+
+/**
  * Raw shape (subset) of GET /tv/{series_id} ("show details"). Used only server-side, when
  * importing a show's full episode list — `number_of_seasons` is what drives looping over every
  * season rather than assuming season 1 is the only one.

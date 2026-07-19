@@ -1,12 +1,12 @@
 'use client';
 
-import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { ShowSearchResultWithStatus } from '@/lib/shows/searchAnnotation';
 import { debounce, type Debounced } from '@/lib/utils/debounce';
 
-import { AddShowButton } from './AddShowButton';
+import { BrowseShows } from './BrowseShows';
+import { ShowResultRow } from './ShowResultRow';
 
 /** How long to wait after the user stops typing before firing a search — see `debounce.ts`. */
 const SEARCH_DEBOUNCE_MS = 300;
@@ -26,6 +26,12 @@ const SEARCH_DEBOUNCE_MS = 300;
  *
  * An `AbortController` per request cancels any earlier in-flight request when a newer one starts
  * (and on unmount), so a slow earlier response can never overwrite a newer one's results.
+ *
+ * When the query is empty (initial load, or cleared back to empty), renders `BrowseShows` — a
+ * popular-shows grid with its own genre filter — instead of nothing. Typing anything hides that
+ * browse view and falls through to the search-results flow above, unchanged from before; clearing
+ * the input back to empty brings the browse view back. The two views share `ShowResultRow` for
+ * rendering an individual result, so they always look the same.
  */
 export function ShowSearchForm() {
   const [query, setQuery] = useState('');
@@ -139,57 +145,32 @@ export function ShowSearchForm() {
         )}
       </div>
 
-      {status === 'error' && (
-        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
-          {errorMessage}
-        </p>
-      )}
+      {query.trim() === '' ? (
+        <BrowseShows />
+      ) : (
+        <>
+          {status === 'error' && (
+            <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+              {errorMessage}
+            </p>
+          )}
 
-      {status !== 'error' && results !== null && results.length === 0 && (
-        <p className="text-sm text-black/60 dark:text-white/60">
-          No shows found for &quot;{searchedQuery}&quot;.
-        </p>
-      )}
+          {status !== 'error' && results !== null && results.length === 0 && (
+            <p className="text-sm text-black/60 dark:text-white/60">
+              No shows found for &quot;{searchedQuery}&quot;.
+            </p>
+          )}
 
-      {results !== null && results.length > 0 && (
-        <ul className="flex flex-col gap-3">
-          {results.map((result) => (
-            <li
-              key={result.tmdbShowId}
-              className="flex items-center justify-between gap-4 rounded border border-black/10 p-3 dark:border-white/20"
-            >
-              <div className="flex items-center gap-3">
-                {result.posterUrl ? (
-                  // External TMDB CDN image; not worth wiring next/image's remote-pattern config
-                  // for a Phase 1 MVP list thumbnail.
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={result.posterUrl}
-                    alt=""
-                    width={46}
-                    height={69}
-                    className="h-[69px] w-[46px] rounded object-cover"
-                  />
-                ) : (
-                  <div className="flex h-[69px] w-[46px] items-center justify-center rounded bg-black/10 text-xs text-black/40 dark:bg-white/10 dark:text-white/40">
-                    No art
-                  </div>
-                )}
-                <span className="font-medium">{result.title}</span>
-              </div>
-              {result.alreadyAdded && result.showId ? (
-                <Link
-                  href={`/shows/${result.showId}`}
-                  className="whitespace-nowrap rounded border border-black/20 px-3 py-1.5 text-sm dark:border-white/30"
-                >
-                  Rank episodes →
-                </Link>
-              ) : (
-                <AddShowButton tmdbShowId={result.tmdbShowId} />
-              )}
-            </li>
-          ))}
-        </ul>
+          {results !== null && results.length > 0 && (
+            <ul className="flex flex-col gap-3">
+              {results.map((result) => (
+                <li key={result.tmdbShowId}>
+                  <ShowResultRow result={result} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
     </div>
   );
