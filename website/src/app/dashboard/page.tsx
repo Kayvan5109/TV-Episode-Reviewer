@@ -82,6 +82,11 @@ export default async function DashboardPage() {
   // "ranked = some opinion given" convention the show detail page uses for its own progress line
   // (see `shows/[showId]/page.tsx`'s `display`/`rankedCount`/`total`/`percent`).
   const progressByShowId = new Map<string, { percent: number; rankedCount: number; total: number }>();
+  // That show's current #1-ranked episode id, when it has at least one comparatively-ranked
+  // episode — `display.ranked` is already best-to-worst by construction (rank 1 first), so
+  // `ranked[0]` is the top episode. Populated in the same loop as `progressByShowId` to avoid a
+  // second pass over `getShowRankingDisplay`.
+  const topEpisodeIdByShowId = new Map<string, string>();
   await Promise.all(
     myShows
       .filter((row) => row.shows !== null)
@@ -91,11 +96,29 @@ export default async function DashboardPage() {
         const total = display.done
           ? display.ranked.length
           : display.ranked.length + display.coldStartPending.length + display.unranked.length;
+        if (display.ranked.length > 0) {
+          topEpisodeIdByShowId.set(row.show_id, display.ranked[0].episodeId);
+        }
         if (total === 0) return;
         const percent = Math.round((rankedCount / total) * 100);
         progressByShowId.set(row.show_id, { percent, rankedCount, total });
       })
   );
+
+  // Batched lookup of title/season for every tracked show's #1 episode, scoped to just the ids
+  // collected above — one query total, not one per show (this page otherwise never touches
+  // `episodes` at all; see `ensureShowSynced` above for the only other episode-adjacent work here).
+  const topEpisodeIds = [...new Set(topEpisodeIdByShowId.values())];
+  const topEpisodeById = new Map<string, { title: string; season_number: number }>();
+  if (topEpisodeIds.length > 0) {
+    const { data: topEpisodesData } = await supabase
+      .from('episodes')
+      .select('id, title, season_number')
+      .in('id', topEpisodeIds);
+    for (const episode of topEpisodesData ?? []) {
+      topEpisodeById.set(episode.id, { title: episode.title, season_number: episode.season_number });
+    }
+  }
 
   return (
     <>
@@ -144,6 +167,8 @@ export default async function DashboardPage() {
                 .filter((row) => row.shows !== null)
                 .map((row) => {
                   const progress = progressByShowId.get(row.show_id);
+                  const topEpisodeId = topEpisodeIdByShowId.get(row.show_id);
+                  const topEpisode = topEpisodeId ? topEpisodeById.get(topEpisodeId) : undefined;
                   return (
                     <li key={row.show_id}>
                       <Link
@@ -173,6 +198,11 @@ export default async function DashboardPage() {
                               <span className="text-xs text-black/60 dark:text-white/60">
                                 {progress.percent}% ({progress.rankedCount}/{progress.total})
                               </span>
+                              {topEpisode && (
+                                <span className="text-xs text-black/60 dark:text-white/60">
+                                  Best: {topEpisode.title} (S{topEpisode.season_number})
+                                </span>
+                              )}
                             </span>
                           )}
                         </span>
