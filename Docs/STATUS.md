@@ -566,9 +566,27 @@ see Bucket 4.)
 15. **"All Stars Mode" (name TBD)** — added 2026-07-18, Kayvan's idea, placed here (PM's call): a
     much bigger, more open-ended item than most of this bucket, closer in kind to Tier B than a
     small backlog entry, so it's logged with its real scope rather than understated. Once a user has
-    ranked episodes across 4+ different shows, unlock a mode that ranks each show's own #1 episode
-    against every other show's #1 episode, producing a single cross-show "Top All Time" ranking —
-    displayed as a "Top 4" on the dashboard (Letterboxd-style).
+    ranked episodes across 4+ different shows, their dashboard gets an option to rank those shows'
+    #1 episodes head-to-head against each other, building an "All Star" list — producing a single
+    cross-show "Top All Time" ranking, with the dashboard then displaying the resulting **Top 4**
+    (Letterboxd-style). **Re-confirmed and extended 2026-07-18** (Kayvan re-described the same idea
+    independently, with two new pieces of detail beyond what was already logged — both folded in
+    below rather than treated as a separate item):
+    - **The complete (not just Top 4) All-Star ranked list lives on the user's account page — mapped
+      to Tier B's already-planned `/u/[username]` public profile page** (see `AppSpec.md`'s Tier B
+      Detailed Design; today that page's spec only covers a "Follow" button, so this adds a real new
+      content section to it once both Tier B and this feature exist). **Open detail, not yet
+      decided**: `/u/[username]` is a *public* profile page in the existing Tier B design — worth
+      explicitly confirming at build time whether the full All-Star list is meant to be public
+      (visible to anyone viewing the profile, consistent with the page's existing purpose) or
+      private-only (in which case it'd need its own private account view instead, distinct from
+      `/u/[username]`) — Kayvan said "their account page," which doesn't by itself disambiguate the
+      two.
+    - **Sharper (but not fully resolved) answer to "what happens when a show's #1 episode changes
+      after the fact"**: when this happens, the dashboard's Top 4 display should be removed/hidden
+      (not left showing a now-stale ranking) and replaced with a re-rank prompt in that same
+      dashboard slot. This confirms the *dashboard's* specific behavior; the deeper mechanism
+      question from the original write-up below is still open.
     **Real open design question, not yet resolved**: every show's #1 episode already scores exactly
     10 under the existing per-show formula (`scoreForPosition(1, N) = 10` regardless of `N` — see
     `website/src/lib/ranking/score.ts`), so this can't be built by just sorting existing scores
@@ -582,13 +600,14 @@ see Bucket 4.)
     their episodes), does an All Star ranking across those 4 shows' current #1 episodes, then keeps
     ranking one of those shows later and a *different* episode overtakes the old #1. Decided: don't
     silently invalidate or auto-resolve — **prompt the user to re-rank their All Stars list** when
-    the underlying #1 episode changes for any show already included. Still needs, at build time: a
-    way to detect "this show's #1 changed since the last All Star ranking" (comparing the current
-    #1 episode id per show against whatever was true when the All Star ranking was last done) and a
-    concrete re-ranking flow for that prompt (redo the whole All Star comparison from scratch vs.
-    only re-comparing the new episode against the existing All Star order — not yet decided, a
-    build-time design call). Not scheduled; a real future item that needs its own design pass before
-    it's buildable, not just a build slot.
+    the underlying #1 episode changes for any show already included (and, per the same-day
+    re-confirmation above, hide the stale Top 4 while that prompt is showing, rather than leaving it
+    displayed). Still needs, at build time: a way to detect "this show's #1 changed since the last
+    All Star ranking" (comparing the current #1 episode id per show against whatever was true when
+    the All Star ranking was last done) and a concrete re-ranking flow for that prompt (redo the
+    whole All Star comparison from scratch vs. only re-comparing the new episode against the
+    existing All Star order — not yet decided, a build-time design call). Not scheduled; a real
+    future item that needs its own design pass before it's buildable, not just a build slot.
 16. **Other narrow-viewport candidates spotted during the 2026-07-18 mobile-audit-that-wasn't** — code-
     reading only, none confirmed as actual pain points (unlike Bucket 2 item 3's show-page-header bug,
     which Kayvan explicitly confirmed live): `AppHeader`'s nav bar (title + 3 links in one
