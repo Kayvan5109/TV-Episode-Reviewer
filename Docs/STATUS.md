@@ -135,6 +135,23 @@ either that mobile work or a fresh priority pick, not "whatever's next in the qu
 Awaiting Review are all still open and unactioned — worth a look whenever mobile work isn't the
 immediate pick.
 
+**Same session, continued past that wrap-up.** Kayvan asked whether any backlog items were small
+enough to still fit; PM recommended error monitoring, keyboard shortcuts, and a fresh-eyes review of
+the TMDB security fix as genuinely bounded. Kayvan then declined keyboard shortcuts and spoiler mode
+outright, redesigned season rankings to be derived rather than comparison-based (see Bucket 4 items
+12/13/10), and asked for error monitoring to be built. Built and merged (`1a37f88`) — Sentry, free
+tier, errors only — now in Bucket 2 pending Kayvan creating a real Sentry project (see the chat for
+exact setup steps). Then did the fresh-eyes TMDB security review directly (no dispatch needed, pure
+verification): confirmed clean via code read, the existing tests' `fetchSpy` assertions, and a live
+curl against a running dev server — that Deviation is now fully closed out, no new issues found.
+Kayvan then logged two more ideas: **"Rank all" mode, explicitly confirmed as the new highest
+priority for next session** — bumped ahead of the mobile fix, both now sit together in **Bucket 1**
+(restructured from empty to a ranked 2-item list: 1. Rank all mode, 2. mobile/responsive) — and
+**"All Stars Mode"** (cross-show top-episode ranking, name TBD), added to Bucket 4 as a real but
+much bigger, not-yet-designed future item (needs new comparison infrastructure, since every show's
+#1 episode ties at score 10 today — can't be built as a pure derived view the way season rankings
+was). Next session opens directly into Bucket 1, item 1.
+
 ## Punch List (ranked — read this section first for "what's actually next")
 
 Every open item gets triaged into exactly one bucket the moment it surfaces, per
@@ -142,7 +159,42 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence:**
-(empty — every item from the 2026-07-17 testing round is done, see History. "Tier A" below is next.)
+1. **"Rank all" mode — added 2026-07-18, Kayvan's idea, confirmed highest priority for next
+   session.** A button on the show page that starts an auto-advancing ranking session: click it,
+   land on the ranking screen (cold-start or comparison, whichever applies) for the *oldest*
+   unranked episode by air date; after answering, automatically advance straight to the next-oldest
+   unranked episode's ranking screen, repeating — a frictionless way to rank many episodes in one
+   sitting instead of clicking "Rank" individually every time.
+   **Feasible mechanism (not yet built, a real design worth confirming at build time, but this
+   session's own work already lays the groundwork)**: this app already tried and deliberately
+   removed a similar "whole-show auto-advance" flow once before (see `rank/[episodeId]/page.tsx`'s
+   own doc comment) — hands-on testing found it gave no way to pick a specific episode, no way to
+   see rankings mid-show, and no way back out. This new version avoids the first two complaints by
+   being *opt-in* (the existing per-episode picker on the show page stays fully available
+   alongside it, untouched) and needs to deliberately solve the third (an exit point mid-session) —
+   worth confirming explicitly at build time rather than assuming. The existing
+   `/shows/[showId]/rank/[episodeId]` route already always renders a "Return to show page" link
+   regardless of step, so if "Rank all" mode is built as a query-param-driven variant of that same
+   route (e.g. `?mode=rankAll`, the same pattern item 10's `returnToRank` param already established
+   this session) rather than a new route, that escape hatch comes along for free. Ordering ("oldest
+   unranked episode by air date") can likely reuse or closely mirror `website/src/lib/ranking/
+   stats.ts`'s `buildSeasonTimelineOrder` (already built this session: air-date-primary sort with a
+   documented season/episode-order fallback for episodes missing `air_date`). The one new piece of
+   control-flow logic: when the current episode's step becomes `alreadyRanked` *and* the rank-all
+   mode flag is present, redirect to the next-oldest unranked episode's rank URL (carrying the same
+   mode flag) instead of showing the static "already ranked" message a normal single-episode visit
+   would show. Doesn't touch the ranking algorithm/scoring itself — pure navigation/control-flow
+   layered on top of already-idempotent, already-working routes, similar risk class to item 10.
+2. **Mobile/responsive fix — confirmed by Kayvan 2026-07-18, now second priority behind "Rank all"
+   mode above** (moved here from Bucket 4, where it was previously the sole next-session priority).
+   Not just a "check" — "the mobile version of the website is terrible" (Kayvan's words), a real,
+   confirmed problem. A proper fix means auditing essentially every page (dashboard, show page's
+   poster+episode list, the comparison screen's two-column layout, the stats page's win/loss matrix
+   specifically since that one's wide by design, episode detail page, auth pages), likely two
+   implementer dispatches (the ranking-flow pages and the stats page's wide-table content are
+   different shapes of problem), then Kayvan's own hands-on test on a real phone before it's done.
+   Deliberately not started 2026-07-18 — flagged at 71% session usage remaining as too big to fit
+   properly alongside closing the session out cleanly.
 
 **"Tier A" — a small batch pulled from an external design review, decided 2026-07-17, now the
 front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
@@ -349,18 +401,7 @@ see Bucket 4.)
    world testing widens beyond a couple of people** — 2 emails/hour project-wide will start silently
    failing signups/resets otherwise (confirmed priority 2026-07-16, still not urgent for a small
    initial test group).
-4. **Mobile/responsive fix — confirmed by Kayvan 2026-07-18 as the next session's priority**, not
-   just a "check" anymore: "the mobile version of the website is terrible" (his words), a real,
-   confirmed problem, not a hypothetical one. Deliberately **not started this session** — flagged at
-   71% session usage remaining that a proper fix means auditing essentially every page (dashboard,
-   show page's poster+episode list, the comparison screen's two-column layout, the new stats page's
-   win/loss matrix specifically since that one's wide by design, episode detail page, auth pages),
-   then at least one implementer dispatch (likely two — the ranking-flow pages and the stats page's
-   wide-table content are different shapes of problem), then Kayvan's own hands-on test on a real
-   phone before it's done. That's a bigger unit of work than anything built this session and didn't
-   leave enough margin to do properly plus close the session out cleanly. Kayvan chose to start fresh
-   next session with full budget rather than a narrow partial fix now. **Start here next session.**
-5. ~~**Error monitoring**~~ — **built and merged 2026-07-18** (`1a37f88`), now in Bucket 2 pending
+4. ~~**Error monitoring**~~ — **built and merged 2026-07-18** (`1a37f88`), now in Bucket 2 pending
    Kayvan creating a real Sentry project. `@sentry/nextjs`, free tier, errors only (`tracesSampleRate:
    0`, no session replay) — server (`sentry.server.config.ts`), edge (`sentry.edge.config.ts`, not
    load-bearing today since nothing in this app opts into the Edge runtime, but kept as a no-cost
@@ -375,9 +416,9 @@ see Bucket 4.)
    no-op, confirmed by testing the full build/test suite with it unset, matching the real current
    `.env.local` state). **Needs Kayvan to create a free Sentry project and set this env var** (see
    the next chat message for exact steps) before any errors actually get reported.
-6. **Visual design** — still zero design polish, bare Tailwind defaults throughout. Flagged
+5. **Visual design** — still zero design polish, bare Tailwind defaults throughout. Flagged
    2026-07-16 as a real gap before wider testing, deliberately deferred past piece 2b.
-7. ~~Small-show exact score precision~~ — **superseded 2026-07-17, fix built 2026-07-18**: the
+6. ~~Small-show exact score precision~~ — **superseded 2026-07-17, fix built 2026-07-18**: the
    specific 3-episode all-neutral example (scores 10/8.7/7.4) led to a real, decided fix — see
    `DevelopmentPlan.md`'s Discussion section and History 2026-07-18. That fix substantially shrinks
    this class of issue but
@@ -385,18 +426,18 @@ see Bucket 4.)
    specific adjacent position, everywhere in the app, not just in cold start) — going further
    (real tied scores) was discussed and explicitly declined as a bigger, not-currently-worthwhile
    change to the core scoring model.
-8. **Repeatedly comparing against the same reference episode** — raised 2026-07-17 (with 14
+7. **Repeatedly comparing against the same reference episode** — raised 2026-07-17 (with 14
    episodes ranked, comparisons kept landing on the same episode). Confirmed expected, not a bug —
    inherent to binary-insertion search always starting from the current midpoint; should lessen
    naturally as a show grows. A real mitigation (randomizing the pivot) was discussed and declined
    for now given the cost/benefit — see `DevelopmentPlan.md`'s Discussion section, "Open discussion,
    not scheduled." Revisit only if it's still bothering Kayvan once shows have more episodes ranked.
-9. **Episode count in TMDB search results** — decided 2026-07-17: not being built. TMDB's
+8. **Episode count in TMDB search results** — decided 2026-07-17: not being built. TMDB's
    `/search/tv` doesn't return an episode count (only `/tv/{id}` "show details" does), so showing
    it in live search would mean an extra TMDB call per result on every debounced keystroke search —
    Kayvan chose to keep search fast over having this, given episode count is already visible once a
    show's been added.
-10. **A less-silent message on a stale post-back resubmission** — raised 2026-07-17. Right now a
+9. **A less-silent message on a stale post-back resubmission** — raised 2026-07-17. Right now a
    stale resubmission (browser back to an already-answered question, submitting again) silently
    redirects to the show page with no explanation, even if the user's second click was a genuinely
    different answer than their first — discussed with Kayvan and agreed this is the *correct*
@@ -404,7 +445,7 @@ see Bucket 4.)
    an already-recorded answer is the re-ranking feature, not an accidental stale resubmit), but a
    brief "this was already ranked, nothing changed" message instead of a silent redirect would be a
    nice small polish. Not urgent enough to build now.
-11. **Season rankings — redesigned 2026-07-18, still not scheduled.** Original idea (added
+10. **Season rankings — redesigned 2026-07-18, still not scheduled.** Original idea (added
     2026-07-18 from the second design review): rank whole seasons against each other head-to-head,
     reusing the binary-insertion engine at season granularity via a new comparison UI flow. **Kayvan
     dropped that mechanism**: instead, a season's ranking is simply *derived* from its own episodes'
@@ -414,18 +455,18 @@ see Bucket 4.)
     almost exactly this; a future "season rankings" view would mostly be presenting that same
     derived data sorted/framed as a ranked list of seasons ("Season 3 is your #1 season"), not new
     comparison infrastructure or algorithm work. Still backlogged, not picked up this session.
-12. **Import** (IMDb ratings, Letterboxd-style exports, TV Time, Trakt, streaming watch history) —
+11. **Import** (IMDb ratings, Letterboxd-style exports, TV Time, Trakt, streaming watch history) —
     added 2026-07-18, same source. Real third-party integration work, one per service, each with its
     own auth/API shape. Whenever picked up, start with a single service rather than all of them.
-13. ~~**Keyboard shortcuts** on the cold-start and comparison screens~~ — **declined 2026-07-18, at
+12. ~~**Keyboard shortcuts** on the cold-start and comparison screens~~ — **declined 2026-07-18, at
     Kayvan's request.** Was Tier A item 1, moved here 2026-07-18 (a dispatch had been stopped
     mid-task, see Deviations Awaiting Review for what that revealed about the worktree-isolation
     bug), then dropped outright rather than picked back up.
-14. ~~**Spoiler mode**~~ — **declined 2026-07-18, at Kayvan's request.** Was a confirmed real,
+13. ~~**Spoiler mode**~~ — **declined 2026-07-18, at Kayvan's request.** Was a confirmed real,
     currently-unaddressed gap (nothing today prevents seeing a whole show's ranked episode list
     regardless of watch progress) — the gap itself hasn't gone away, but Kayvan chose to drop the
     feature idea rather than keep it queued.
-15. **Collections — moved here from Tier A item 4, 2026-07-18, at Kayvan's request** ("its a social
+14. **Collections — moved here from Tier A item 4, 2026-07-18, at Kayvan's request** ("its a social
     aspect"). Previously scoped as a private-only v1 (shareable version deliberately deferred, since
     that needs public-link infrastructure that doesn't exist yet); Kayvan chose to fold the whole
     feature into Tier B instead of building a private-only stopgap now, since the *full* (shareable)
@@ -433,6 +474,23 @@ see Bucket 4.)
     Layer" (`collections`/`collection_items` tables, `/collections` management page, `/c/[shareToken]`
     public view) — building it once as part of that effort avoids a private-only version now that
     would need retrofitting for sharing later. Not scheduled; picked up whenever Tier B itself is.
+15. **"All Stars Mode" (name TBD)** — added 2026-07-18, Kayvan's idea, placed here (PM's call): a
+    much bigger, more open-ended item than most of this bucket, closer in kind to Tier B than a
+    small backlog entry, so it's logged with its real scope rather than understated. Once a user has
+    ranked episodes across 4+ different shows, unlock a mode that ranks each show's own #1 episode
+    against every other show's #1 episode, producing a single cross-show "Top All Time" ranking —
+    displayed as a "Top 4" on the dashboard (Letterboxd-style).
+    **Real open design question, not yet resolved**: every show's #1 episode already scores exactly
+    10 under the existing per-show formula (`scoreForPosition(1, N) = 10` regardless of `N` — see
+    `website/src/lib/ranking/score.ts`), so this can't be built by just sorting existing scores
+    across shows — every #1 episode would tie. It genuinely needs its own new head-to-head
+    comparison mechanism (most likely reusing the same binary-insertion engine, but over a new
+    "top episode per show" pool that isn't scoped to any single `show_id` the way today's
+    `episode_comparisons` are) — real new schema/persistence design, not a pure derived view like
+    the season-rankings redesign above. Also unresolved: what happens to an already-recorded
+    All-Star comparison when the underlying show's #1 episode later changes (e.g. after a re-rank)
+    — some kind of invalidation/resync policy is needed, not yet designed. Not scheduled; a real
+    future item that needs its own design pass before it's buildable, not just a build slot.
 
 **Bucket 5 — Rework flagged for a later phase, not being worked now:**
 (empty for now)
