@@ -5,6 +5,7 @@ import {
   buildSeasonTimelineOrder,
   comparisonHistoryByEpisode,
   findGatekeeperGap,
+  rankSeasons,
   seasonAverageScores,
 } from './stats';
 
@@ -103,6 +104,52 @@ describe('seasonAverageScores', () => {
 
   it('returns an empty array when nothing is ranked', () => {
     expect(seasonAverageScores([], new Map([['e1', 1]]))).toEqual([]);
+  });
+});
+
+describe('rankSeasons', () => {
+  it('ranks seasons by averageScore descending, rank 1 = highest', () => {
+    const seasonAverages = [
+      { seasonNumber: 1, averageScore: 6, rankedEpisodeCount: 3 },
+      { seasonNumber: 2, averageScore: 9, rankedEpisodeCount: 3 },
+      { seasonNumber: 3, averageScore: 7.5, rankedEpisodeCount: 3 },
+    ];
+    const ranks = rankSeasons(seasonAverages);
+    expect(ranks.get(2)).toBe(1); // best average
+    expect(ranks.get(3)).toBe(2);
+    expect(ranks.get(1)).toBe(3); // worst average
+  });
+
+  it('breaks a tie by seasonNumber ascending', () => {
+    const seasonAverages = [
+      { seasonNumber: 2, averageScore: 8, rankedEpisodeCount: 2 },
+      { seasonNumber: 1, averageScore: 8, rankedEpisodeCount: 2 },
+      { seasonNumber: 3, averageScore: 5, rankedEpisodeCount: 2 },
+    ];
+    const ranks = rankSeasons(seasonAverages);
+    expect(ranks.get(1)).toBe(1); // tied at 8, but lower season number wins the tie
+    expect(ranks.get(2)).toBe(2);
+    expect(ranks.get(3)).toBe(3);
+  });
+
+  it('a single-season input still gets rank 1', () => {
+    const ranks = rankSeasons([{ seasonNumber: 5, averageScore: 7, rankedEpisodeCount: 1 }]);
+    expect(ranks.get(5)).toBe(1);
+    expect(ranks.size).toBe(1);
+  });
+
+  it('returns an empty map for an empty input', () => {
+    expect(rankSeasons([]).size).toBe(0);
+  });
+
+  it('does not mutate the input array', () => {
+    const seasonAverages = [
+      { seasonNumber: 2, averageScore: 9, rankedEpisodeCount: 1 },
+      { seasonNumber: 1, averageScore: 3, rankedEpisodeCount: 1 },
+    ];
+    const original = [...seasonAverages];
+    rankSeasons(seasonAverages);
+    expect(seasonAverages).toEqual(original);
   });
 });
 

@@ -100,16 +100,23 @@ function formatAirDate(dateString: string): string {
  * `/shows/[showId]/rank/[returnToRank]`, which recomputes that step fresh (`getNextStepForEpisode`
  * is idempotent) — no validation of the id happens here; that route already 404s/handles it
  * gracefully on its own.
+ *
+ * Also accepts an optional `mode` query param — set to `'rankAll'` by those same title links when
+ * they were rendered during a "Rank all" auto-advance session (see `rank/[episodeId]/page.tsx`'s
+ * own `mode` search param). When present, `?mode=rankAll` is appended to the "Return to ranking"
+ * link too, so this round trip (rank-all session -> episode title -> here -> "Return to ranking")
+ * doesn't silently drop the user out of rank-all mode.
  */
 export default async function EpisodeDetailPage({
   params,
   searchParams,
 }: {
   params: Promise<{ showId: string; episodeId: string }>;
-  searchParams: Promise<{ returnToRank?: string }>;
+  searchParams: Promise<{ returnToRank?: string; mode?: string }>;
 }) {
   const { showId, episodeId } = await params;
-  const { returnToRank } = await searchParams;
+  const { returnToRank, mode } = await searchParams;
+  const rankAllMode = mode === 'rankAll';
 
   const supabase = await createSupabaseServerClient();
   const {
@@ -203,7 +210,7 @@ export default async function EpisodeDetailPage({
             </Link>
             {returnToRank && (
               <Link
-                href={`/shows/${showId}/rank/${returnToRank}`}
+                href={`/shows/${showId}/rank/${returnToRank}${rankAllMode ? '?mode=rankAll' : ''}`}
                 className="text-sm underline underline-offset-2"
               >
                 ↩ Return to ranking

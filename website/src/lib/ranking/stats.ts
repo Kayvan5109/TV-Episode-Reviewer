@@ -87,6 +87,31 @@ export function seasonAverageScores(
     .sort((a, b) => a.seasonNumber - b.seasonNumber);
 }
 
+/**
+ * A season's rank *relative to the show's other seasons*, derived purely from `seasonAverageScores`'
+ * output — rank 1 = highest `averageScore`. Sorts a copy by `averageScore` descending; on a tie,
+ * breaks by `seasonNumber` ascending, the same "arbitrary but deterministic" tie-breaking convention
+ * `findGatekeeperGap` above documents and uses (ties aren't expected to be common with real derived
+ * scores, and there's no principled reason to prefer one tied season over another).
+ *
+ * No "not enough seasons to rank" special case: a single-entry input still gets rank 1 (there's
+ * nothing to be relatively worse than, but it's still the best of what's there), and an empty input
+ * returns an empty map. Callers decide whether a lone-season result is worth displaying at all.
+ */
+export function rankSeasons(seasonAverages: readonly SeasonAverage[]): Map<number, number> {
+  const bySeasonDescending = [...seasonAverages].sort((a, b) => {
+    if (a.averageScore !== b.averageScore) return b.averageScore - a.averageScore;
+    return a.seasonNumber - b.seasonNumber;
+  });
+
+  const ranks = new Map<number, number>();
+  bySeasonDescending.forEach((season, index) => {
+    ranks.set(season.seasonNumber, index + 1);
+  });
+
+  return ranks;
+}
+
 export interface GatekeeperGap {
   betterEpisodeId: string;
   betterRank: number;

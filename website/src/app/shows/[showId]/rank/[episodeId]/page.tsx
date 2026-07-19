@@ -63,14 +63,26 @@ function SeasonPoster({ episode }: { episode: EpisodeRow }) {
  * `episode.id` itself — every caller of this component passes the *subject* episode (the one
  * currently being placed; there's no separate reference episode rendered via this component, see
  * `ComparisonColumn` in `ComparisonPrompt.tsx` for that), so `episode.id` is always the right id to
- * return to.
+ * return to. When `rankAllMode` is true, `&mode=rankAll` is also appended to that link — otherwise
+ * the round trip through the episode detail page's "Return to ranking" link would silently drop the
+ * user out of rank-all mode (see that page's own `mode` search param handling).
  */
-function EpisodeColumn({ episode, showId }: { episode: EpisodeRow; showId: string }) {
+function EpisodeColumn({
+  episode,
+  showId,
+  rankAllMode,
+}: {
+  episode: EpisodeRow;
+  showId: string;
+  rankAllMode: boolean;
+}) {
   return (
     <div className="flex w-full max-w-xs flex-col items-center gap-2 text-center">
       <SeasonPoster episode={episode} />
       <Link
-        href={`/shows/${showId}/episodes/${episode.id}?returnToRank=${episode.id}`}
+        href={`/shows/${showId}/episodes/${episode.id}?returnToRank=${episode.id}${
+          rankAllMode ? '&mode=rankAll' : ''
+        }`}
         className="text-lg font-medium underline underline-offset-2"
       >
         {formatEpisode(episode)}
@@ -98,16 +110,21 @@ function EpisodeColumn({ episode, showId }: { episode: EpisodeRow; showId: strin
  * Always renders a "Return to show page" link regardless of which step is showing — the original
  * whole-show flow had no way back to `/shows/[showId]` once inside it, which hands-on testing
  * flagged as a real gap; this route deliberately never hides that link behind any state.
+ *
+ * Also accepts an optional `notice` query param — set to `'staleResubmission'` by `actions.ts`'s
+ * `redirectAfterAlreadyRanked` when a rank-all-mode stale resubmission redirects here (the *next*
+ * episode's rank page) instead of the show page. Same informational message the show page renders
+ * for its own single-episode-mode case — see that page's doc comment.
  */
 export default async function RankEpisodePage({
   params,
   searchParams,
 }: {
   params: Promise<{ showId: string; episodeId: string }>;
-  searchParams: Promise<{ mode?: string }>;
+  searchParams: Promise<{ mode?: string; notice?: string }>;
 }) {
   const { showId, episodeId } = await params;
-  const { mode } = await searchParams;
+  const { mode, notice } = await searchParams;
   // "Rank all" mode: set by the show page's "Rank all" link (see `shows/[showId]/page.tsx`) and
   // threaded down to `ColdStartPicker`/`ComparisonPrompt` so their submissions (`actions.ts`) know
   // to auto-advance to the next oldest-unranked episode instead of returning to the show page —
@@ -157,6 +174,11 @@ export default async function RankEpisodePage({
     <>
       <AppHeader />
       <div className="flex flex-1 flex-col items-center gap-6 p-8">
+        {notice === 'staleResubmission' && (
+          <p className="w-full max-w-2xl text-sm text-black/60 dark:text-white/60">
+            This episode was already ranked — nothing changed.
+          </p>
+        )}
         <h1 className="text-2xl font-semibold">
           {episode
             ? `Rank ${episode.title} from Season ${episode.season_number} of ${showRow.title}`
@@ -228,7 +250,7 @@ async function RankEpisodeStep({
           // click-to-answer UI at all; just show what we do know and let the user bail out via the
           // "Return to show page" link the page always renders.
           <>
-            <EpisodeColumn episode={episode} showId={showId} />
+            <EpisodeColumn episode={episode} showId={showId} rankAllMode={rankAllMode} />
             <p className="text-sm text-black/60 dark:text-white/60">
               Couldn&apos;t load the comparison episode ({step.reference}).
             </p>
@@ -260,7 +282,7 @@ async function RankEpisodeStep({
       {/* Full poster+title+synopsis column, not just a small poster+title — Kayvan wants the
           synopsis visible while cold-ranking the first few episodes too, not only on the
           two-episode compare screen. Harmless for the rare 'alreadyRanked' stale-link case too. */}
-      <EpisodeColumn episode={episode} showId={showId} />
+      <EpisodeColumn episode={episode} showId={showId} rankAllMode={rankAllMode} />
       {stepContent}
     </div>
   );
