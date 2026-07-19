@@ -356,6 +356,33 @@ code touched this stretch:
   project's existing mitigation is already the right response. Nothing left to action here.
 Bucket 2 is now down to just the TMDB re-sync (externally blocked). Bucket 1 and 3 remain empty.
 
+**Same session, continued.** Kayvan brought a real overnight Sentry error: a user hit "Bad Request"
+trying to rank a specific show, "The Challengers." Investigated directly (no agent dispatch — usage
+was at 75%+ by this point and Kayvan asked to hold off on spawning any). Read
+`website/src/lib/ranking-session/session.ts` to find the throwing line, then Kayvan supplied the
+actual Sentry breadcrumbs, which confirmed the diagnosis precisely: the failing request was
+`episode_rankings`'s `.in('episode_id', episodeIdsInOrder)` query, its URL truncated by Sentry itself
+for size — strong evidence the real query URL was genuinely oversized, not just a normal request that
+happened to fail. Root cause: this project passes every episode id of a show as a literal
+comma-separated list in the query URL; once a show has enough episodes, that URL exceeds
+Supabase/PostgREST's own URL-length limit and the request comes back `400` instead of data. Grepped
+the codebase for the same `.in('episode_id'/'episode_a_id'/'episode_b_id', <full episode list>)`
+pattern and found five more call sites with the identical structural problem (loading comparisons in
+the same rank-flow request, both delete paths triggered by removing a show, and the stats page's
+win/loss matrix) — none individually confirmed crashing yet, but all structurally identical to the one
+that did. Recommended fix (not built): drop the episode-id list from the query URL entirely — scope
+reads by `user_id` alone (bounded by one person's lifetime usage, not by one show's episode count) and
+filter to the show's episodes in application code; the two delete call sites need a small Postgres
+RPC instead, since deletes need the database itself to do the filtering. Logged as **Bucket 1 item 1,
+next session's clear top priority** — correctness-critical (real data-layer bug breaking a live user's
+actual show), so it gets an implementer + independent-reviewer pass once picked up, not a solo fix.
+Separately noticed `website/.env.local`'s `NEXT_PUBLIC_SUPABASE_URL` holds a Supabase dashboard link
+rather than the real REST API URL while investigating — Kayvan pointed out the website works fine,
+which is a fair observation but doesn't actually settle it: local `.env.local` and Vercel's own
+production env vars are separate configs, so this wouldn't affect the live site either way. Logged as
+Bucket 4 item 20 for a quick check next session (does local `npm run dev` actually work right now?),
+not treated as a confirmed bug.
+
 ## Punch List (ranked — read this section first for "what's actually next")
 
 Every open item gets triaged into exactly one bucket the moment it surfaces, per
@@ -363,12 +390,41 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence:**
-(empty for now — the dashboard #1-episode item that sat here is built, see Bucket 2 item 1. **Worth
-remembering, not acting on yet**: this is exactly the "each show's #1 episode" data Bucket 4 item 15
-(All Stars Mode) will also need — no shared code was written now since All Stars isn't scheduled, but
-whoever builds All Stars later should check `website/src/app/dashboard/page.tsx`'s
-`topEpisodeIdByShowId`/batched-episode-lookup approach for reusable plumbing before re-deriving it from
-scratch.)
+1. **Live production bug, found 2026-07-19 via a Sentry error report: shows with enough episodes
+   crash their entire rank flow (confirmed on a real user's real show, "The Challengers").** Root
+   cause confirmed via the Sentry breadcrumbs (the exact failing request URL, truncated by Sentry
+   itself for size — strong evidence it's genuinely oversized): `loadShowRankingState` in
+   `website/src/lib/ranking-session/session.ts:89-93` queries `episode_rankings` with
+   `.in('episode_id', episodeIdsInOrder)`, passing *every* episode id of the show as a
+   comma-separated list in the query URL. Once a show has enough episodes, that URL exceeds
+   Supabase/PostgREST's URL-length limit and the request comes back `400 Bad Request` instead of
+   data — not a data problem, a structural one, and it will fail identically every time for this
+   show (and any other show with enough episodes).
+   **Same anti-pattern, same failure mode, five more call sites** — all currently broken for a show
+   this size, not yet individually confirmed by a crash but structurally identical:
+   `session.ts:106,111` (loading `episode_comparisons` inside this same rank-flow load, so it never
+   even gets that far — this is likely the *actual* first failure, before the one Sentry happened to
+   catch); `session.ts:263-264` (deleting comparisons when a show is removed) and `session.ts:310`
+   (deleting rankings when a show is removed) — meaning **removing "The Challengers" would also
+   fail**; `website/src/app/shows/[showId]/stats/page.tsx:268,273` (the win/loss matrix on the stats
+   page).
+   **Recommended fix** (not yet built): stop putting the episode-id list in the query URL at all.
+   For the `episode_rankings`/`episode_comparisons` reads, query scoped only by `user_id` (bounded by
+   one person's lifetime usage, not by one show's episode count) and filter down to this show's
+   episodes in application code afterward. For the two delete call sites, that approach doesn't work
+   directly (a delete needs the database itself to do the filtering) — those likely need a small
+   Postgres function (RPC) that deletes by joining through `episodes.show_id` server-side, instead of
+   shipping an id list over HTTP.
+   Classified as correctness-critical (data layer, breaks a live user's actual show) — needs an
+   implementer + independent-reviewer pass, not a solo fix, once picked up. Logged 2026-07-19 rather
+   than fixed same-session — ran out of session budget (agent dispatches were paused this session at
+   Kayvan's request) before this could be built. **Next session's clear top priority.**
+2. **Worth remembering, not acting on yet**: the dashboard #1-episode item that used to sit here is
+   built (see Bucket 2 item 1's History). This is exactly the "each show's #1 episode" data Bucket 4
+   item 15 (All Stars Mode) will also need — no shared code was written now since All Stars isn't
+   scheduled, but whoever builds All Stars later should check `website/src/app/dashboard/page.tsx`'s
+   `topEpisodeIdByShowId`/batched-episode-lookup approach for reusable plumbing before re-deriving it
+   from scratch.
 
 **"Tier A" — a small batch pulled from an external design review, decided 2026-07-17, now the
 front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
@@ -787,8 +843,19 @@ see Bucket 4.)
     check of Bucket 2 item 4b (the "This episode was already ranked — nothing changed." message).
     Functionally correct, confirmed working, but the display itself should be made more visually
     prominent. Not scoped or built yet — small, low-risk display-only tweak whenever picked up.
-
-**Bucket 5 — Rework flagged for a later phase, not being worked now:**
+20. **`website/.env.local`'s `NEXT_PUBLIC_SUPABASE_URL` looks wrong — worth a quick check next
+    session, not urgent.** Noticed 2026-07-19 while investigating the Bucket 1 item 1 crash: the
+    value in that file is a Supabase **dashboard** link
+    (`https://supabase.com/dashboard/project/tlbpzpdsoatkmiwhwskq/settings/general`), not the actual
+    REST API base URL (confirmed via the same session's Sentry breadcrumbs that production really
+    calls `https://tlbpzpdsoatkmiwhwskq.supabase.co`). Kayvan pushed back reasonably ("I think it is
+    right though since the website is working") — that's not actually a contradiction worth glossing
+    over: **local `.env.local` and Vercel's own production environment variables are two separate
+    configs**, so a bad value in this local file wouldn't affect the live site at all, only a local
+    `npm run dev` build. Not confirmed as broken — this needs an actual local dev-server run to check
+    (does `npm run dev` work at all right now, or does every Supabase call fail locally?) rather than
+    assumed either way from reading the file alone. If local dev turns out to be broken, the fix is a
+    one-line edit to `.env.local` (swap in the real API URL) — no code change needed either way. — Rework flagged for a later phase, not being worked now:**
 (empty for now)
 
 ## Deviations Awaiting Review
