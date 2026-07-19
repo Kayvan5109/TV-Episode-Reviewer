@@ -17,6 +17,7 @@
  *    see the report for why).
  */
 import * as Sentry from '@sentry/nextjs';
+import { type Instrumentation } from 'next';
 
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
@@ -28,4 +29,25 @@ export async function register() {
   }
 }
 
-export const onRequestError = Sentry.captureRequestError;
+/**
+ * Wraps `Sentry.captureRequestError` instead of exporting it directly (`export const
+ * onRequestError = Sentry.captureRequestError`) because that direct form silently drops
+ * server-side error reports on Vercel's Node.js runtime.
+ *
+ * `Sentry.captureRequestError` itself is synchronous — by the time it returns, the exception has
+ * already been captured and queued. But internally it also kicks off an unawaited
+ * `responseEnd.waitUntil(responseEnd.flushSafelyWithTimeout())`, and that `waitUntil` (from
+ * `@sentry/core`'s `vercelWaitUntil`) only does anything when `typeof EdgeRuntime === 'string'` —
+ * i.e. Vercel's Edge runtime. This app's Server Actions/Route Handlers/Server Components run on
+ * the standard Node.js runtime, so that flush is a no-op there, and Vercel freezes the function
+ * right after the response is sent — before the abandoned flush promise ever gets a chance to send
+ * the event to Sentry's ingest API.
+ *
+ * The fix: call `captureRequestError` (capture already happens synchronously), then explicitly
+ * `await Sentry.flush(...)` ourselves so Next.js keeps the function alive until the event is
+ * actually sent (or the timeout elapses). Do not "simplify" this back to the direct export.
+ */
+export const onRequestError: Instrumentation.onRequestError = async (...args) => {
+  Sentry.captureRequestError(...args);
+  await Sentry.flush(2000);
+};
