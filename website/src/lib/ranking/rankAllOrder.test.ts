@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { orderOldestFirst, type EpisodeOrderRow } from './rankAllOrder';
+import { filterIdsBySeason, orderOldestFirst, type EpisodeOrderRow } from './rankAllOrder';
 
 function episode(
   id: string,
@@ -77,5 +77,35 @@ describe('orderOldestFirst', () => {
     orderOldestFirst(episodes, ['b', 'a']);
 
     expect(episodes).toEqual(copy);
+  });
+});
+
+describe('filterIdsBySeason', () => {
+  const episodes = [
+    episode('s1e1', 1, 1, '2020-01-01'),
+    episode('s1e2', 1, 2, '2020-02-01'),
+    episode('s2e1', 2, 1, '2021-01-01'),
+    episode('s2e2', 2, 2, '2021-02-01'),
+  ];
+
+  it('keeps only ids belonging to the given season', () => {
+    expect(filterIdsBySeason(episodes, ['s1e1', 's1e2', 's2e1', 's2e2'], 1)).toEqual(['s1e1', 's1e2']);
+    expect(filterIdsBySeason(episodes, ['s1e1', 's1e2', 's2e1', 's2e2'], 2)).toEqual(['s2e1', 's2e2']);
+  });
+
+  it('returns an empty array when nothing in episodeIds belongs to that season', () => {
+    expect(filterIdsBySeason(episodes, ['s1e1', 's1e2'], 2)).toEqual([]);
+  });
+
+  it('returns an empty array when the season does not exist at all', () => {
+    expect(filterIdsBySeason(episodes, ['s1e1', 's2e1'], 99)).toEqual([]);
+  });
+
+  it('silently drops ids with no matching row, same as orderOldestFirst', () => {
+    expect(filterIdsBySeason(episodes, ['s1e1', 'stale-id'], 1)).toEqual(['s1e1']);
+  });
+
+  it('preserves the input order of episodeIds rather than re-sorting', () => {
+    expect(filterIdsBySeason(episodes, ['s1e2', 's1e1'], 1)).toEqual(['s1e2', 's1e1']);
   });
 });

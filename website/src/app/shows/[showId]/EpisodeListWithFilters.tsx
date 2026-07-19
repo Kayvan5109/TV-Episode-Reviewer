@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 
+import { orderOldestFirst } from '@/lib/ranking/rankAllOrder';
+
 import { ReRankButton } from './ReRankButton';
 
 export interface EpisodeWithStatus {
@@ -82,6 +84,38 @@ export function isSeasonComplete(seasonEpisodes: EpisodeWithStatus[]): boolean {
 }
 
 /**
+ * For each season, the id of its own oldest-by-air-date unranked episode — the landing target for
+ * that season's "Rank season" button. Mirrors `shows/[showId]/page.tsx`'s own whole-show
+ * `rankAllEpisodeId` computation (unranked = no score and no bucket, ordered via
+ * `orderOldestFirst`), just scoped to one season's episodes instead of the whole show's.
+ *
+ * `fullSeasons` must be the *unfiltered* per-season grouping (this component's own `fullSeasons`
+ * memo, built from the full `episodes` prop) — same "Complete" badge reasoning: which episode a
+ * season's rank-all button targets must not depend on whatever's currently typed into the search
+ * box or which season filter is selected.
+ *
+ * A season with nothing unranked gets no entry in the returned map — same "no button when there's
+ * nothing to rank" logic as the whole-show "Rank all" link only rendering when
+ * `display.unranked.length > 0`.
+ */
+export function seasonRankAllTargets(fullSeasons: Map<number, EpisodeWithStatus[]>): Map<number, string> {
+  const targets = new Map<number, string>();
+  for (const [seasonNumber, seasonEpisodes] of fullSeasons) {
+    const unrankedIds = seasonEpisodes
+      .filter((episode) => episode.score === undefined && episode.bucket === undefined)
+      .map((episode) => episode.id);
+    if (unrankedIds.length === 0) {
+      continue;
+    }
+    const oldestFirst = orderOldestFirst(seasonEpisodes, unrankedIds)[0];
+    if (oldestFirst) {
+      targets.set(seasonNumber, oldestFirst);
+    }
+  }
+  return targets;
+}
+
+/**
  * Applies the season filter and search query together (AND) — narrows to the selected season (or
  * everything, for `'all'`), then to episodes whose `searchableText` matches `query`. Pulled out as a
  * pure function, independent of any component state, so the season/search/combined/no-match
@@ -119,6 +153,12 @@ export function filterEpisodes(
  * badge when both apply — same "a property of the season as a whole" reasoning as "Complete": it's
  * derived from every ranked episode in the season regardless of the current search/season filter,
  * so it's looked up by season number directly rather than recomputed from any filtered grouping.
+ *
+ * A "Rank season" link (see `seasonRankAllTargets`) sits alongside those badges, for seasons that
+ * still have at least one unranked episode — same `fullSeasons`-not-`filteredSeasons` reasoning: it
+ * links to `/shows/[showId]/rank/[episodeId]?mode=rankAll&season=N`, the season-scoped generalization
+ * of the show page's own whole-show "Rank all" link (`?mode=rankAll`, no `season` param — see
+ * `page.tsx` and `rank/[episodeId]/actions.ts`'s `nextRankAllDestination`).
  */
 export function EpisodeListWithFilters({
   showId,
@@ -143,6 +183,10 @@ export function EpisodeListWithFilters({
   );
 
   const fullSeasons = useMemo(() => groupBySeason(episodes), [episodes]);
+
+  // Landing target for each season's "Rank season" button — see `seasonRankAllTargets`'s own doc
+  // comment for why this is derived from `fullSeasons` (unfiltered) rather than `filteredSeasons`.
+  const seasonRankAllTargetByNumber = useMemo(() => seasonRankAllTargets(fullSeasons), [fullSeasons]);
 
   const filteredEpisodes = useMemo(
     () => filterEpisodes(episodes, { season: selectedSeason, query }),
@@ -186,6 +230,7 @@ export function EpisodeListWithFilters({
           .sort(([a], [b]) => a - b)
           .map(([seasonNumber, seasonEpisodes]) => {
             const seasonRank = seasonRankByNumber.get(seasonNumber);
+            const seasonRankAllTarget = seasonRankAllTargetByNumber.get(seasonNumber);
             return (
               <div key={seasonNumber} className="flex flex-col gap-2">
                 <div className="flex items-center gap-2">
@@ -202,6 +247,14 @@ export function EpisodeListWithFilters({
                     >
                       #{seasonRank.rank}
                     </span>
+                  )}
+                  {seasonRankAllTarget && (
+                    <Link
+                      href={`/shows/${showId}/rank/${seasonRankAllTarget}?mode=rankAll&season=${seasonNumber}`}
+                      className="whitespace-nowrap rounded border border-blue-600 px-2 py-1 text-xs text-blue-600 dark:border-blue-400 dark:text-blue-400"
+                    >
+                      Rank season
+                    </Link>
                   )}
                 </div>
                 <ol className="flex flex-col gap-2">

@@ -6,6 +6,7 @@ import {
   isSeasonComplete,
   matchesSearch,
   searchableText,
+  seasonRankAllTargets,
   type EpisodeWithStatus,
 } from './EpisodeListWithFilters';
 
@@ -155,5 +156,48 @@ describe('the "Complete" badge is unaffected by search (season 1 is complete eit
     const financeSeasons = groupBySeason(financeSearch);
     expect(isSeasonComplete(financeSeasons.get(2) ?? [])).toBe(true); // filtered subset looks complete...
     expect(isSeasonComplete(fullSeasons.get(2) ?? [])).toBe(false); // ...but the real, full season 2 is not.
+  });
+});
+
+describe('seasonRankAllTargets', () => {
+  it('has no entry for a season that is fully complete (nothing left to rank)', () => {
+    // Season 1: pilot is scored, chapterTwo is bucketed — both "touched", so nothing unranked.
+    const fullSeasons = groupBySeason(allEpisodes);
+    expect(seasonRankAllTargets(fullSeasons).has(1)).toBe(false);
+  });
+
+  it('targets a season\'s own unranked episode when it has exactly one', () => {
+    // Season 2: finale is scored, theReturn is untouched — theReturn is the only candidate.
+    const fullSeasons = groupBySeason(allEpisodes);
+    expect(seasonRankAllTargets(fullSeasons).get(2)).toBe(theReturn.id);
+  });
+
+  it('picks the oldest-by-air-date unranked episode when a season has more than one candidate', () => {
+    const older = makeEpisode({ id: 'older', season_number: 3, episode_number: 1, air_date: '2019-01-01' });
+    const newer = makeEpisode({ id: 'newer', season_number: 3, episode_number: 2, air_date: '2019-06-01' });
+    const fullSeasons = groupBySeason([older, newer]);
+
+    expect(seasonRankAllTargets(fullSeasons).get(3)).toBe('older');
+  });
+
+  it('scopes strictly to its own season, never picking an unranked episode from a different season', () => {
+    const s1Unranked = makeEpisode({ id: 's1', season_number: 1, episode_number: 1, air_date: '2022-01-01' });
+    const s2Unranked = makeEpisode({ id: 's2', season_number: 2, episode_number: 1, air_date: '2019-01-01' });
+    const fullSeasons = groupBySeason([s1Unranked, s2Unranked]);
+
+    const targets = seasonRankAllTargets(fullSeasons);
+    // Season 2's episode airs earlier, but season 1's target must still be season 1's own episode.
+    expect(targets.get(1)).toBe('s1');
+    expect(targets.get(2)).toBe('s2');
+  });
+
+  it('has an entry for every season with at least one unranked episode and no entry for fully-ranked ones', () => {
+    const complete = makeEpisode({ id: 'c1', season_number: 1, episode_number: 1, score: 5 });
+    const incomplete = makeEpisode({ id: 'i1', season_number: 2, episode_number: 1 });
+    const fullSeasons = groupBySeason([complete, incomplete]);
+
+    const targets = seasonRankAllTargets(fullSeasons);
+    expect(targets.has(1)).toBe(false);
+    expect(targets.get(2)).toBe('i1');
   });
 });

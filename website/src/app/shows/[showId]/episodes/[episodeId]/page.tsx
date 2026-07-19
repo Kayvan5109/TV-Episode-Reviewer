@@ -106,17 +106,26 @@ function formatAirDate(dateString: string): string {
  * own `mode` search param). When present, `?mode=rankAll` is appended to the "Return to ranking"
  * link too, so this round trip (rank-all session -> episode title -> here -> "Return to ranking")
  * doesn't silently drop the user out of rank-all mode.
+ *
+ * Also accepts an optional `season` query param, set alongside `mode=rankAll` by those same title
+ * links during a season-scoped "Rank season" session (see `EpisodeListWithFilters.tsx` and
+ * `rank/[episodeId]/page.tsx`'s own `season` search param). When rank-all mode is active, `&season=N`
+ * is appended to the "Return to ranking" link too, for exactly the same round-trip-preservation
+ * reason `mode` already is — this is the season-scoped counterpart of the gap that `mode` fixed for
+ * whole-show rank-all (see `Docs/STATUS.md`).
  */
 export default async function EpisodeDetailPage({
   params,
   searchParams,
 }: {
   params: Promise<{ showId: string; episodeId: string }>;
-  searchParams: Promise<{ returnToRank?: string; mode?: string }>;
+  searchParams: Promise<{ returnToRank?: string; mode?: string; season?: string }>;
 }) {
   const { showId, episodeId } = await params;
-  const { returnToRank, mode } = await searchParams;
+  const { returnToRank, mode, season } = await searchParams;
   const rankAllMode = mode === 'rankAll';
+  const parsedSeason = season === undefined ? NaN : Number(season);
+  const seasonScope = Number.isFinite(parsedSeason) ? parsedSeason : undefined;
 
   const supabase = await createSupabaseServerClient();
   const {
@@ -210,7 +219,9 @@ export default async function EpisodeDetailPage({
             </Link>
             {returnToRank && (
               <Link
-                href={`/shows/${showId}/rank/${returnToRank}${rankAllMode ? '?mode=rankAll' : ''}`}
+                href={`/shows/${showId}/rank/${returnToRank}${rankAllMode ? '?mode=rankAll' : ''}${
+                  rankAllMode && seasonScope !== undefined ? `&season=${seasonScope}` : ''
+                }`}
                 className="text-sm underline underline-offset-2"
               >
                 ↩ Return to ranking

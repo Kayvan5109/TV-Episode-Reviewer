@@ -76,12 +76,15 @@ function PosterButton({
  * appended to the title link — otherwise the round trip through the episode detail page's "Return
  * to ranking" link would silently drop the user out of rank-all mode (see that page's own `mode`
  * search param handling, and `rank/[episodeId]/page.tsx`'s `EpisodeColumn` doing the same thing).
+ * `seasonScope`, when set, additionally appends `&season=N` alongside `mode=rankAll` (never on its
+ * own) — same season-scoped rank-all round-trip preservation as `EpisodeColumn`.
  */
 function ComparisonColumn({
   episode,
   showId,
   returnToRankId,
   rankAllMode,
+  seasonScope,
   disabled,
   onPick,
 }: {
@@ -89,6 +92,7 @@ function ComparisonColumn({
   showId: string;
   returnToRankId: string;
   rankAllMode: boolean;
+  seasonScope?: number;
   disabled: boolean;
   onPick: () => void;
 }) {
@@ -98,7 +102,7 @@ function ComparisonColumn({
       <Link
         href={`/shows/${showId}/episodes/${episode.id}?returnToRank=${returnToRankId}${
           rankAllMode ? '&mode=rankAll' : ''
-        }`}
+        }${rankAllMode && seasonScope !== undefined ? `&season=${seasonScope}` : ''}`}
         className="text-lg font-medium underline underline-offset-2"
       >
         {formatEpisode(episode)}
@@ -127,20 +131,22 @@ function ComparisonColumn({
  * Same pending/error UX as before: interaction is disabled while a submission is in flight, and a
  * thrown error is surfaced as an alert below the row.
  *
- * `rankAllMode` is passed straight through to `submitComparison` unchanged — this component makes
- * no decisions based on it itself, it's purely threaded from the rank page's `mode` search param
- * down to the action that needs it (see `actions.ts`).
+ * `rankAllMode` and `seasonScope` are passed straight through to `submitComparison` unchanged —
+ * this component makes no decisions based on either itself, they're purely threaded from the rank
+ * page's `mode`/`season` search params down to the action that needs them (see `actions.ts`).
  */
 export function ComparisonPrompt({
   showId,
   subject,
   reference,
   rankAllMode,
+  seasonScope,
 }: {
   showId: string;
   subject: EpisodeDisplay;
   reference: EpisodeDisplay;
   rankAllMode: boolean;
+  seasonScope?: number;
 }) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -148,7 +154,14 @@ export function ComparisonPrompt({
   function handlePick(result: ComparisonResult) {
     setError(null);
     startTransition(async () => {
-      const outcome = await submitComparison(showId, subject.id, reference.id, result, rankAllMode);
+      const outcome = await submitComparison(
+        showId,
+        subject.id,
+        reference.id,
+        result,
+        rankAllMode,
+        seasonScope
+      );
       if (outcome?.error) {
         setError(outcome.error);
       }
@@ -164,6 +177,7 @@ export function ComparisonPrompt({
           showId={showId}
           returnToRankId={subject.id}
           rankAllMode={rankAllMode}
+          seasonScope={seasonScope}
           disabled={isPending}
           onPick={() => handlePick(resultForClickedSide('subject'))}
         />
@@ -182,6 +196,7 @@ export function ComparisonPrompt({
           showId={showId}
           returnToRankId={subject.id}
           rankAllMode={rankAllMode}
+          seasonScope={seasonScope}
           disabled={isPending}
           onPick={() => handlePick(resultForClickedSide('reference'))}
         />

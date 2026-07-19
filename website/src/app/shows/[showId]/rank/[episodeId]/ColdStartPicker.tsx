@@ -21,18 +21,20 @@ const BUCKETS: { bucket: ColdStartBucket; label: string }[] = [
  * transition is simpler here than juggling `useActionState` across three separately-submittable
  * buttons.
  *
- * `rankAllMode` is passed straight through to `submitColdStart` unchanged — this component makes
- * no decisions based on it itself, it's purely threaded from the rank page's `mode` search param
- * down to the action that needs it (see `actions.ts`).
+ * `rankAllMode` and `seasonScope` are passed straight through to `submitColdStart` unchanged — this
+ * component makes no decisions based on either itself, they're purely threaded from the rank page's
+ * `mode`/`season` search params down to the action that needs them (see `actions.ts`).
  */
 export function ColdStartPicker({
   showId,
   episodeId,
   rankAllMode,
+  seasonScope,
 }: {
   showId: string;
   episodeId: EpisodeId;
   rankAllMode: boolean;
+  seasonScope?: number;
 }) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +42,7 @@ export function ColdStartPicker({
   function handlePick(bucket: ColdStartBucket) {
     setError(null);
     startTransition(async () => {
-      const result = await submitColdStart(showId, episodeId, bucket, rankAllMode);
+      const result = await submitColdStart(showId, episodeId, bucket, rankAllMode, seasonScope);
       if (result?.error) {
         setError(result.error);
       }

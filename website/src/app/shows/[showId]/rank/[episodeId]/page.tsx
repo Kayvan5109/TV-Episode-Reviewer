@@ -65,16 +65,20 @@ function SeasonPoster({ episode }: { episode: EpisodeRow }) {
  * `ComparisonColumn` in `ComparisonPrompt.tsx` for that), so `episode.id` is always the right id to
  * return to. When `rankAllMode` is true, `&mode=rankAll` is also appended to that link — otherwise
  * the round trip through the episode detail page's "Return to ranking" link would silently drop the
- * user out of rank-all mode (see that page's own `mode` search param handling).
+ * user out of rank-all mode (see that page's own `mode` search param handling). `seasonScope`, when
+ * set (season-scoped "Rank season" mode), additionally appends `&season=N` — but only alongside
+ * `mode=rankAll`, since season-scoping only means anything inside rank-all mode in the first place.
  */
 function EpisodeColumn({
   episode,
   showId,
   rankAllMode,
+  seasonScope,
 }: {
   episode: EpisodeRow;
   showId: string;
   rankAllMode: boolean;
+  seasonScope?: number;
 }) {
   return (
     <div className="flex w-full max-w-xs flex-col items-center gap-2 text-center">
@@ -82,7 +86,7 @@ function EpisodeColumn({
       <Link
         href={`/shows/${showId}/episodes/${episode.id}?returnToRank=${episode.id}${
           rankAllMode ? '&mode=rankAll' : ''
-        }`}
+        }${rankAllMode && seasonScope !== undefined ? `&season=${seasonScope}` : ''}`}
         className="text-lg font-medium underline underline-offset-2"
       >
         {formatEpisode(episode)}
@@ -115,21 +119,33 @@ function EpisodeColumn({
  * `redirectAfterAlreadyRanked` when a rank-all-mode stale resubmission redirects here (the *next*
  * episode's rank page) instead of the show page. Same informational message the show page renders
  * for its own single-episode-mode case — see that page's doc comment.
+ *
+ * Also accepts an optional `season` query param — set by a season's "Rank season" link (see
+ * `EpisodeListWithFilters.tsx`) and by the title links rendered during a season-scoped rank-all
+ * session itself (`EpisodeColumn` below, `ComparisonPrompt.tsx`), so this narrower session survives
+ * both auto-advance and the round trip through an episode detail page, the same way `mode` already
+ * does for whole-show rank-all. Parsed to a number (`seasonScope`) with the same fail-open posture
+ * as everything else that reads a search param in this app — anything that isn't a finite number
+ * (missing, blank, garbage) just falls back to `undefined`, i.e. unscoped.
  */
 export default async function RankEpisodePage({
   params,
   searchParams,
 }: {
   params: Promise<{ showId: string; episodeId: string }>;
-  searchParams: Promise<{ mode?: string; notice?: string }>;
+  searchParams: Promise<{ mode?: string; notice?: string; season?: string }>;
 }) {
   const { showId, episodeId } = await params;
-  const { mode, notice } = await searchParams;
+  const { mode, notice, season } = await searchParams;
   // "Rank all" mode: set by the show page's "Rank all" link (see `shows/[showId]/page.tsx`) and
   // threaded down to `ColdStartPicker`/`ComparisonPrompt` so their submissions (`actions.ts`) know
   // to auto-advance to the next oldest-unranked episode instead of returning to the show page —
   // see `actions.ts`'s `nextRankAllDestination` for where that actually happens.
   const rankAllMode = mode === 'rankAll';
+  // Season-scoped rank-all (a season's "Rank season" link — see `EpisodeListWithFilters.tsx`).
+  // `undefined` when absent/invalid, matching whole-show rank-all's unscoped behavior.
+  const parsedSeason = season === undefined ? NaN : Number(season);
+  const seasonScope = Number.isFinite(parsedSeason) ? parsedSeason : undefined;
 
   const supabase = await createSupabaseServerClient();
   const {
@@ -198,6 +214,7 @@ export default async function RankEpisodePage({
             episode={episode}
             episodesById={episodesById}
             rankAllMode={rankAllMode}
+            seasonScope={seasonScope}
           />
         )}
 
@@ -220,12 +237,14 @@ async function RankEpisodeStep({
   episode,
   episodesById,
   rankAllMode,
+  seasonScope,
 }: {
   showId: string;
   episodeId: string;
   episode: EpisodeRow;
   episodesById: Map<string, EpisodeRow>;
   rankAllMode: boolean;
+  seasonScope?: number;
 }) {
   const step = await getNextStepForEpisode(showId, episodeId);
 
@@ -242,6 +261,7 @@ async function RankEpisodeStep({
             subject={episode}
             reference={reference}
             rankAllMode={rankAllMode}
+            seasonScope={seasonScope}
           />
         ) : (
           // Defensive fallback only — `step.reference` should always be one of this show's own
@@ -250,7 +270,12 @@ async function RankEpisodeStep({
           // click-to-answer UI at all; just show what we do know and let the user bail out via the
           // "Return to show page" link the page always renders.
           <>
-            <EpisodeColumn episode={episode} showId={showId} rankAllMode={rankAllMode} />
+            <EpisodeColumn
+              episode={episode}
+              showId={showId}
+              rankAllMode={rankAllMode}
+              seasonScope={seasonScope}
+            />
             <p className="text-sm text-black/60 dark:text-white/60">
               Couldn&apos;t load the comparison episode ({step.reference}).
             </p>
@@ -272,7 +297,12 @@ async function RankEpisodeStep({
     stepContent = (
       <div className="flex w-full max-w-2xl flex-col items-center gap-4">
         <p className="text-sm text-black/60 dark:text-white/60">Did you like this episode?</p>
-        <ColdStartPicker showId={showId} episodeId={episodeId} rankAllMode={rankAllMode} />
+        <ColdStartPicker
+          showId={showId}
+          episodeId={episodeId}
+          rankAllMode={rankAllMode}
+          seasonScope={seasonScope}
+        />
       </div>
     );
   }
@@ -282,7 +312,7 @@ async function RankEpisodeStep({
       {/* Full poster+title+synopsis column, not just a small poster+title — Kayvan wants the
           synopsis visible while cold-ranking the first few episodes too, not only on the
           two-episode compare screen. Harmless for the rare 'alreadyRanked' stale-link case too. */}
-      <EpisodeColumn episode={episode} showId={showId} rankAllMode={rankAllMode} />
+      <EpisodeColumn episode={episode} showId={showId} rankAllMode={rankAllMode} seasonScope={seasonScope} />
       {stepContent}
     </div>
   );

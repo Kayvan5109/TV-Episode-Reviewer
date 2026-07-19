@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
 import type { ColdStartBucket } from '@/lib/ranking/types';
-import { orderOldestFirst, type EpisodeOrderRow } from '@/lib/ranking/rankAllOrder';
+import { filterIdsBySeason, orderOldestFirst, type EpisodeOrderRow } from '@/lib/ranking/rankAllOrder';
 import {
   getNextStepForEpisode,
   getShowRankingDisplay,
@@ -63,20 +63,27 @@ async function markShowAsAdded(showId: string): Promise<void> {
 }
 
 /**
- * Where a rank-all-mode "alreadyRanked" transition should send the user next: the show's next
- * oldest-by-air-date unranked episode's rank page (`?mode=rankAll` re-appended, so the mode
- * survives), or the show page itself once nothing unranked is left. Both `getShowRankingDisplay`
- * (for the current unranked-id list) and the episode ordering data (season/episode/air_date) are
- * reloaded fresh here rather than reused from anywhere earlier in the request — this always runs
- * immediately after a just-recorded write, so it must reflect that write, same "always reload"
- * discipline `@/lib/ranking-session/session.ts` follows throughout (see e.g. that file's
+ * Where a rank-all-mode "alreadyRanked" transition should send the user next: the show's (or, when
+ * `seasonScope` is set, that one season's) next oldest-by-air-date unranked episode's rank page
+ * (`?mode=rankAll` re-appended, so the mode survives, plus `&season=N` when scoped), or the show
+ * page itself once nothing unranked is left in scope. Both `getShowRankingDisplay` (for the current
+ * unranked-id list) and the episode ordering data (season/episode/air_date) are reloaded fresh here
+ * rather than reused from anywhere earlier in the request — this always runs immediately after a
+ * just-recorded write, so it must reflect that write, same "always reload" discipline
+ * `@/lib/ranking-session/session.ts` follows throughout (see e.g. that file's
  * `resetEpisodeRanking`).
+ *
+ * `seasonScope`, when provided (season-scoped "Rank season" mode — see
+ * `EpisodeListWithFilters.tsx`), narrows `display.unranked` down to just that season's episode ids
+ * *before* ordering, so auto-advance only ever lands on episodes from that season and never spills
+ * over into the rest of the show once it's exhausted — same "nothing left in scope -> show page"
+ * fallback as whole-show mode, just scoped.
  *
  * A failed episode fetch here falls back to the show page rather than throwing out of what's
  * ultimately just a `redirect()` target computation — same fail-open posture `markShowAsAdded`
  * uses for its own non-critical failures.
  */
-async function nextRankAllDestination(showId: string): Promise<string> {
+async function nextRankAllDestination(showId: string, seasonScope?: number): Promise<string> {
   const display = await getShowRankingDisplay(showId);
   if (display.done) {
     return `/shows/${showId}`;
@@ -92,8 +99,22 @@ async function nextRankAllDestination(showId: string): Promise<string> {
     return `/shows/${showId}`;
   }
 
-  const nextEpisodeId = orderOldestFirst(episodesData as EpisodeOrderRow[], display.unranked)[0];
-  return nextEpisodeId ? `/shows/${showId}/rank/${nextEpisodeId}?mode=rankAll` : `/shows/${showId}`;
+  const episodes = episodesData as EpisodeOrderRow[];
+  const unrankedIds =
+    seasonScope === undefined
+      ? display.unranked
+      : filterIdsBySeason(episodes, display.unranked, seasonScope);
+
+  const nextEpisodeId = orderOldestFirst(episodes, unrankedIds)[0];
+  if (!nextEpisodeId) {
+    return `/shows/${showId}`;
+  }
+
+  let destination = appendQueryParam(`/shows/${showId}/rank/${nextEpisodeId}`, 'mode', 'rankAll');
+  if (seasonScope !== undefined) {
+    destination = appendQueryParam(destination, 'season', String(seasonScope));
+  }
+  return destination;
 }
 
 /**
@@ -110,7 +131,8 @@ function appendQueryParam(url: string, key: string, value: string): string {
  * the catch-block stale-resubmission checks and the success-path checks in both `submitColdStart`
  * and `submitComparison` below (four call sites total, all needing identical behavior here). Plain
  * "back to the show page" when `rankAllMode` is false (unchanged single-episode behavior); straight
- * into the next unranked episode's rank page, still in rank-all mode, when it's true.
+ * into the next unranked episode's rank page, still in rank-all mode (and still scoped to
+ * `seasonScope`, when set — see `nextRankAllDestination`), when it's true.
  *
  * `notice`, when passed, is appended to the computed destination as a `notice` query param (e.g.
  * `'staleResubmission'` -> `&notice=staleResubmission`) — used only by the two catch-block call
@@ -125,9 +147,10 @@ function appendQueryParam(url: string, key: string, value: string): string {
 async function redirectAfterAlreadyRanked(
   showId: string,
   rankAllMode: boolean,
+  seasonScope?: number,
   notice?: 'staleResubmission'
 ): Promise<never> {
-  const destination = rankAllMode ? await nextRankAllDestination(showId) : `/shows/${showId}`;
+  const destination = rankAllMode ? await nextRankAllDestination(showId, seasonScope) : `/shows/${showId}`;
   redirect(notice ? appendQueryParam(destination, 'notice', notice) : destination);
 }
 
@@ -149,15 +172,19 @@ async function redirectAfterAlreadyRanked(
  * rather than anything cached, invalidating its own path is exactly what's needed for the next
  * request to reflect the just-submitted answer when there's still something to show here.
  *
- * `rankAllMode` (set when the user entered the ranking flow via the show page's "Rank all" link —
- * see that page and `rank/[episodeId]/page.tsx`'s own `mode` search param) changes only where the
- * two 'alreadyRanked' branches below send the user: see `redirectAfterAlreadyRanked`.
+ * `rankAllMode` (set when the user entered the ranking flow via the show page's "Rank all" link, or
+ * a season's "Rank season" link — see that page and `rank/[episodeId]/page.tsx`'s own `mode` search
+ * param) changes only where the two 'alreadyRanked' branches below send the user: see
+ * `redirectAfterAlreadyRanked`. `seasonScope`, set only for "Rank season" sessions (the `season`
+ * search param — see `page.tsx`), narrows that auto-advance to just one season; `undefined` means
+ * whole-show rank-all, unchanged from before this parameter existed.
  */
 export async function submitColdStart(
   showId: string,
   episodeId: EpisodeId,
   bucket: ColdStartBucket,
-  rankAllMode: boolean
+  rankAllMode: boolean,
+  seasonScope?: number
 ): Promise<RankingActionResult> {
   let step;
   try {
@@ -171,7 +198,7 @@ export async function submitColdStart(
     // through to the original error below, unchanged.
     const current = await getNextStepForEpisode(showId, episodeId).catch(() => null);
     if (current?.type === 'alreadyRanked') {
-      await redirectAfterAlreadyRanked(showId, rankAllMode, 'staleResubmission');
+      await redirectAfterAlreadyRanked(showId, rankAllMode, seasonScope, 'staleResubmission');
     }
 
     return {
@@ -184,7 +211,7 @@ export async function submitColdStart(
   await markShowAsAdded(showId);
 
   if (step.type === 'alreadyRanked') {
-    await redirectAfterAlreadyRanked(showId, rankAllMode);
+    await redirectAfterAlreadyRanked(showId, rankAllMode, seasonScope);
   }
 
   revalidatePath(`/shows/${showId}/rank/${episodeId}`);
@@ -193,16 +220,17 @@ export async function submitColdStart(
 /**
  * Same shape as `submitColdStart`, wrapping `submitComparisonAnswer` instead. `subjectId` is
  * always this route's own `episodeId` — the caller (`ComparisonPrompt`) is fixed to that subject,
- * it just also needs `referenceId` to know which pending question it's answering. `rankAllMode` has
- * the same meaning and effect as it does on `submitColdStart` — see that function's doc comment and
- * `redirectAfterAlreadyRanked`.
+ * it just also needs `referenceId` to know which pending question it's answering. `rankAllMode` and
+ * `seasonScope` have the same meaning and effect as they do on `submitColdStart` — see that
+ * function's doc comment and `redirectAfterAlreadyRanked`.
  */
 export async function submitComparison(
   showId: string,
   subjectId: EpisodeId,
   referenceId: EpisodeId,
   result: ComparisonResult,
-  rankAllMode: boolean
+  rankAllMode: boolean,
+  seasonScope?: number
 ): Promise<RankingActionResult> {
   let step;
   try {
@@ -216,7 +244,7 @@ export async function submitComparison(
     // falls through unchanged.
     const current = await getNextStepForEpisode(showId, subjectId).catch(() => null);
     if (current?.type === 'alreadyRanked') {
-      await redirectAfterAlreadyRanked(showId, rankAllMode, 'staleResubmission');
+      await redirectAfterAlreadyRanked(showId, rankAllMode, seasonScope, 'staleResubmission');
     }
 
     return {
@@ -229,7 +257,7 @@ export async function submitComparison(
   await markShowAsAdded(showId);
 
   if (step.type === 'alreadyRanked') {
-    await redirectAfterAlreadyRanked(showId, rankAllMode);
+    await redirectAfterAlreadyRanked(showId, rankAllMode, seasonScope);
   }
 
   revalidatePath(`/shows/${showId}/rank/${subjectId}`);

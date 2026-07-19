@@ -47,3 +47,26 @@ export function orderOldestFirst(
     )
     .map((episode) => episode.id);
 }
+
+/**
+ * Narrows `episodeIds` down to just the ones belonging to `seasonScope` — the filtering step
+ * season-scoped "Rank all" mode ("Rank season") applies to `display.unranked` before handing off to
+ * `orderOldestFirst`, so auto-advance only ever considers episodes from that one season (see
+ * `rank/[episodeId]/actions.ts`'s `nextRankAllDestination`). `episodes` is looked up the same way
+ * `orderOldestFirst` does (any superset containing every id in `episodeIds`); an id with no
+ * matching row is silently dropped, same convention.
+ *
+ * Pulled out here as its own pure function — rather than left inline inside the Server Action file
+ * that's its only caller — for two reasons: it's genuinely independent, reusable logic (matching
+ * why `orderOldestFirst` itself already lives here rather than in `actions.ts`), and a `'use server'`
+ * file can only export async functions, so a plain synchronous helper like this couldn't be
+ * unit-tested directly from there anyway.
+ */
+export function filterIdsBySeason(
+  episodes: readonly EpisodeOrderRow[],
+  episodeIds: readonly string[],
+  seasonScope: number
+): string[] {
+  const byId = new Map(episodes.map((episode) => [episode.id, episode]));
+  return episodeIds.filter((id) => byId.get(id)?.season_number === seasonScope);
+}
