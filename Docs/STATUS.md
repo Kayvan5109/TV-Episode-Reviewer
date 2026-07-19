@@ -245,6 +245,20 @@ session usage spent, asked what's next; **queue is genuinely empty** (Bucket 1 a
 state — the TMDB re-sync needs a show to actually get a new episode/season), so this is a real "pick
 something" moment rather than an obvious next item.
 
+**Same session, continued.** Kayvan picked three items to build: the "Rank all" `returnToRank` gap fix,
+a "this was already ranked, nothing changed" stale-resubmission notice, and a derived season-rank badge
+on each season's header (`#N`, tooltip showing the season's average score) — plus confirmed Tier B was
+still wanted in the queue (consolidated into one Bucket 4 entry, see above) and extended the All Stars
+Mode write-up with two new details (account-page placement, sharper dashboard behavior on a #1 change).
+Dispatched one implementer for all three builds (bundled since they share files); it landed cleanly
+(291/291 tests), PM independently re-verified before merging. Main had moved on with two docs-only
+commits while the agent worked, so this was a real (conflict-free) merge rather than a fast-forward —
+confirmed via `git merge-base` that the agent's own branch never touched `STATUS.md` before merging.
+Merged and pushed (`b5db845`). Not yet hands-on checked — added to Bucket 2. Kayvan then resolved the
+All-Star list's open visibility question (public, via the same `rankings_visibility` toggle as the rest
+of Tier B, no special case) and added a new top-priority idea — the dashboard showing each tracked
+show's #1 episode next to its progress bar — now Bucket 1 item 1.
+
 ## Punch List (ranked — read this section first for "what's actually next")
 
 Every open item gets triaged into exactly one bucket the moment it surfaces, per
@@ -252,11 +266,24 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence:**
-(empty for now — the mobile/responsive item that sat here is resolved down to its actual scope, see
-Bucket 2 item 1 and Bucket 4's new item below. The original "audit every page" framing came from
-Kayvan's own "the mobile version of the website is terrible," which Kayvan walked back 2026-07-18 on
-looking at the live site again — the real, confirmed complaint was one specific bug, not a whole-app
-problem. See History for the full account.)
+1. **Dashboard: show each tracked show's #1-ranked episode — added 2026-07-18, Kayvan's idea,
+   confirmed top priority for next build.** On the dashboard's "My Shows" list
+   (`website/src/app/dashboard/page.tsx`), under each show's name, to the right of that show's
+   existing progress bar row (`{percent}% ({rankedCount}/{total})`), display the title and season of
+   that show's current #1-ranked episode (e.g. something like "Best: Ozymandias (S5)" — exact copy/
+   format is a build-time call, not pinned down here). Only meaningful for a show with at least one
+   comparatively-ranked episode (`display.ranked.length > 0`, i.e. `getShowRankingDisplay`'s `ranked`
+   array is non-empty) — a show still fully in cold start has no #1 yet and should show nothing new.
+   **Feasible mechanism**: the dashboard already calls `getShowRankingDisplay` per tracked show to
+   build `progressByShowId` — `display.ranked[0]` is already that show's #1 episode (rank 1) once
+   `ranked.length > 0`, no new query type needed, just carrying `episodeId` through and resolving it
+   to title/season via a batched episode-title fetch (the dashboard doesn't currently fetch
+   `episodes` at all, only `shows`/`user_shows` — this adds one new batched query, e.g. `.in('id',
+   [...top episode ids across all tracked shows])`, not one query per show). **Worth noting, not
+   acting on yet**: this is exactly the "each show's #1 episode" data Bucket 4 item 15 (All Stars
+   Mode) will also need — no shared code to write now since All Stars isn't scheduled, but whoever
+   builds All Stars later should check whether this dashboard feature already has reusable plumbing
+   before re-deriving it from scratch.
 
 **"Tier A" — a small batch pulled from an external design review, decided 2026-07-17, now the
 front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
@@ -416,24 +443,32 @@ in Bucket 4, rather than being done piecemeal now.
    live Vercel, same session.** Kayvan then asked for the entry button to be made more prominent —
    restyled as a bordered button (blue, matching "Remove show"'s style) stacked underneath it, built
    and merged (`3826b16`), also hands-on confirmed. Removed from Bucket 2.
-   **Known gap, still not fixed**: clicking an episode title mid-rank-all-session (the comparison or
-   cold-start screen's title link, item 10's `returnToRank`) and then clicking "↩ Return to ranking"
-   on the episode detail page drops out of rank-all mode silently — `?mode=rankAll` isn't carried
-   through that round-trip. Narrow (only hit by clicking a title *during* a rank-all session, and
-   recoverable by just clicking "Rank all" again from the show page). Worth deciding whether it's
-   worth a small follow-up fix, or leave logged here since it's cheap to work around by hand.
+   ~~**Known gap**~~: clicking an episode title mid-rank-all-session and then clicking "↩ Return to
+   ranking" on the episode detail page used to drop out of rank-all mode silently —
+   **fixed and merged 2026-07-18 (`b5db845`)**, `mode=rankAll` now carried through that whole
+   round-trip. Not yet hands-on checked, folded into item 4 below.
 2. ~~**Season filter + episode search on the show page, built and merged 2026-07-18
    (`41468bb`)**~~ — **hands-on confirmed working on live Vercel, same session.** Removed from
    Bucket 2.
 3. ~~**Show page header mobile overlap fix, built and merged 2026-07-18 (`376d705`)**~~ — **hands-on
    confirmed working on a real phone, same session** (long title no longer overlaps "Remove show"/
    "Rank all"; desktop layout unchanged). Removed from Bucket 2.
-4. **Sentry error monitoring, built 2026-07-18, blocked on Kayvan creating a Sentry project** — code
+4. **Three small builds, merged 2026-07-18 (`b5db845`), not yet hands-on checked**: (a) the "Rank
+   all" `returnToRank` gap above; (b) a "This episode was already ranked — nothing changed." message
+   on a stale resubmission (browser-back double-submit), shown on whichever page the redirect lands
+   on; (c) a derived season-rank badge (`#N`, tooltip shows the season's average score) next to each
+   season's heading on the show page. Check on live Vercel: (a) rank-all mode, click a title,
+   return, confirm auto-advance still works; (b) deliberately resubmit a stale ranking answer (e.g.
+   browser back after answering, submit again) and confirm the notice shows instead of a silent
+   redirect; (c) a show with 2+ ranked seasons shows `#1`/`#2`/etc. badges next to season headings,
+   matching the seasons' actual average scores (also coexists sensibly with the "Complete" badge on
+   seasons where both apply).
+5. **Sentry error monitoring, built 2026-07-18, blocked on Kayvan creating a Sentry project** — code
    is merged and verified (build/tests/lint all clean with the DSN unset), but nothing will actually
    report until `NEXT_PUBLIC_SENTRY_DSN` is set locally *and* on Vercel. Once set: trigger a real
    test error (temporarily `throw` in a Server Action, per `.env.local.example`'s note) and confirm
    it shows up in the Sentry dashboard within a minute, then remove the test throw.
-5. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
+6. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
    design. Can't be meaningfully verified by just clicking around today (the 24h throttle means a
    freshly-imported show won't actually re-sync for a day), so the real check is patient rather than
    immediate: next time a tracked show is known to have a new episode/season on TMDB, confirm it
@@ -442,7 +477,7 @@ in Bucket 4, rather than being done piecemeal now.
    (check the `shows` table has a populated `last_synced_at` column) and that a show page still loads
    normally post-push (the added `ensureShowSynced` call is fail-open, so even a broken TMDB call
    shouldn't break the page — but confirm that's actually true live, not just in tests).
-6. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
+7. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
    list (auth, search/import, dashboard, show detail page, the rankings page, cold start,
    comparative placement, re-ranking, removing a show all confirmed working end to end). What's
    genuinely still untested/unconfirmed, carried forward rather than chased right now:
@@ -575,13 +610,14 @@ see Bucket 4.)
     - **The complete (not just Top 4) All-Star ranked list lives on the user's account page — mapped
       to Tier B's already-planned `/u/[username]` public profile page** (see `AppSpec.md`'s Tier B
       Detailed Design; today that page's spec only covers a "Follow" button, so this adds a real new
-      content section to it once both Tier B and this feature exist). **Open detail, not yet
-      decided**: `/u/[username]` is a *public* profile page in the existing Tier B design — worth
-      explicitly confirming at build time whether the full All-Star list is meant to be public
-      (visible to anyone viewing the profile, consistent with the page's existing purpose) or
-      private-only (in which case it'd need its own private account view instead, distinct from
-      `/u/[username]`) — Kayvan said "their account page," which doesn't by itself disambiguate the
-      two.
+      content section to it once both Tier B and this feature exist). **Resolved 2026-07-18, same
+      day**: the page and the All-Star list on it are public, same as the rest of Tier B — no
+      separate/special privacy setting for All-Stars specifically, it inherits the profile's existing
+      `rankings_visibility` toggle (`user_profiles.rankings_visibility`, `'private' | 'public'`,
+      default `'private'` — see `AppSpec.md`'s Tier B schema) the same way every other piece of Tier B
+      content already does. A user who flips their whole profile private hides their All-Star list
+      along with everything else on it, exactly like today's design for the rest of the page —
+      confirmed, not a special case.
     - **Sharper (but not fully resolved) answer to "what happens when a show's #1 episode changes
       after the fact"**: when this happens, the dashboard's Top 4 display should be removed/hidden
       (not left showing a now-stale ranking) and replaced with a re-rank prompt in that same
