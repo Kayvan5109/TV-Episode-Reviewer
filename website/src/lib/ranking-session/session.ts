@@ -86,52 +86,48 @@ async function loadShowRankingState(
     return { episodeIdsInOrder, state: createInitialShowState(), createdAtByEpisode: new Map() };
   }
 
-  const { data: rankingRows, error: rankingError } = await supabase
+  // No `.in('episode_id', ...)` here on purpose — see Docs/STATUS.md Bucket 1 item 1: embedding
+  // every episode id of a show as a literal id list in the query URL eventually exceeds
+  // Supabase/PostgREST's URL-length limit for shows with enough episodes (a real production 400 on
+  // "The Challengers"). `.eq('user_id', userId)` alone already bounds this to one person's lifetime
+  // ranking data, a perfectly reasonable query size for a personal-use app — filter down to this
+  // show's episodes in application code afterward instead.
+  const { data: rankingRowsRaw, error: rankingError } = await supabase
     .from('episode_rankings')
     .select('episode_id, rank_position, cold_start_bucket, cold_start_sequence, created_at')
-    .eq('user_id', userId)
-    .in('episode_id', episodeIdsInOrder);
+    .eq('user_id', userId);
 
   if (rankingError) {
     throw new Error(`Failed to load episode rankings for show ${showId}: ${rankingError.message}`);
   }
 
-  // episode_comparisons rows touching this show could have either episode in either column —
-  // query both sides and merge, rather than composing a hand-built OR filter string.
-  const [aSide, bSide] = await Promise.all([
-    supabase
-      .from('episode_comparisons')
-      .select('id, episode_a_id, episode_b_id, result')
-      .eq('user_id', userId)
-      .in('episode_a_id', episodeIdsInOrder),
-    supabase
-      .from('episode_comparisons')
-      .select('id, episode_a_id, episode_b_id, result')
-      .eq('user_id', userId)
-      .in('episode_b_id', episodeIdsInOrder),
-  ]);
-
-  if (aSide.error) {
-    throw new Error(`Failed to load episode comparisons for show ${showId}: ${aSide.error.message}`);
-  }
-  if (bSide.error) {
-    throw new Error(`Failed to load episode comparisons for show ${showId}: ${bSide.error.message}`);
-  }
-
-  // De-dupe by row id: a comparison between two episodes that are *both* in this show's episode
-  // list would otherwise be returned by both queries.
-  const comparisonRowsById = new Map<string, ComparisonRow>();
-  for (const row of [...((aSide.data ?? []) as { id: string }[]), ...((bSide.data ?? []) as { id: string }[])]) {
-    comparisonRowsById.set(row.id, row as unknown as ComparisonRow);
-  }
-
-  const state = reconstructShowRankingState(
-    (rankingRows ?? []) as RankingRow[],
-    [...comparisonRowsById.values()]
+  const episodeIdSet = new Set(episodeIdsInOrder);
+  const rankingRows = ((rankingRowsRaw ?? []) as (RankingRow & { created_at: string })[]).filter((row) =>
+    episodeIdSet.has(row.episode_id)
   );
 
+  // Same reasoning as above, applied to episode_comparisons: no `.in('episode_a_id'/'episode_b_id',
+  // ...)`. Filtering purely by `user_id` also means a comparison row touching this show's episodes
+  // can only ever be returned once, so the old "query both sides, de-dupe by row id" dance (which
+  // existed specifically to route around the id-list URL-length problem) collapses into one query,
+  // filtered application-side to rows touching this show's episodes on either side.
+  const { data: comparisonRowsRaw, error: comparisonError } = await supabase
+    .from('episode_comparisons')
+    .select('id, episode_a_id, episode_b_id, result')
+    .eq('user_id', userId);
+
+  if (comparisonError) {
+    throw new Error(`Failed to load episode comparisons for show ${showId}: ${comparisonError.message}`);
+  }
+
+  const comparisonRows = ((comparisonRowsRaw ?? []) as ComparisonRow[]).filter(
+    (row) => episodeIdSet.has(row.episode_a_id) || episodeIdSet.has(row.episode_b_id)
+  );
+
+  const state = reconstructShowRankingState(rankingRows as RankingRow[], comparisonRows);
+
   const createdAtByEpisode = new Map<EpisodeId, string>();
-  for (const row of (rankingRows ?? []) as (RankingRow & { created_at: string })[]) {
+  for (const row of rankingRows) {
     createdAtByEpisode.set(row.episode_id, row.created_at);
   }
 
@@ -247,10 +243,15 @@ async function deriveNextStep(
 /**
  * Deletes every `episode_comparisons` row for `userId` that involves any of `episodeIds` on either
  * side (`episode_a_id` or `episode_b_id`) — the same "a row could have the id of interest on either
- * side, query both and delete both" reasoning `loadShowRankingState` already applies for reads, just
- * as a delete instead of a select. Two separate `.in()` deletes rather than one hand-built OR filter
- * string, matching this file's existing style. Shared between `deleteShowRankingData` (every episode
- * of a show at once) and `resetEpisodeRanking` (a single episode) — both need exactly this.
+ * side, query both and delete both" reasoning `loadShowRankingState`'s reads used to apply, just as
+ * a delete instead of a select. Two separate `.in()` deletes rather than one hand-built OR filter
+ * string, matching this file's existing style.
+ *
+ * Only called by `resetEpisodeRanking` now, always with exactly one episode id — safe from the
+ * URL-length problem documented on `deleteShowRankingData` (Docs/STATUS.md Bucket 1 item 1) because
+ * `episodeIds.length` is always 1 here, never a whole show's episode list. `deleteShowRankingData`
+ * used to call this too (with a full show's episode ids), which was the actual broken call site —
+ * it now uses a Postgres RPC instead; see that function's doc comment.
  */
 async function deleteComparisonsInvolving(
   supabase: SupabaseSessionClient,
@@ -275,42 +276,39 @@ async function deleteComparisonsInvolving(
 /**
  * Removing a show deletes the signed-in user's ranking data for it — a clean slate, not an
  * instant-restore-on-re-add (decided mechanics; see this session's design notes / Docs/STATUS.md).
- * Deletes every `episode_comparisons` row touching any of the show's episodes (both sides, via
- * `deleteComparisonsInvolving`) and every `episode_rankings` row for those episodes, both scoped to
- * this user. Deliberately does *not* touch the global `shows`/`episodes` reference tables (shared
- * across all users, written only by the TMDB import path) and does *not* touch `user_shows` — that
- * row isn't ranking state, it's the caller's concern (see `removeShow` in
- * `@/app/shows/[showId]/actions.ts`, which deletes it directly, mirroring how `addShow` writes it
- * directly rather than through this module).
+ * Deletes every `episode_comparisons` row touching any of the show's episodes (both sides) and
+ * every `episode_rankings` row for those episodes, both scoped to this user. Deliberately does
+ * *not* touch the global `shows`/`episodes` reference tables (shared across all users, written only
+ * by the TMDB import path) and does *not* touch `user_shows` — that row isn't ranking state, it's
+ * the caller's concern (see `removeShow` in `@/app/shows/[showId]/actions.ts`, which deletes it
+ * directly, mirroring how `addShow` writes it directly rather than through this module).
  *
- * A show with no episodes (or no ranking data at all) is a no-op, not an error.
+ * Unlike the read paths above (`loadShowRankingState`), "fetch everything and filter in app code"
+ * doesn't work for a delete — you can't delete rows you only know about from a `SELECT`, the
+ * `DELETE`'s own `WHERE` needs to be scoped correctly server-side without an id list on the wire
+ * (see Docs/STATUS.md Bucket 1 item 1). So this calls a Postgres RPC
+ * (`supabase/migrations/20260719000000_delete_show_ranking_data.sql`) that does the id-list
+ * filtering *inside* the database via a join through `episodes.show_id`, instead of shipping every
+ * episode id of the show over HTTP. That function is `security invoker` (Postgres's default, but
+ * declared explicitly): `episode_comparisons`/`episode_rankings`'s own RLS policies (delete scoped
+ * to `user_id = auth.uid()`) still apply using the *caller's real* `auth.uid()`, so RLS remains the
+ * actual enforcement backstop even though `p_user_id` is also passed explicitly — same "defense in
+ * depth on top of RLS" posture as every other query in this file (see the module comment).
+ *
+ * A show with no episodes (or no ranking data at all) is a no-op, not an error — the RPC's deletes
+ * simply match zero rows in that case.
  */
 export async function deleteShowRankingData(showId: string): Promise<void> {
   const supabase = await createSupabaseServerClient();
   const userId = await requireUserId(supabase);
 
-  const { data: episodeRows, error: episodesError } = await supabase
-    .from('episodes')
-    .select('id')
-    .eq('show_id', showId);
+  const { error } = await supabase.rpc('delete_show_ranking_data', {
+    p_show_id: showId,
+    p_user_id: userId,
+  });
 
-  if (episodesError) {
-    throw new Error(`Failed to load episodes for show ${showId}: ${episodesError.message}`);
-  }
-
-  const episodeIds = ((episodeRows ?? []) as { id: string }[]).map((row) => row.id);
-  if (episodeIds.length === 0) return;
-
-  await deleteComparisonsInvolving(supabase, userId, episodeIds);
-
-  const { error: rankingsError } = await supabase
-    .from('episode_rankings')
-    .delete()
-    .eq('user_id', userId)
-    .in('episode_id', episodeIds);
-
-  if (rankingsError) {
-    throw new Error(`Failed to delete episode rankings for show ${showId}: ${rankingsError.message}`);
+  if (error) {
+    throw new Error(`Failed to delete ranking data for show ${showId}: ${error.message}`);
   }
 }
 
