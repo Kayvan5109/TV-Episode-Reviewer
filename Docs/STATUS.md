@@ -383,6 +383,77 @@ production env vars are separate configs, so this wouldn't affect the live site 
 Bucket 4 item 20 for a quick check next session (does local `npm run dev` actually work right now?),
 not treated as a confirmed bug.
 
+**New session, 2026-07-19 (continued same date).** Opened per procedure (`STATUS.md` first). Kayvan
+brought two things: fresh user feedback that the crash happens specifically on shows with a lot of
+episodes (SNL, The Simpsons, The Challenge — consistent with the already-diagnosed cause) and framed
+it as needing "some sort of paging system"; and a new top-priority idea, a "Rank Season" button next
+to each season header — "Rank all" mode scoped to a single season. Clarified before building: the
+crash isn't a display problem a UI paging system would fix at all — last session's Sentry
+investigation had already found the real root cause (episode-id lists embedded in Supabase query
+URLs exceeding PostgREST's length limit), so this session just executed that already-decided fix
+rather than building pagination. Read the actual current code first (`session.ts`, `stats/page.tsx`,
+the whole "Rank all" mode stack) to ground both builds precisely, then dispatched two implementer
+agents in parallel (confirmed no file overlap first — one touches `ranking-session`/`stats`, the
+other touches the rank-flow/show-page UI):
+1. **The URL-length crash fix (Bucket 1 item 1).** All three broken read call sites
+   (`loadShowRankingState`'s `episode_rankings`/`episode_comparisons` queries, `stats/page.tsx`'s
+   win/loss-matrix comparison query) now scope by `user_id` alone and filter to the show's episodes
+   in application code via a `Set` — collapsing the old two-query/de-dupe-by-id dance for
+   `episode_comparisons` into one query in the process, since a single un-`.in()`'d query can't
+   return the same row twice. The one delete call site that was actually broken
+   (`deleteShowRankingData`, called when removing a show) can't be fixed the same way — a `DELETE`
+   needs the database itself to do the filtering — so it now calls a new `security invoker` Postgres
+   RPC (`delete_show_ranking_data`, migration `20260719000000_delete_show_ranking_data.sql`) that
+   deletes via a join through `episodes.show_id` entirely server-side; RLS (`user_id = auth.uid()`)
+   remains the real enforcement even though `p_user_id` is also passed explicitly, matching this
+   file's existing defense-in-depth posture. `resetEpisodeRanking` (always a single episode id, never
+   at risk) was deliberately left untouched. Classified correctness-critical (data layer, per-user
+   isolation) — got a full independent-reviewer pass, not just PM self-review: the reviewer re-derived
+   correctness from source, confirmed per-user/per-show isolation holds, verified the RLS-under-
+   `security invoker` reasoning independently rather than taking it on faith, and re-ran the full check
+   suite itself (303/303 tests, clean typecheck/lint/build) rather than trusting the implementer's own
+   report. One minor test-coverage gap the reviewer flagged (the cross-show leak test doesn't actually
+   exercise the `episode_comparisons` filter path specifically) was considered and deliberately not
+   chased further: `episode_comparisons` rows are only ever written by `submitComparisonAnswer` with
+   both episode ids from the same show, and `showConfidence`/`episodeConfidence` only ever look up
+   history by an episode id already in the show's own ranked list — so a wholly-foreign comparison row
+   is provably inert either way, filtered or not, and testing it would mean testing malformed data the
+   app has no code path to produce.
+2. **"Rank Season."** A strict generalization of the existing whole-show "Rank all" mechanism with an
+   optional `season` query param (`?mode=rankAll&season=N`) — a "Rank season" link now sits next to
+   each season's "Complete"/`#N` badges on the show page (only rendered when that season actually has
+   an unranked episode, same "no button if nothing to rank" logic as the whole-show link), landing on
+   that season's own oldest-unranked episode and auto-advancing only through the rest of that season,
+   returning to the show page once it's exhausted rather than spilling into other seasons. Threaded
+   through the full stack the same way whole-show mode's `mode` param already was: `actions.ts`'s
+   `nextRankAllDestination`/`redirectAfterAlreadyRanked`/`submitColdStart`/`submitComparison`, the rank
+   page's search-param parsing, `ColdStartPicker`/`ComparisonPrompt`, and the episode detail page's
+   `returnToRank` round-trip (closing the season-scoped counterpart of the same round-trip gap that
+   `mode` itself needed a fix for, back when whole-show rank-all first shipped). A comparison step's
+   reference episode can still legitimately come from a different season than the subject — scoping
+   only controls the entry point and auto-advance target, never which episodes the underlying
+   binary-insertion algorithm compares against, same as whole-show mode already worked. Classified as
+   navigation/control-flow (extends an already-shipped pattern, no schema/algorithm change) — implementer
+   + direct PM review, same pattern as items 10/11.
+
+Both implementer agents left their work uncommitted in their own real, correctly-isolated worktrees
+(`git worktree list` confirmed both were genuine, registered worktrees the whole time, and `main`'s
+own working tree was untouched) — a milder, previously-undocumented variant of the recurring
+`isolation: "worktree"` bug: isolation itself held, the agent just never ran `git commit`. Caught
+immediately by checking `git status --short` inside each worktree per the standing mitigation; see
+Deviations Awaiting Review for the full entry. PM reviewed each full diff directly against the
+dispatch brief, re-ran the entire check suite independently in both worktrees (not trusting either
+agent's self-report), committed both on their own branches, then merged (fast-forward for Rank
+Season, a real non-ff merge for the crash fix since `main` had moved on in the meantime — confirmed
+conflict-free ahead of time since the two branches touch entirely disjoint files) and re-ran the full
+suite once more on `main` with both merged together: typecheck/lint clean, **313/313 tests**, build
+succeeded, all routes compiled. Pushed (`0ccf337`). Both worktrees and branches cleaned up.
+**Bucket 1 is now empty** (item 1 fixed; item 2 was only ever a forward-looking note, not blocking
+work). Both builds now in Bucket 2 — the crash fix needs Kayvan to apply the new migration
+(`20260719000000_delete_show_ranking_data.sql`) to live Supabase before it does anything live, plus a
+hands-on check that a large show (one of the ones that was crashing) now actually loads/ranks/deletes
+cleanly; Rank Season just needs a hands-on check.
+
 ## Punch List (ranked — read this section first for "what's actually next")
 
 Every open item gets triaged into exactly one bucket the moment it surfaces, per
@@ -390,35 +461,13 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence:**
-1. **Live production bug, found 2026-07-19 via a Sentry error report: shows with enough episodes
-   crash their entire rank flow (confirmed on a real user's real show, "The Challengers").** Root
-   cause confirmed via the Sentry breadcrumbs (the exact failing request URL, truncated by Sentry
-   itself for size — strong evidence it's genuinely oversized): `loadShowRankingState` in
-   `website/src/lib/ranking-session/session.ts:89-93` queries `episode_rankings` with
-   `.in('episode_id', episodeIdsInOrder)`, passing *every* episode id of the show as a
-   comma-separated list in the query URL. Once a show has enough episodes, that URL exceeds
-   Supabase/PostgREST's URL-length limit and the request comes back `400 Bad Request` instead of
-   data — not a data problem, a structural one, and it will fail identically every time for this
-   show (and any other show with enough episodes).
-   **Same anti-pattern, same failure mode, five more call sites** — all currently broken for a show
-   this size, not yet individually confirmed by a crash but structurally identical:
-   `session.ts:106,111` (loading `episode_comparisons` inside this same rank-flow load, so it never
-   even gets that far — this is likely the *actual* first failure, before the one Sentry happened to
-   catch); `session.ts:263-264` (deleting comparisons when a show is removed) and `session.ts:310`
-   (deleting rankings when a show is removed) — meaning **removing "The Challengers" would also
-   fail**; `website/src/app/shows/[showId]/stats/page.tsx:268,273` (the win/loss matrix on the stats
-   page).
-   **Recommended fix** (not yet built): stop putting the episode-id list in the query URL at all.
-   For the `episode_rankings`/`episode_comparisons` reads, query scoped only by `user_id` (bounded by
-   one person's lifetime usage, not by one show's episode count) and filter down to this show's
-   episodes in application code afterward. For the two delete call sites, that approach doesn't work
-   directly (a delete needs the database itself to do the filtering) — those likely need a small
-   Postgres function (RPC) that deletes by joining through `episodes.show_id` server-side, instead of
-   shipping an id list over HTTP.
-   Classified as correctness-critical (data layer, breaks a live user's actual show) — needs an
-   implementer + independent-reviewer pass, not a solo fix, once picked up. Logged 2026-07-19 rather
-   than fixed same-session — ran out of session budget (agent dispatches were paused this session at
-   Kayvan's request) before this could be built. **Next session's clear top priority.**
+(empty — item 1's URL-length crash is fixed, see History 2026-07-19 and Bucket 2; item 2 below was
+never blocking work, just a forward-looking note.)
+1. ~~**Live production bug, found 2026-07-19 via a Sentry error report: shows with enough episodes
+   crash their entire rank flow**~~ — **fixed and merged 2026-07-19** (`0ccf337`), see History for the
+   full account (all read call sites now scope by `user_id` + app-side filtering; the show-removal
+   delete path now uses a `security invoker` Postgres RPC). Independent-reviewer-verified. Now in
+   Bucket 2 — needs the new migration applied to live Supabase plus a hands-on check on a large show.
 2. **Worth remembering, not acting on yet**: the dashboard #1-episode item that used to sit here is
    built (see Bucket 2 item 1's History). This is exactly the "each show's #1 episode" data Bucket 4
    item 15 (All Stars Mode) will also need — no shared code was written now since All Stars isn't
@@ -580,7 +629,19 @@ this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of t
 in Bucket 4, rather than being done piecemeal now.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. ~~**"Rank all" mode, built and merged 2026-07-18 (`63cc4ba`)**~~ — **hands-on confirmed working on
+1. **URL-length crash fix, built and merged 2026-07-19 (`0ccf337`), independent-reviewer-verified —
+   not yet hands-on checked, and genuinely blocked until Kayvan applies the new migration.** Two
+   things needed from Kayvan: (a) apply `supabase/migrations/20260719000000_delete_show_ranking_data.sql`
+   to live Supabase (same manual-apply process as every prior migration this project has needed); (b)
+   once applied, confirm on live Vercel that a show with a lot of episodes (SNL, The Simpsons, The
+   Challenge — whichever originally crashed) now actually loads its rank flow, and that removing a
+   large show works too (the specific path that was silently broken alongside the one Sentry caught).
+2. **"Rank Season," built and merged 2026-07-19 (`0ccf337`)** — not yet hands-on checked. Confirm a
+   season's "Rank season" button (next to its "Complete"/`#N` badges on the show page) appears only
+   when that season has something unranked, lands on that season's oldest-unranked episode, and
+   auto-advances only through that season (returning to the show page once it's done, not spilling
+   into other seasons) — plus that whole-show "Rank all" still behaves exactly as before.
+3. ~~**"Rank all" mode, built and merged 2026-07-18 (`63cc4ba`)**~~ — **hands-on confirmed working on
    live Vercel, same session.** Kayvan then asked for the entry button to be made more prominent —
    restyled as a bordered button (blue, matching "Remove show"'s style) stacked underneath it, built
    and merged (`3826b16`), also hands-on confirmed. Removed from Bucket 2.
@@ -588,22 +649,22 @@ in Bucket 4, rather than being done piecemeal now.
    ranking" on the episode detail page used to drop out of rank-all mode silently —
    **fixed and merged 2026-07-18 (`b5db845`)**, `mode=rankAll` now carried through that whole
    round-trip. Not yet hands-on checked, folded into item 4 below.
-2. ~~**Season filter + episode search on the show page, built and merged 2026-07-18
+4. ~~**Season filter + episode search on the show page, built and merged 2026-07-18
    (`41468bb`)**~~ — **hands-on confirmed working on live Vercel, same session.** Removed from
    Bucket 2.
-3. ~~**Show page header mobile overlap fix, built and merged 2026-07-18 (`376d705`)**~~ — **hands-on
+5. ~~**Show page header mobile overlap fix, built and merged 2026-07-18 (`376d705`)**~~ — **hands-on
    confirmed working on a real phone, same session** (long title no longer overlaps "Remove show"/
    "Rank all"; desktop layout unchanged). Removed from Bucket 2.
-4. ~~**Three small builds, merged 2026-07-18 (`b5db845`)**~~ — **hands-on confirmed working on live
+6. ~~**Three small builds, merged 2026-07-18 (`b5db845`)**~~ — **hands-on confirmed working on live
    Vercel, 2026-07-19**: (a) rank-all mode, click a title mid-session, "↩ Return to ranking" lands
    back on the same question, auto-advance intact; (b) stale resubmission (browser-back
    double-submit) shows "This episode was already ranked — nothing changed." instead of a silent
    redirect; (c) season-rank `#N` badges match actual season average scores. Removed from Bucket 2.
    Kayvan flagged (b)'s notice should be **more visually prominent** than it is today — logged as a
    new Bucket 4 backlog item rather than fixed now.
-5. ~~**Dashboard #1-episode display, built and merged 2026-07-18 (`2a3c78a`)**~~ — **hands-on
+7. ~~**Dashboard #1-episode display, built and merged 2026-07-18 (`2a3c78a`)**~~ — **hands-on
    confirmed working on live Vercel, 2026-07-19.** Removed from Bucket 2.
-6. ~~**Sentry error monitoring**~~ — **fully done, 2026-07-18.** Kayvan created a Sentry project and
+8. ~~**Sentry error monitoring**~~ — **fully done, 2026-07-18.** Kayvan created a Sentry project and
    set `NEXT_PUBLIC_SENTRY_DSN` locally and on Vercel. First verification attempt surfaced a real bug
    (see History for the full investigation): `onRequestError`'s flush never actually completed on
    Vercel's Node.js runtime (`@sentry/core`'s `vercelWaitUntil` only works on Edge runtime), so
@@ -612,7 +673,7 @@ in Bucket 4, rather than being done piecemeal now.
    broken auto-detection. Re-verified with a second test throw: confirmed prompt delivery this time.
    Temporary test throw reverted (`e865c96`), sign-out restored. Removed from Bucket 2 — nothing left
    to do here.
-7. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
+9. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
    design. Can't be meaningfully verified by just clicking around today (the 24h throttle means a
    freshly-imported show won't actually re-sync for a day), so the real check is patient rather than
    immediate: next time a tracked show is known to have a new episode/season on TMDB, confirm it
@@ -621,7 +682,7 @@ in Bucket 4, rather than being done piecemeal now.
    (check the `shows` table has a populated `last_synced_at` column) and that a show page still loads
    normally post-push (the added `ensureShowSynced` call is fail-open, so even a broken TMDB call
    shouldn't break the page — but confirm that's actually true live, not just in tests).
-8. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
+10. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
    list (auth, search/import, dashboard, show detail page, the rankings page, cold start,
    comparative placement, re-ranking, removing a show all confirmed working end to end). What's
    genuinely still untested/unconfirmed, carried forward rather than chased right now:
@@ -633,7 +694,7 @@ in Bucket 4, rather than being done piecemeal now.
    - Direct-URL edge cases: visiting an already-ranked episode's rank URL directly.
    These are all low-priority, not blocking — pick up naturally during normal use rather than a
    dedicated pass.
-9. ~~**Popular shows browse view + genre filter on `/shows/search`, built and merged 2026-07-18
+11. ~~**Popular shows browse view + genre filter on `/shows/search`, built and merged 2026-07-18
    (`9c9df76`)**~~ — **hands-on confirmed working on live Vercel, 2026-07-19** (empty-query browse
    grid, genre filter, fallback to normal search on typing, Add/Rank buttons all behave correctly).
    Removed from Bucket 2.
@@ -1055,6 +1116,27 @@ it through" is worth a deliberate re-check, not silent acceptance.
   matches what the GitHub issue's own reporter had to do manually — there isn't a better mitigation
   available today. Worth periodically re-checking issue #76197 for a status change, not worth further
   local investigation.
+- 2026-07-19: **A new, milder variant of the same recurring `isolation: "worktree"` bug (see the
+  #76197 entry directly above) — worth recording as another data point, not a fresh investigation.**
+  Two implementer agents dispatched in parallel this session (the URL-length crash fix and "Rank
+  Season") both finished, self-reported success, and both left their actual file changes as
+  **uncommitted working-tree edits inside their own worktrees** rather than committing to their own
+  branch — in both cases `git log` on the branch showed zero new commits, while `git status --short`
+  inside the worktree showed exactly the files each agent's own report claimed to have changed.
+  Distinct from every previously-logged variant: `git worktree list` confirmed both worktrees were
+  real, separate, and properly registered the *entire* time (unlike the "no worktree at all" variant),
+  and `main`'s own working tree stayed completely untouched throughout both dispatches (unlike the
+  "verified real worktree, agent still wrote to `main`" variant that's still unexplained) — isolation
+  itself worked perfectly here, the agents simply never ran `git commit` on their own real, correctly-
+  isolated copies. Caught immediately by the existing standing mitigation (check `git worktree list`
+  *and* `git status --short` after every dispatch, not just the first). No harm done and nothing extra
+  needed beyond the existing practice: reviewed each diff directly (`git diff` against the file
+  changes, since there was no commit to diff against), re-ran the full check suite independently in
+  each worktree, then committed both myself on their own branches before merging — exactly the
+  "reconcile in place" fallback this file's mitigation already describes, just applied to a worktree's
+  own tree instead of `main`'s. Consistent with this bug's overall pattern (documented above as
+  intermittent, cross-platform, upstream, no available fix) — logged for the record, not something to
+  chase further locally.
 
 ## History
 
