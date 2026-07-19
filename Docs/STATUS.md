@@ -317,6 +317,25 @@ not started) and All Stars Mode (queued, needs its own design pass). Kayvan said
 coming next, separate from this punch list — next session (or the rest of this one) should pick that up
 fresh rather than assuming it's a continuation of tonight's queue.
 
+**Same session, continued past that (the "new task").** Kayvan asked for a read-only research agent —
+briefed explicitly as an outstanding professional web designer — to read this project's full doc set and
+the actual current UI code, and produce an exhaustive list of every question worth answering before a
+real visual design pass gets scoped. Logged Kayvan's two seed ideas first (the dashboard progress-fill
+card and the episode-score heatmap — both folded into the existing Bucket 4 "Visual design" item, see
+above). The agent read `STATUS.md`, `AppSpec.md`, `CriticalReview.md`, `TechArchitecture.md`, `CLAUDE.md`,
+the `dataviz` skill, and the live dashboard/show-page/stats-page/rank-flow/episode-detail code, and came
+back with **88 questions across 18 categories** — each grounded in something specific it actually found
+(e.g. Geist being loaded but never rendered due to a hard-coded `body` override; the app's existing
+"color is never the only signal" rule colliding directly with a literal red/yellow/green heatmap being a
+classic colorblind trap; the four unreconciled button treatments already in the app). Turned the raw list
+into a proper reference document — a self-contained HTML artifact with a category nav, light/dark theme
+support, and the full question set preserved verbatim and numbered for exact reference — rather than a
+wall of chat text, since this is meant to be read and answered over time, not skimmed once. **Nothing
+built or scheduled from this** — it's purely a reference for whenever the visual-design backlog item
+(Bucket 4) actually gets picked up; answer any subset of the 88 by number whenever convenient. Session
+ended here for real, at Kayvan's request ("end for the day") — `git status`/`git log` confirmed clean,
+local matches remote (`78b9edb`), no worktrees or background agents left running, nothing to push.
+
 ## Punch List (ranked — read this section first for "what's actually next")
 
 Every open item gets triaged into exactly one bucket the moment it surfaces, per
