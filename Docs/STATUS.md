@@ -187,6 +187,35 @@ below rather than chased immediately.
 Now in **Bucket 2** for Kayvan's hands-on check on live Vercel (needs a show with at least one unranked
 episode) — not yet tested. Bucket 1 now has just item 2 (mobile/responsive) left.
 
+**Same session, continued.** Kayvan confirmed "Rank all" mode working hands-on, then asked for the
+button to be made more prominent: same bordered-button style as "Remove show" but a different color,
+stacked directly underneath it (both right-aligned in the show page header), rather than its original
+plain underlined-text-link placement in the left info column. One implementer dispatch, blue instead
+of red, otherwise identical `RemoveShowButton` styling — built, self-verified (272/272 tests), PM
+independently re-verified, merged and pushed (`3826b16`). Kayvan confirmed it looks good on Vercel.
+Then asked for a season filter + episode search on the show page, explicitly leaving the exact
+mechanism to PM's judgment ("implement this in the way you think would cause the least amount of
+friction"). Design call made and acted on directly (not asked back to Kayvan first, per this session's
+auto-mode bias toward proceeding on low-risk/reversible UI calls): **live, client-side filtering** — a
+season `<select>` plus a search `<input>`, both filtering the visible list on every
+keystroke/selection, no submit button, no page reload — since every episode is already fetched
+server-side on this page, so client-side array filtering adds zero latency and is the lowest-friction
+option available. Search matches a lowercased blob of title + bare episode number + an "sXeY" code
+(`searchableText`), so a query can be a title fragment, a bare number, or something like "s2e5" via one
+simple substring check, deliberately not a real query parser. Season filter and search combine (AND).
+Built via one implementer dispatch: extracted the show page's season-grouped episode list out of the
+Server Component into a new Client Component (`EpisodeListWithFilters.tsx`, holding the filter state),
+with `page.tsx` now passing one flattened `EpisodeWithStatus[]` instead of the four separate lookup
+`Map`s it used to render directly (`Map`s don't cross the Server→Client Component boundary as cleanly
+as plain arrays). Preserved one real nuance explicitly specified at dispatch time: each season's
+"Complete" badge is computed from that season's **full**, unfiltered episode list, not the
+search-filtered subset — a search that hides an already-fully-ranked season's episodes must not make
+its "Complete" badge disappear or look wrong. 15 new unit tests cover season-only/search-only/combined/
+no-match filtering plus a dedicated case proving the "Complete" badge is sourced correctly. PM
+independently re-ran typecheck/lint/tests (286/286) in the worktree before merging, reviewed the full
+diff against the confirmed design, merged and pushed (`41468bb`). Not yet hands-on checked — added to
+Bucket 2 below.
+
 ## Punch List (ranked — read this section first for "what's actually next")
 
 Every open item gets triaged into exactly one bucket the moment it surfaces, per
@@ -360,24 +389,30 @@ this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of t
 in Bucket 4, rather than being done piecemeal now.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **"Rank all" mode, built and merged 2026-07-18 (`63cc4ba`), not yet hands-on checked.** See
-   History for the full design. Check on live Vercel: click "Rank all" on a show with at least one
-   unranked episode, confirm it lands on that episode's ranking screen, answer it, confirm it
-   auto-advances straight to the next-oldest-unranked episode (no click back to the show page in
-   between), and confirm it lands cleanly back on the show page once every episode is ranked.
-   **Known gap, not yet fixed**: clicking an episode title mid-rank-all-session (the comparison or
+1. ~~**"Rank all" mode, built and merged 2026-07-18 (`63cc4ba`)**~~ — **hands-on confirmed working on
+   live Vercel, same session.** Kayvan then asked for the entry button to be made more prominent —
+   restyled as a bordered button (blue, matching "Remove show"'s style) stacked underneath it, built
+   and merged (`3826b16`), also hands-on confirmed. Removed from Bucket 2.
+   **Known gap, still not fixed**: clicking an episode title mid-rank-all-session (the comparison or
    cold-start screen's title link, item 10's `returnToRank`) and then clicking "↩ Return to ranking"
    on the episode detail page drops out of rank-all mode silently — `?mode=rankAll` isn't carried
    through that round-trip. Narrow (only hit by clicking a title *during* a rank-all session, and
-   recoverable by just clicking "Rank all" again from the show page), not fixed in the same dispatch
-   since it touches the episode detail page's `returnToRank` handling, outside that dispatch's scoped
-   file list. Worth deciding whether it's worth a small follow-up fix once it's been felt hands-on.
-2. **Sentry error monitoring, built 2026-07-18, blocked on Kayvan creating a Sentry project** — code
+   recoverable by just clicking "Rank all" again from the show page). Worth deciding whether it's
+   worth a small follow-up fix, or leave logged here since it's cheap to work around by hand.
+2. **Season filter + episode search on the show page, built and merged 2026-07-18 (`41468bb`), not
+   yet hands-on checked.** See History for the full design. Check on live Vercel, on a show with
+   multiple seasons: the season `<select>` narrows the visible list to just that season; the search
+   box filters live (no submit) on title fragments, bare episode numbers, and "sXeY"-style codes;
+   the two combine (picking a season then searching narrows further); a season fully hidden by search
+   should disappear rather than show an empty "Season N" heading; a query matching nothing anywhere
+   should show a "No episodes match" message; and a season's "Complete" badge should stay correct even
+   when a search hides some of that season's episodes (unit-tested, but worth eyeballing live too).
+3. **Sentry error monitoring, built 2026-07-18, blocked on Kayvan creating a Sentry project** — code
    is merged and verified (build/tests/lint all clean with the DSN unset), but nothing will actually
    report until `NEXT_PUBLIC_SENTRY_DSN` is set locally *and* on Vercel. Once set: trigger a real
    test error (temporarily `throw` in a Server Action, per `.env.local.example`'s note) and confirm
    it shows up in the Sentry dashboard within a minute, then remove the test throw.
-3. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
+4. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
    design. Can't be meaningfully verified by just clicking around today (the 24h throttle means a
    freshly-imported show won't actually re-sync for a day), so the real check is patient rather than
    immediate: next time a tracked show is known to have a new episode/season on TMDB, confirm it
@@ -386,7 +421,7 @@ in Bucket 4, rather than being done piecemeal now.
    (check the `shows` table has a populated `last_synced_at` column) and that a show page still loads
    normally post-push (the added `ensureShowSynced` call is fail-open, so even a broken TMDB call
    shouldn't break the page — but confirm that's actually true live, not just in tests).
-4. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
+5. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
    list (auth, search/import, dashboard, show detail page, the rankings page, cold start,
    comparative placement, re-ranking, removing a show all confirmed working end to end). What's
    genuinely still untested/unconfirmed, carried forward rather than chased right now:
