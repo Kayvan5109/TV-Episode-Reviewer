@@ -487,10 +487,19 @@ see Bucket 4.)
     comparison mechanism (most likely reusing the same binary-insertion engine, but over a new
     "top episode per show" pool that isn't scoped to any single `show_id` the way today's
     `episode_comparisons` are) — real new schema/persistence design, not a pure derived view like
-    the season-rankings redesign above. Also unresolved: what happens to an already-recorded
-    All-Star comparison when the underlying show's #1 episode later changes (e.g. after a re-rank)
-    — some kind of invalidation/resync policy is needed, not yet designed. Not scheduled; a real
-    future item that needs its own design pass before it's buildable, not just a build slot.
+    the season-rankings redesign above.
+    **Resolved 2026-07-18: what happens when a show's #1 episode changes after the fact.** A
+    realistic scenario Kayvan flagged: a user ranks 4 shows (each only partially ranked — say half
+    their episodes), does an All Star ranking across those 4 shows' current #1 episodes, then keeps
+    ranking one of those shows later and a *different* episode overtakes the old #1. Decided: don't
+    silently invalidate or auto-resolve — **prompt the user to re-rank their All Stars list** when
+    the underlying #1 episode changes for any show already included. Still needs, at build time: a
+    way to detect "this show's #1 changed since the last All Star ranking" (comparing the current
+    #1 episode id per show against whatever was true when the All Star ranking was last done) and a
+    concrete re-ranking flow for that prompt (redo the whole All Star comparison from scratch vs.
+    only re-comparing the new episode against the existing All Star order — not yet decided, a
+    build-time design call). Not scheduled; a real future item that needs its own design pass before
+    it's buildable, not just a build slot.
 
 **Bucket 5 — Rework flagged for a later phase, not being worked now:**
 (empty for now)
