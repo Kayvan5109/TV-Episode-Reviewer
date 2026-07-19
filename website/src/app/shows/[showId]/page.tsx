@@ -147,7 +147,7 @@ export default async function ShowDetailPage({
     <>
       <AppHeader />
       <div className="flex flex-1 flex-col items-center gap-6 p-8">
-        <div className="flex w-full max-w-2xl items-start justify-between gap-4">
+        <div className="flex w-full max-w-2xl flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-center gap-4">
             {showRow.poster_url ? (
               // eslint-disable-next-line @next/next/no-img-element -- external TMDB CDN image.
