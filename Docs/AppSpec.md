@@ -351,10 +351,13 @@ profile is private, or if it's your own). Following is instant, no request/accep
 follower's dashboard could reasonably show a "people I follow" section — not designing that widget
 in detail here since it's presentation, not architecture.
 
-**Community rank.** Needs a genuinely new page this app doesn't have yet: a standalone episode
-detail page (today, episodes only ever appear inline in a show's list — there's no
-`/shows/[showId]/episodes/[episodeId]` route). That page shows "your rank" (existing, per-user data,
-already computed via `getShowRankingDisplay`) alongside "community rank": the average derived score
+**Community rank.** *Written 2026-07-17, before the episode detail page existed — corrected
+2026-07-19: `/shows/[showId]/episodes/[episodeId]` was built 2026-07-18 as Tier A item 8 (title,
+air date, synopsis, still image, season-finale flag, personal win/loss record, director/writer/cast,
+a rank/re-rank button). This flow adds "community rank" to that already-existing page rather than
+building a new one from scratch — everything below about what it shows is otherwise unchanged.* That
+page shows "your rank" (existing, per-user data, already computed via `getShowRankingDisplay`)
+alongside "community rank": the average derived score
 for that episode across every user with `rankings_visibility = 'public'` who has it comparatively
 placed (`episode_rankings.rank_position is not null`). Cold-start-bucket-only placements are
 excluded from the v1 aggregate (a known simplification, consistent with this project's existing
@@ -386,16 +389,56 @@ like `/c/[shareToken]`, rendered by the service-role-backed public page describe
 "hidden gems" (high average community score, low public-user sample size). All read-only views over
 data the community-rank feature already needs to compute — no new write paths.
 
+**Episode tagging** (added 2026-07-19, resolved after being flagged for discussion first — see
+`STATUS.md` Bucket 4 item 18 for the full history). Each user tags their own episodes, self-service,
+from a small fixed list of common episode tropes — deliberately not the earlier, already-declined
+"general episode-type/theme tagging for community-ranking slices" idea (that one was about
+*centrally curated* tags for *community* slices, declined for having "no scalable, non-manual data
+source"; this is per-user self-tagging, a different mechanism that sidesteps that objection).
+**Architecturally private, despite being filed under Tier B**: unlike every other piece of this
+section, tags carry no public/social RLS at all — same private-per-user posture as
+`episode_rankings`/`episode_comparisons` today. It's grouped here because Kayvan chose to keep it
+alongside the rest of the social-layer backlog rather than split it out as an independent Phase 1
+item, not because it structurally depends on any of Tier B's other pieces — it could be built
+before, after, or independently of the broader Tier B go/no-go decision.
+- **New table, `episode_tags`**: composite primary key `(user_id, episode_id, tag)` — a user tagging
+  the same episode with the same tag twice is meaningless, so the composite key itself prevents
+  duplicates without needing a separate `id` column. `tag` is `text` constrained by a `check`
+  constraint against the fixed list below (not a Postgres `enum` type — a `check` constraint can be
+  altered in a later migration without the `ALTER TYPE` ceremony an `enum` would need, which matters
+  given this list is deliberately fixed *for v1*, not fixed forever). `created_at`.
+- **RLS**: same shape as `episode_rankings` — a user can read/insert/delete only their own rows
+  (`user_id = auth.uid()`). No `update` policy needed (unlike `episode_rankings`, a tag isn't edited
+  in place — untagging is a delete, retagging is a fresh insert).
+- **v1 fixed tag list** (8 tags, proposed — trivial to adjust before this is ever built, this is a
+  config list, not a structural decision): Bottle episode, Clip episode, Crossover episode, Musical
+  episode, Flashback-heavy episode, Filler episode, Origin story, Anthology/self-contained episode.
+  Deliberately excludes anything like "premiere"/"finale" — the season-finale flag already exists as
+  an *auto-detected* field (`isSeasonFinale`, Tier A item 8b); a manual finale tag sitting next to an
+  automatic one would be confusing about which is authoritative.
+- **Where it lives**: a small multi-select control on the existing episode detail page
+  (`/shows/[showId]/episodes/[episodeId]`, already built — see Tier A item 8) — never on the
+  cold-start or comparison screens, so it adds zero friction to the actual ranking flow. Purely
+  optional; an untagged episode is not an error state.
+- **The payoff stat** ("you rank bottle episodes 15% higher than average") is cross-show by nature,
+  so it belongs on the **Personal Stats & Recap** page (see that section below) once tags exist for
+  it to read — not a new page or new UI surface of its own, just one more derived line on an
+  already-designed (if not yet scheduled) page. Keeping the total new UI surface this small is what
+  makes the feature's cost/benefit actually work — see the friction/payoff discussion in
+  `STATUS.md`'s resolution of this item.
+
 ### New pages/routes needed
 
 - `/settings` (or a new section of it) — username + visibility.
 - `/u/[username]` — public profile page.
-- `/shows/[showId]/episodes/[episodeId]` — new standalone episode detail page (community rank +
-  your rank + comments). Nothing today links to a single episode outside a show's list.
 - `/discover` — trending / disagreements / hidden gems.
 - `/collections` — the signed-in owner's management view.
 - `/c/[shareToken]` — the public, unauthenticated shared-collection view.
 - Search needs to grow a "people" result type (username search) alongside the existing show search.
+- Episode tagging needs **no new route** — it lives on the episode detail page, which already exists
+  (built 2026-07-18, after this section was originally written — see the note on that page's own
+  history above; this section's Community rank/comments flows are the only pieces of this page still
+  pending).
 
 ### Judgment calls flagged for review
 

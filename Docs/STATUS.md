@@ -473,7 +473,30 @@ box with an icon and bold text, `role="status"`, deliberately a third visual tie
 app's existing muted-caption and red-alert conventions, color backed by an icon + weight per the
 "color is never the only signal" rule. PM reviewed the full diff directly, re-ran the check suite
 independently (clean typecheck/lint, 313/313 tests), merged (`db11e0d`), pushed, worktree/branch
-cleaned up. Now in Bucket 2 for hands-on check.
+cleaned up. Now in Bucket 2 for hands-on check. Kayvan then hands-on confirmed it working on live
+Vercel — removed from Bucket 2. **Both of this session's picks from the Bucket 4 queue are now
+fully closed out.**
+
+**Same session, continued.** Kayvan asked to resolve Bucket 4 item 18 (episode tagging, flagged for
+discussion before building) and fold the result into the Tier B plan. Walked through the three open
+questions live rather than deciding unilaterally: friction on the core ranking flow (none, if kept to
+the episode detail page only), fixed-vs-growing tag list (asked directly — Kayvan chose fixed for
+v1), and whether the UI surface is worth it (yes, if kept small). Also surfaced a genuine, non-obvious
+finding before finalizing: as described, this feature is architecturally private-per-user (same RLS
+posture as `episode_rankings`), so it doesn't actually need to wait on Tier B's own go/no-go — asked
+Kayvan directly whether to split it out as an independent Phase 1 item or keep it filed under Tier B;
+Kayvan chose to keep it bundled. Wrote the full design into `AppSpec.md`'s Tier B Detailed Design
+section: a new private `episode_tags` table (composite PK, `check`-constrained tag column rather than
+a Postgres `enum` so the "fixed for v1" list can still be adjusted later without real ceremony), a
+proposed 8-tag starter list, tagging surfaced on the already-built episode detail page, and the
+resulting stat routed to the not-yet-scheduled Personal Stats & Recap page rather than a new page of
+its own. While in that section, also fixed two small pieces of doc drift unrelated to tagging but
+directly adjacent to what was being edited: the "Community rank" flow and the "New pages/routes
+needed" list both still described the episode detail page as not-yet-built, even though it was built
+2026-07-18 (after this section of `AppSpec.md` was originally written 2026-07-17) — corrected with a
+dated note rather than silently overwritten, per this project's own documentation discipline. Design
+only, nothing scheduled to build yet — see Bucket 4 item 18 for the full resolution. Kayvan said
+they'll decide what's next once this is wrapped up.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -715,10 +738,8 @@ in Bucket 4, rather than being done piecemeal now.
    (`9c9df76`)**~~ — **hands-on confirmed working on live Vercel, 2026-07-19** (empty-query browse
    grid, genre filter, fallback to normal search on typing, Add/Rank buttons all behave correctly).
    Removed from Bucket 2.
-12. **Stale-resubmission notice, made visually prominent — built and merged 2026-07-19 (`db11e0d`)**
-   — not yet hands-on checked. Confirm the new bordered/tinted notice actually renders (trigger a
-   stale resubmission — e.g. rank an episode, then hit browser-back and submit the same answer
-   again) on both the show page and the rank page, in both light and dark mode.
+12. ~~**Stale-resubmission notice, made visually prominent — built and merged 2026-07-19
+   (`db11e0d`)**~~ — **hands-on confirmed 2026-07-19.** Removed from Bucket 2.
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
 (empty for now — every question posed 2026-07-17 is resolved: remove-show/re-ranking's scope, the
@@ -904,23 +925,32 @@ see Bucket 4.)
     `/api/tmdb/genres`), first page only (~20 results, no pagination for v1). The genre filter was
     scoped to apply only to the browse view, never to typed search results (TMDB's `/search/tv` has
     no genre param). Removed from Bucket 4 — now in Bucket 2 for hands-on check.
-18. **Tier B: pre-selected episode tags (e.g. "bottle episode," "clip episode") — added 2026-07-18,
-    Kayvan's idea, logged with an explicit flag to discuss further before building, per Kayvan's own
-    request** ("make a note that we should discuss it further before implementation before it comes
-    up"). Users tag their own episodes from a fixed, app-defined list of common episode tropes; once
-    enough episodes have tags, this enables personal metrics like "you rank bottle episodes highly."
-    **Worth reconciling with an existing decision before this gets built, not silently treated as
-    new**: `AppSpec.md`'s Second Design Review Triage already declined a related idea — "general
-    episode-type/theme tagging for community-ranking slices" (same bottle-episode/holiday-episode
-    framing) — for exactly this shape of reason: "no scalable, non-manual data source." That decline
-    was about tagging being *manually curated centrally* (the developer or some curator tagging every
-    episode of every show, which doesn't scale for a solo project) and aimed at *community* slices.
-    This new idea is a different mechanism — each user tags their *own* episodes, self-service, from a
-    constrained pre-set list rather than free-form — which sidesteps the original "who does the manual
-    tagging" objection, but raises new open questions worth discussing before scheduling: how much
-    friction per-episode tagging adds to the core ranking flow, whether the tag list is fixed forever
-    or ever grows, and whether "you rank bottle episodes highly"-style stats are worth the UI surface
-    for a single-user (today) app. Not scheduled; flagged for discussion, not a decided build.
+18. ~~**Tier B: pre-selected episode tags (e.g. "bottle episode," "clip episode")**~~ — **discussion
+    resolved and fully designed 2026-07-19**, still not scheduled/built. Reconciled first against an
+    existing decision, confirmed genuinely distinct: `AppSpec.md`'s Second Design Review Triage
+    declined *centrally curated* tagging for *community* slices ("no scalable, non-manual data
+    source"); this is each user self-tagging their *own* episodes from a fixed list, a different
+    mechanism that sidesteps that objection. The three open questions this item was waiting on:
+    - **Friction on the core ranking flow**: none — tagging lives only on the episode detail page, an
+      optional action, never on the cold-start/comparison screens.
+    - **Fixed vs. growing tag list**: **fixed for v1**, Kayvan's call — a `check` constraint (not a
+      Postgres `enum`, so it can still be altered later without real ceremony) against a starter list
+      of 8 (Bottle episode, Clip episode, Crossover episode, Musical episode, Flashback-heavy episode,
+      Filler episode, Origin story, Anthology/self-contained episode) — deliberately excludes
+      "premiere"/"finale" since the season-finale flag is already auto-detected (Tier A item 8b) and a
+      manual duplicate would be confusing.
+    - **Worth the UI surface?**: yes, kept small — the resulting "you rank bottle episodes highly"
+      stat belongs on the not-yet-scheduled Personal Stats & Recap page (`AppSpec.md`), not a new page
+      of its own.
+    One more question resolved along the way: whether this needs to be Tier B at all, since it's
+    architecturally private-per-user (same RLS posture as `episode_rankings` — no social/public
+    infrastructure needed). **Kayvan's call: keep it filed under Tier B** rather than split out as an
+    independent Phase 1 item, even though it could technically be built independently of Tier B's own
+    go/no-go — full design (new `episode_tags` table, RLS, tag list, UI placement) written into
+    `AppSpec.md`'s Tier B Detailed Design section. Also fixed two small pieces of doc drift found
+    while editing that section: the "Community rank" flow still described the episode detail page as
+    not-yet-built (it was built 2026-07-18, after this section was originally written) and the "New
+    pages/routes needed" list still listed it as a route to build.
 19. ~~**Stale-resubmission notice isn't prominent enough**~~ — **built and merged 2026-07-19**
     (`db11e0d`). New shared `StaleResubmissionNotice` component (a bordered, blue-tinted box with an
     icon and bold text, `role="status"`) replaces the old plain muted-gray caption in both places it
