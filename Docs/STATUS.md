@@ -498,6 +498,39 @@ dated note rather than silently overwritten, per this project's own documentatio
 only, nothing scheduled to build yet — see Bucket 4 item 18 for the full resolution. Kayvan said
 they'll decide what's next once this is wrapped up.
 
+**Same session, continued.** Kayvan chose to build All Stars Mode (Bucket 4 item 15) next, explicitly
+framed as the last "single-player" feature before Tier B (social layer) gets picked up — every other
+single-player idea in the queue is now either built or declined. **Reclassified from the original
+write-up**: no account page, no public/private visibility, nothing social — lives entirely on the
+dashboard, single-user only. Grounded the design in actual code before dispatching (confirmed
+`addComparativeEpisode`/`placeEpisodeComparatively`/`scoresForRankedList` in `@/lib/ranking` are
+already fully generic over any pool of episode ids, no show-specific coupling, and that placing an
+episode into an empty ranked list needs zero user comparisons — reusable as-is). Resolved the two
+remaining open questions from the original write-up directly with Kayvan rather than guessing:
+- **Minimum shows to unlock the feature: 4+** (matches the original write-up's own threshold).
+- **What happens when a show's #1 changes after the fact**: **targeted re-rank** (only the changed
+  show's stale entry is removed and its new #1 re-placed against the existing order; other shows'
+  placements are untouched) rather than a full reset, **plus a visible notice** naming which show(s)
+  changed and surfacing a separate, explicit "re-rank from scratch" option for anyone who'd rather
+  redo the whole comparison — Kayvan's exact framing: "targeted re-rank, but add a prompt alerting
+  users that their #1 episode for a show has changed, and they may want to do a manual re-rank of
+  their all star list themselves."
+**Design**: two new tables (`all_star_rankings`, `all_star_comparisons`) mirroring
+`episode_rankings`/`episode_comparisons`'s shape but kept deliberately separate — comingling would
+break an assumption this same session's crash-fix work established (`episode_comparisons` rows
+always have both episodes in the same show). A new `all-star-session` module mirrors
+`ranking-session/session.ts`'s reconstruct-replay-persist pattern, with no cold-start branch at all
+(every entrant is already an established #1, straight to comparative placement) and an eager
+reconciliation step (mirrors `ensureShowSynced`'s "best-effort background reconcile on every
+dashboard load" pattern) that detects new/stale/orphaned pool entries before every read. The
+show-removal RPC (`delete_show_ranking_data`, added this session for the URL-length fix) gets
+extended to also clean up this pool's rows for a removed show. Dashboard restructured into "Shows" +
+"Top Episodes" sections; a new comparison route (outside the `/shows/[showId]/...` tree, since these
+comparisons cross shows) handles placement. Classified correctness-critical (new schema, cross-show
+algorithm reuse, per-user isolation across two new tables) — dispatched as one implementer, will get
+a full independent-reviewer pass before merging, same pipeline as the URL-length crash fix. See
+Bucket 1/History for the outcome once it lands.
+
 ## Punch List (ranked — read this section first for "what's actually next")
 
 Every open item gets triaged into exactly one bucket the moment it surfaces, per
@@ -505,14 +538,18 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence:**
-(empty — item 1's URL-length crash is fixed, see History 2026-07-19 and Bucket 2; item 2 below was
-never blocking work, just a forward-looking note.)
-1. ~~**Live production bug, found 2026-07-19 via a Sentry error report: shows with enough episodes
+1. **All Stars Mode / "Top Episodes," dispatched 2026-07-19, in progress.** Full design resolved with
+   Kayvan and written up in this file's History (same date) — new schema, a new `all-star-session`
+   module reusing the existing comparative-placement algorithm over a cross-show pool, dashboard
+   restructured into "Shows" + "Top Episodes." Implementer dispatched; will get a full
+   independent-reviewer pass before merging (correctness-critical). Not yet landed as of this
+   writing.
+2. ~~**Live production bug, found 2026-07-19 via a Sentry error report: shows with enough episodes
    crash their entire rank flow**~~ — **fixed and merged 2026-07-19** (`0ccf337`), see History for the
    full account (all read call sites now scope by `user_id` + app-side filtering; the show-removal
    delete path now uses a `security invoker` Postgres RPC). Independent-reviewer-verified. Now in
    Bucket 2 — needs the new migration applied to live Supabase plus a hands-on check on a large show.
-2. **Worth remembering, not acting on yet**: the dashboard #1-episode item that used to sit here is
+3. **Worth remembering, not acting on yet**: the dashboard #1-episode item that used to sit here is
    built (see Bucket 2 item 1's History). This is exactly the "each show's #1 episode" data Bucket 4
    item 15 (All Stars Mode) will also need — no shared code was written now since All Stars isn't
    scheduled, but whoever builds All Stars later should check `website/src/app/dashboard/page.tsx`'s
