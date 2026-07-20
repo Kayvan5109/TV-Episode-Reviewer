@@ -455,6 +455,20 @@ now loads and ranks normally, removing a large show works too, "Rank season" beh
 whole-show "Rank all" is unaffected. Both removed from Bucket 2 — **Bucket 1 and 2 are now both
 genuinely clear**, no open items from either the Sentry incident or this session's building.
 
+**Same session, continued at 32% usage remaining.** With Bucket 1/2/3 all empty, presented the open
+Bucket 4 backlog (grouped small/medium/needs-its-own-design-pass) rather than picking unilaterally;
+Kayvan chose the two smallest items (19, 20). Item 20 (`.env.local`'s Supabase URL) confirmed genuinely
+broken, not just suspected: it really was a Supabase **dashboard** link, not the REST API URL. Fixed
+directly (one-line, local-only, gitignored file — not app code, so this didn't need an implementer
+dispatch) and verified live rather than assumed, against Kayvan's own already-running local `npm run
+dev` server: Next.js auto-reloaded the edited `.env.local`, and `/dashboard` then correctly
+307-redirected to `/login`, proving a real server-side Supabase call succeeded where it would have
+thrown before. Removed from Bucket 4 — see Punch List. Also fixed a small pre-existing Markdown
+formatting bug immediately adjacent (Bucket 5's own heading had lost its line break and merged into
+item 20's text) while editing that section anyway. Item 19 (stale-resubmission notice not visually
+prominent enough) dispatched as one implementer agent (feel-based UI, `isolation: "worktree"`) — see
+Punch List/History for the outcome once it lands.
+
 ## Punch List (ranked — read this section first for "what's actually next")
 
 Every open item gets triaged into exactly one bucket the moment it surfaces, per
@@ -901,19 +915,19 @@ see Bucket 4.)
     check of Bucket 2 item 4b (the "This episode was already ranked — nothing changed." message).
     Functionally correct, confirmed working, but the display itself should be made more visually
     prominent. Not scoped or built yet — small, low-risk display-only tweak whenever picked up.
-20. **`website/.env.local`'s `NEXT_PUBLIC_SUPABASE_URL` looks wrong — worth a quick check next
-    session, not urgent.** Noticed 2026-07-19 while investigating the Bucket 1 item 1 crash: the
-    value in that file is a Supabase **dashboard** link
-    (`https://supabase.com/dashboard/project/tlbpzpdsoatkmiwhwskq/settings/general`), not the actual
-    REST API base URL (confirmed via the same session's Sentry breadcrumbs that production really
-    calls `https://tlbpzpdsoatkmiwhwskq.supabase.co`). Kayvan pushed back reasonably ("I think it is
-    right though since the website is working") — that's not actually a contradiction worth glossing
-    over: **local `.env.local` and Vercel's own production environment variables are two separate
-    configs**, so a bad value in this local file wouldn't affect the live site at all, only a local
-    `npm run dev` build. Not confirmed as broken — this needs an actual local dev-server run to check
-    (does `npm run dev` work at all right now, or does every Supabase call fail locally?) rather than
-    assumed either way from reading the file alone. If local dev turns out to be broken, the fix is a
-    one-line edit to `.env.local` (swap in the real API URL) — no code change needed either way. — Rework flagged for a later phase, not being worked now:**
+20. ~~**`website/.env.local`'s `NEXT_PUBLIC_SUPABASE_URL` looks wrong**~~ — **confirmed and fixed
+    2026-07-19.** The value really was a Supabase **dashboard** link
+    (`https://supabase.com/dashboard/project/tlbpzpdsoatkmiwhwskq/settings/general`), not the REST
+    API base URL. Verified rather than assumed: edited it to the real URL
+    (`https://tlbpzpdsoatkmiwhwskq.supabase.co`), then checked against Kayvan's already-running local
+    `npm run dev` server — Next.js auto-reloaded the changed `.env.local` (`Reload env: .env.local` in
+    its own dev log), and `/dashboard` then correctly 307-redirected to `/login`, proving a real
+    server-side `getUser()` call against Supabase succeeded (this would have thrown a fetch error
+    against the old dashboard-link value). Production/Vercel was never affected either way, as
+    previously reasoned — this was purely a local-dev-only config file, gitignored, never committed.
+    Removed from Bucket 4.
+
+**Bucket 5 — Rework flagged for a later phase, not being worked now:**
 (empty for now)
 
 ## Deviations Awaiting Review
