@@ -548,6 +548,18 @@ export async function getShowRankingDisplay(showId: string): Promise<ShowRanking
 }
 
 /**
+ * The show's current #1 episode id, if it has any comparatively-ranked episode at all — `null`
+ * otherwise (still in cold start, or genuinely no episodes yet). Pure, no IO — pulled out and
+ * exported since more than one caller needs the exact same one-line derivation: the dashboard's
+ * own "Best: {title}" display, and `@/lib/all-star-session`'s live-pool computation (every tracked
+ * show's current #1 episode is that pool's raw input — see Docs/STATUS.md Bucket 4 item 15, "All
+ * Stars Mode"). `display.ranked` is already best-to-worst by construction, so `ranked[0]` is it.
+ */
+export function topEpisodeOf(display: ShowRankingDisplay): EpisodeId | null {
+  return display.ranked.length > 0 ? display.ranked[0].episodeId : null;
+}
+
+/**
  * Records a cold-start (liked/disliked/neutral) judgment for `episodeId` and returns what's next
  * *for that episode* — which, for cold start, is always `'alreadyRanked'` immediately afterward
  * (cold start never needs a follow-up question for the same episode). Crossing the show's
