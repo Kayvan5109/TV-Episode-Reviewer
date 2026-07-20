@@ -24,12 +24,6 @@ first** (Next.js + Supabase), then a native **iOS app** second, sharing one acco
 - [Docs/STATUS.md](Docs/STATUS.md) — **read this one first, every time** — short, frequently
   updated "what's actually going on right now" pointer (current phase, what's in-flight, what's
   next).
-- [Docs/CriticalReview.md](Docs/CriticalReview.md) — a one-off, deliberately harsh full-project
-  critique (2026-07-18), requested explicitly ("as honest as possible so we can make the best
-  product possible"). Not a living doc, not re-run automatically — but read it before starting new
-  feature work; it names real unresolved issues (including a live security gap, an algorithm bias,
-  and a case that the roadmap is over-designing ahead of any real usage) that a session skimming
-  only `STATUS.md` would miss entirely.
 - [Docs/AppSpec.md](Docs/AppSpec.md) — the product spec: screens, flows, features, data model at a
   glance — what the app actually is and does.
 - [Docs/DevelopmentPlan.md](Docs/DevelopmentPlan.md) — the primary planning doc: the idea, the

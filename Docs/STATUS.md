@@ -3,13 +3,14 @@
 **Read this file first** — before the other docs, before doing anything else. It's the single
 "what's actually going on right now" pointer, kept short and current on purpose.
 
-**[Docs/CriticalReview.md](CriticalReview.md) was written 2026-07-18** — a deliberately harsh,
-requested full-project critique, 27 findings. Top finding: the roadmap is designing far ahead of any
-real usage (a whole social layer, gamification, and stats fully designed for an audience of one).
-Its one live/urgent finding (open, unauthenticated TMDB proxy routes) is **already fixed** — see
-History. Everything else in it is unactioned, on purpose: this is a next-session decision-making
-task (what to freeze, what to fix, what to accept), not something to rush through at end-of-session
-budget. **Read it before scoping any new feature work.**
+**`Docs/CriticalReview.md` and `Docs/ResponseToCriticalReview.md` were deleted 2026-07-19, at
+Kayvan's request.** The original (2026-07-18, 27 findings) was a one-off, deliberately harsh
+full-project critique — its one live/urgent finding (open, unauthenticated TMDB proxy routes) was
+fixed the same session it was written (see History), and everything else in it was left deliberately
+unactioned as a next-session decision-making task that never got picked back up. Kayvan's call: a
+fresh critique will be written later, once the product is more complete, rather than carrying an
+increasingly-stale one forward. Historical references to it elsewhere in this file's History section
+are left as-is (accurate record of what prompted a past decision at the time), not scrubbed.
 
 Last updated: 2026-07-18, a fresh session opened by Kayvan asking a direct question ("how do we
 handle new episodes of shows being added?") before anything else got picked up from the queue below.
