@@ -730,14 +730,13 @@ this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of t
 in Bucket 4, rather than being done piecemeal now.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **All Stars Mode / "Top Episodes," built and merged 2026-07-19 (`711b0ff`)** — not yet hands-on
-   checked, and needs two things first: (a) Kayvan applies the new migration
-   (`supabase/migrations/20260720000000_all_star_rankings.sql`) to live Supabase; (b) needs 4 or
-   more tracked shows each with at least one comparatively-ranked episode (a live #1) to actually
-   see the "Top Episodes" section appear at all. Once both are true: confirm the "Rank Top Episodes"
-   button starts the comparison flow, the resulting full ranked list renders with each entry's show
-   name, and — if a chance arises to test it — that re-ranking one show's episodes triggers the
-   stale-show notice and targeted auto-update rather than silently going wrong.
+1. **All Stars Mode / "Top Episodes," built and merged 2026-07-19 (`711b0ff`)** — Kayvan applied the
+   new migration (`20260720000000_all_star_rankings.sql`) to live Supabase — still not yet hands-on
+   checked. Needs 4+ tracked shows each with at least one comparatively-ranked episode (a live #1)
+   to actually see the "Top Episodes" section appear at all. Once that's true: confirm the "Rank Top
+   Episodes" button starts the comparison flow, the resulting full ranked list renders with each
+   entry's show name, and — if a chance arises to test it — that re-ranking one show's episodes
+   triggers the stale-show notice and targeted auto-update rather than silently going wrong.
 2. ~~**URL-length crash fix, built and merged 2026-07-19 (`0ccf337`), independent-reviewer-verified.**~~
    Kayvan applied the new migration (`20260719000000_delete_show_ranking_data.sql`) to live Supabase,
    then **hands-on confirmed 2026-07-19**: the show that was crashing now loads its rank flow
