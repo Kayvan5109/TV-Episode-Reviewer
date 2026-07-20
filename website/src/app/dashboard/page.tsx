@@ -4,10 +4,12 @@ import { redirect } from 'next/navigation';
 
 import { createSupabaseServerClient } from '@/lib/supabase/serverSession';
 import { AppHeader } from '@/components/AppHeader';
-import { getShowRankingDisplay } from '@/lib/ranking-session';
+import { getAllStarDisplay } from '@/lib/all-star-session';
+import { getShowRankingDisplay, topEpisodeOf } from '@/lib/ranking-session';
 import { ensureShowSynced } from '@/lib/shows/refreshShow';
 
 import { logout } from './actions';
+import { TopEpisodesSection } from './TopEpisodesSection';
 
 export const metadata: Metadata = {
   title: 'Dashboard — Episode Ranker',
@@ -96,8 +98,9 @@ export default async function DashboardPage() {
         const total = display.done
           ? display.ranked.length
           : display.ranked.length + display.coldStartPending.length + display.unranked.length;
-        if (display.ranked.length > 0) {
-          topEpisodeIdByShowId.set(row.show_id, display.ranked[0].episodeId);
+        const topEpisodeId = topEpisodeOf(display);
+        if (topEpisodeId) {
+          topEpisodeIdByShowId.set(row.show_id, topEpisodeId);
         }
         if (total === 0) return;
         const percent = Math.round((rankedCount / total) * 100);
@@ -117,6 +120,45 @@ export default async function DashboardPage() {
       .in('id', topEpisodeIds);
     for (const episode of topEpisodesData ?? []) {
       topEpisodeById.set(episode.id, { title: episode.title, season_number: episode.season_number });
+    }
+  }
+
+  // "Top Episodes" (Docs/STATUS.md Bucket 4 item 15, "All Stars Mode") — cross-show ranking of
+  // every tracked show's current #1 episode. `getAllStarDisplay` runs its own reconciliation
+  // (comparing the live pool against durable state) fresh on every call — see
+  // `@/lib/all-star-session`'s module comment — so this always reflects any #1 changes since the
+  // last time this page loaded, not a stale snapshot.
+  const allStarDisplay = await getAllStarDisplay();
+
+  // Batched lookup of show titles (for both the stale-show notice and the ranked list's "which
+  // show" label) plus episode title/season/episode for the ranked list itself — scoped to just the
+  // small set of ids this section actually needs, same accepted-exception pattern as
+  // `topEpisodeIds` above (bounded by how many shows this user tracks, not by any single show's
+  // episode count).
+  const allStarShowIds = allStarDisplay.eligible
+    ? [...new Set([...allStarDisplay.ranked.map((e) => e.showId), ...allStarDisplay.staleShowIds])]
+    : [];
+  const allStarShowTitleById = new Map<string, { title: string }>();
+  if (allStarShowIds.length > 0) {
+    const { data: allStarShowsData } = await supabase.from('shows').select('id, title').in('id', allStarShowIds);
+    for (const show of allStarShowsData ?? []) {
+      allStarShowTitleById.set(show.id, { title: show.title });
+    }
+  }
+
+  const allStarEpisodeIds = allStarDisplay.eligible ? allStarDisplay.ranked.map((e) => e.episodeId) : [];
+  const allStarEpisodeById = new Map<string, { title: string; season_number: number; episode_number: number }>();
+  if (allStarEpisodeIds.length > 0) {
+    const { data: allStarEpisodesData } = await supabase
+      .from('episodes')
+      .select('id, title, season_number, episode_number')
+      .in('id', allStarEpisodeIds);
+    for (const episode of allStarEpisodesData ?? []) {
+      allStarEpisodeById.set(episode.id, {
+        title: episode.title,
+        season_number: episode.season_number,
+        episode_number: episode.episode_number,
+      });
     }
   }
 
@@ -213,6 +255,12 @@ export default async function DashboardPage() {
             </ul>
           )}
         </div>
+
+        <TopEpisodesSection
+          display={allStarDisplay}
+          showTitleById={allStarShowTitleById}
+          episodeById={allStarEpisodeById}
+        />
       </div>
     </>
   );
