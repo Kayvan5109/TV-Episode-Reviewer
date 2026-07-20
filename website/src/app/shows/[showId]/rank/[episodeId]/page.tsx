@@ -5,6 +5,7 @@ import { notFound, redirect } from 'next/navigation';
 
 import { createSupabaseServerClient } from '@/lib/supabase/serverSession';
 import { AppHeader } from '@/components/AppHeader';
+import { StaleResubmissionNotice } from '@/components/StaleResubmissionNotice';
 import { getNextStepForEpisode } from '@/lib/ranking-session';
 
 import { ColdStartPicker } from './ColdStartPicker';
@@ -190,11 +191,7 @@ export default async function RankEpisodePage({
     <>
       <AppHeader />
       <div className="flex flex-1 flex-col items-center gap-6 p-8">
-        {notice === 'staleResubmission' && (
-          <p className="w-full max-w-2xl text-sm text-black/60 dark:text-white/60">
-            This episode was already ranked — nothing changed.
-          </p>
-        )}
+        {notice === 'staleResubmission' && <StaleResubmissionNotice />}
         <h1 className="text-2xl font-semibold">
           {episode
             ? `Rank ${episode.title} from Season ${episode.season_number} of ${showRow.title}`

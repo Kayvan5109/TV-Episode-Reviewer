@@ -4,6 +4,7 @@ import { notFound, redirect } from 'next/navigation';
 
 import { createSupabaseServerClient } from '@/lib/supabase/serverSession';
 import { AppHeader } from '@/components/AppHeader';
+import { StaleResubmissionNotice } from '@/components/StaleResubmissionNotice';
 import { getShowRankingDisplay } from '@/lib/ranking-session';
 import { orderOldestFirst } from '@/lib/ranking/rankAllOrder';
 import { rankSeasons, seasonAverageScores } from '@/lib/ranking/stats';
@@ -174,11 +175,7 @@ export default async function ShowDetailPage({
     <>
       <AppHeader />
       <div className="flex flex-1 flex-col items-center gap-6 p-8">
-        {notice === 'staleResubmission' && (
-          <p className="w-full max-w-2xl text-sm text-black/60 dark:text-white/60">
-            This episode was already ranked — nothing changed.
-          </p>
-        )}
+        {notice === 'staleResubmission' && <StaleResubmissionNotice />}
         <div className="flex w-full max-w-2xl flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-center gap-4">
             {showRow.poster_url ? (
