@@ -600,7 +600,46 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence:**
-1. **Top Episodes bug fixes (button label + disappearing list), built and committed 2026-07-19,
+1. **Change signup to username+password, email optional/deferred — logged 2026-07-20, Kayvan's
+   explicit high-priority request, design-only so far, not built.** Currently:
+   `website/src/app/signup/actions.ts` calls `supabase.auth.signUp({ email, password })` directly —
+   Supabase Auth's native sign-up API requires an email (or phone) address, and this project's live
+   Supabase settings have "Confirm email" on, so every new account needs to click a confirmation link
+   before it can log in (`SignupForm.tsx`'s "Check your email to confirm your account" state).
+   **Wanted instead**: sign up with just a username + password; add an email later, optionally, from
+   the account page.
+   **Why this isn't a simple form-field swap** — flagging the real open questions rather than
+   guessing at answers, since this touches auth/account security, an area this project has already
+   flagged for extra care (`Docs/Risks.md`'s note on trusting Supabase with auth in the first place):
+   - Supabase Auth's `signUp`/`auth.users` model is fundamentally email-or-phone-based — there's no
+     native "username only" identity. The standard workaround (used by many Supabase apps) is a
+     synthetic/shadow email generated from the username under the hood (e.g.
+     `{username}@users.internal`), with the real Supabase Auth machinery (sessions, password hashing,
+     RLS's `auth.uid()`) working exactly as it does today, unaffected — username becomes a
+     presentation-layer concept, not a new auth backend. Worth confirming this is actually still the
+     right/current approach (Supabase's own product surface changes) before building, not assumed.
+   - **Direct overlap with Tier B's already-designed `user_profiles.username`** (`AppSpec.md`'s Tier B
+     Detailed Design) — that design has usernames as an *opt-in, added-after-signup* concept for
+     public profiles specifically, created "the first time they set a username (not at signup)." This
+     request effectively promotes username to a core Phase 1 identity, required *at* signup. Needs
+     reconciling into one design, not two separate username concepts that later have to be merged.
+   - **Password reset without an email on file** — today's `forgot-password`/`reset-password` flow is
+     entirely email-based. What happens for a user who never added one? (No recovery path at all until
+     they add an email? Some other mechanism? This needs a real, deliberate answer, not a gap.)
+   - Username uniqueness/validation rules (case sensitivity, allowed characters, length) — Tier B's
+     write-up already sketches "unique, citext or lowercased" for its own username field; reuse that
+     reasoning rather than re-deriving it.
+   - What happens to Kayvan's own existing account(s), signed up the current email-first way — does
+     this need a one-time migration/backfill, or do old and new accounts just coexist with different
+     signup shapes?
+   - Side benefit worth noting: username-only signup needs zero email sent at signup time at all,
+     which sidesteps Bucket 4 item 3's default-provider 2-emails/hour cap for the *signup* path
+     specifically (password-reset emails, and any later "add an email" confirmation, would still need
+     it — this doesn't make that backlog item moot, just lowers its urgency for the signup flow).
+   Needs a real design pass (the questions above resolved with Kayvan) before this is buildable, not
+   just a build slot — flagged here as high priority per Kayvan's explicit framing, but not yet
+   sequenced ahead of or behind item 2 below; that's Kayvan's call whenever this gets picked up.
+2. **Top Episodes bug fixes (button label + disappearing list), built and committed 2026-07-19,
    independent-reviewed same session — NOT yet merged, one real bug found first. Next session's clear
    top priority.** Fix sits on its own real, separate worktree branch
    (`worktree-agent-a7f0d6c9749f1fdc8` @ `48857ae`), `main` untouched. Independent review (same
@@ -628,7 +667,7 @@ unless it's small or genuinely blocking.
    apply the new migration (`supabase/migrations/20260721000000_all_star_progress.sql`) to live
    Supabase, then get Kayvan's hands-on re-check of both original bugs plus the multi-stale-shows case
    specifically.
-2. ~~**All Stars Mode / "Top Episodes"**~~ — **built and merged 2026-07-19** (`711b0ff`), full design
+3. ~~**All Stars Mode / "Top Episodes"**~~ — **built and merged 2026-07-19** (`711b0ff`), full design
    resolved with Kayvan and written up in this file's History (same date). Independent-reviewer-
    verified (schema/RLS, reconciliation logic, per-user isolation, the deliberate
    `addComparativeEpisode`-bypass-for-empty-pool reasoning — all confirmed correct by direct code
@@ -637,12 +676,12 @@ unless it's small or genuinely blocking.
    suite: clean typecheck/lint, 324/324 tests, clean build with `/top-episodes/rank` compiling
    correctly). Now in Bucket 2 — needs the new migration applied to live Supabase plus a hands-on
    check (needs 4+ tracked shows with a #1 episode each to actually see the feature).
-3. ~~**Live production bug, found 2026-07-19 via a Sentry error report: shows with enough episodes
+4. ~~**Live production bug, found 2026-07-19 via a Sentry error report: shows with enough episodes
    crash their entire rank flow**~~ — **fixed and merged 2026-07-19** (`0ccf337`), see History for the
    full account (all read call sites now scope by `user_id` + app-side filtering; the show-removal
    delete path now uses a `security invoker` Postgres RPC). Independent-reviewer-verified. Now in
    Bucket 2 — needs the new migration applied to live Supabase plus a hands-on check on a large show.
-4. **Worth remembering, not acting on yet**: the dashboard #1-episode item that used to sit here is
+5. **Worth remembering, not acting on yet**: the dashboard #1-episode item that used to sit here is
    built (see Bucket 2 item 1's History). This is exactly the "each show's #1 episode" data Bucket 4
    item 15 (All Stars Mode) will also need — no shared code was written now since All Stars isn't
    scheduled, but whoever builds All Stars later should check `website/src/app/dashboard/page.tsx`'s
