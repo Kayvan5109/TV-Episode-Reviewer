@@ -466,8 +466,14 @@ dev` server: Next.js auto-reloaded the edited `.env.local`, and `/dashboard` the
 thrown before. Removed from Bucket 4 — see Punch List. Also fixed a small pre-existing Markdown
 formatting bug immediately adjacent (Bucket 5's own heading had lost its line break and merged into
 item 20's text) while editing that section anyway. Item 19 (stale-resubmission notice not visually
-prominent enough) dispatched as one implementer agent (feel-based UI, `isolation: "worktree"`) — see
-Punch List/History for the outcome once it lands.
+prominent enough) dispatched as one implementer agent (feel-based UI, `isolation: "worktree"`) — this
+time the agent committed on its own branch correctly (no recurrence of the uncommitted-work variant
+from earlier this session). New shared `StaleResubmissionNotice` component: a bordered, blue-tinted
+box with an icon and bold text, `role="status"`, deliberately a third visual tier distinct from this
+app's existing muted-caption and red-alert conventions, color backed by an icon + weight per the
+"color is never the only signal" rule. PM reviewed the full diff directly, re-ran the check suite
+independently (clean typecheck/lint, 313/313 tests), merged (`db11e0d`), pushed, worktree/branch
+cleaned up. Now in Bucket 2 for hands-on check.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -709,6 +715,10 @@ in Bucket 4, rather than being done piecemeal now.
    (`9c9df76`)**~~ — **hands-on confirmed working on live Vercel, 2026-07-19** (empty-query browse
    grid, genre filter, fallback to normal search on typing, Add/Rank buttons all behave correctly).
    Removed from Bucket 2.
+12. **Stale-resubmission notice, made visually prominent — built and merged 2026-07-19 (`db11e0d`)**
+   — not yet hands-on checked. Confirm the new bordered/tinted notice actually renders (trigger a
+   stale resubmission — e.g. rank an episode, then hit browser-back and submit the same answer
+   again) on both the show page and the rank page, in both light and dark mode.
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
 (empty for now — every question posed 2026-07-17 is resolved: remove-show/re-ranking's scope, the
@@ -911,10 +921,13 @@ see Bucket 4.)
     friction per-episode tagging adds to the core ranking flow, whether the tag list is fixed forever
     or ever grows, and whether "you rank bottle episodes highly"-style stats are worth the UI surface
     for a single-user (today) app. Not scheduled; flagged for discussion, not a decided build.
-19. **Stale-resubmission notice isn't prominent enough** — raised 2026-07-19 by Kayvan during hands-on
-    check of Bucket 2 item 4b (the "This episode was already ranked — nothing changed." message).
-    Functionally correct, confirmed working, but the display itself should be made more visually
-    prominent. Not scoped or built yet — small, low-risk display-only tweak whenever picked up.
+19. ~~**Stale-resubmission notice isn't prominent enough**~~ — **built and merged 2026-07-19**
+    (`db11e0d`). New shared `StaleResubmissionNotice` component (a bordered, blue-tinted box with an
+    icon and bold text, `role="status"`) replaces the old plain muted-gray caption in both places it
+    appeared (the show page and the rank page); deliberately a third visual tier, distinct from both
+    this app's ordinary muted-caption convention and its red `role="alert"` error styling, with color
+    backed by an icon + bold weight per this app's "color is never the only signal" rule. Removed
+    from Bucket 4 — now in Bucket 2 for hands-on check.
 20. ~~**`website/.env.local`'s `NEXT_PUBLIC_SUPABASE_URL` looks wrong**~~ — **confirmed and fixed
     2026-07-19.** The value really was a Supabase **dashboard** link
     (`https://supabase.com/dashboard/project/tlbpzpdsoatkmiwhwskq/settings/general`), not the REST
