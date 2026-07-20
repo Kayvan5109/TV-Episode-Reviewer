@@ -449,10 +449,11 @@ conflict-free ahead of time since the two branches touch entirely disjoint files
 suite once more on `main` with both merged together: typecheck/lint clean, **313/313 tests**, build
 succeeded, all routes compiled. Pushed (`0ccf337`). Both worktrees and branches cleaned up.
 **Bucket 1 is now empty** (item 1 fixed; item 2 was only ever a forward-looking note, not blocking
-work). Both builds now in Bucket 2 — the crash fix needs Kayvan to apply the new migration
-(`20260719000000_delete_show_ranking_data.sql`) to live Supabase before it does anything live, plus a
-hands-on check that a large show (one of the ones that was crashing) now actually loads/ranks/deletes
-cleanly; Rank Season just needs a hands-on check.
+work). Both builds went into Bucket 2 pending Kayvan's migration apply and hands-on check — Kayvan
+applied the migration, then **hands-on confirmed both, same session**: the previously-crashing show
+now loads and ranks normally, removing a large show works too, "Rank season" behaves correctly, and
+whole-show "Rank all" is unaffected. Both removed from Bucket 2 — **Bucket 1 and 2 are now both
+genuinely clear**, no open items from either the Sentry incident or this session's building.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -629,17 +630,14 @@ this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of t
 in Bucket 4, rather than being done piecemeal now.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **URL-length crash fix, built and merged 2026-07-19 (`0ccf337`), independent-reviewer-verified.**
-   Kayvan applied the new migration (`20260719000000_delete_show_ranking_data.sql`) to live Supabase
-   2026-07-19 — still not yet hands-on checked. Remaining: confirm on live Vercel that a show with a
-   lot of episodes (SNL, The Simpsons, The Challenge — whichever originally crashed) now actually
-   loads its rank flow, and that removing a large show works too (the specific path that was
-   silently broken alongside the one Sentry caught).
-2. **"Rank Season," built and merged 2026-07-19 (`0ccf337`)** — not yet hands-on checked. Confirm a
-   season's "Rank season" button (next to its "Complete"/`#N` badges on the show page) appears only
-   when that season has something unranked, lands on that season's oldest-unranked episode, and
-   auto-advances only through that season (returning to the show page once it's done, not spilling
-   into other seasons) — plus that whole-show "Rank all" still behaves exactly as before.
+1. ~~**URL-length crash fix, built and merged 2026-07-19 (`0ccf337`), independent-reviewer-verified.**~~
+   Kayvan applied the new migration (`20260719000000_delete_show_ranking_data.sql`) to live Supabase,
+   then **hands-on confirmed 2026-07-19**: the show that was crashing now loads its rank flow
+   normally, and removing a large show (the other silently-broken path) also works. Removed from
+   Bucket 2.
+2. ~~**"Rank Season," built and merged 2026-07-19 (`0ccf337`)**~~ — **hands-on confirmed 2026-07-19**:
+   the season button works as designed, and whole-show "Rank all" still behaves exactly as before.
+   Removed from Bucket 2.
 3. ~~**"Rank all" mode, built and merged 2026-07-18 (`63cc4ba`)**~~ — **hands-on confirmed working on
    live Vercel, same session.** Kayvan then asked for the entry button to be made more prominent —
    restyled as a bordered button (blue, matching "Remove show"'s style) stacked underneath it, built
