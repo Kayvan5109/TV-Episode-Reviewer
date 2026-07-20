@@ -629,13 +629,12 @@ this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of t
 in Bucket 4, rather than being done piecemeal now.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **URL-length crash fix, built and merged 2026-07-19 (`0ccf337`), independent-reviewer-verified —
-   not yet hands-on checked, and genuinely blocked until Kayvan applies the new migration.** Two
-   things needed from Kayvan: (a) apply `supabase/migrations/20260719000000_delete_show_ranking_data.sql`
-   to live Supabase (same manual-apply process as every prior migration this project has needed); (b)
-   once applied, confirm on live Vercel that a show with a lot of episodes (SNL, The Simpsons, The
-   Challenge — whichever originally crashed) now actually loads its rank flow, and that removing a
-   large show works too (the specific path that was silently broken alongside the one Sentry caught).
+1. **URL-length crash fix, built and merged 2026-07-19 (`0ccf337`), independent-reviewer-verified.**
+   Kayvan applied the new migration (`20260719000000_delete_show_ranking_data.sql`) to live Supabase
+   2026-07-19 — still not yet hands-on checked. Remaining: confirm on live Vercel that a show with a
+   lot of episodes (SNL, The Simpsons, The Challenge — whichever originally crashed) now actually
+   loads its rank flow, and that removing a large show works too (the specific path that was
+   silently broken alongside the one Sentry caught).
 2. **"Rank Season," built and merged 2026-07-19 (`0ccf337`)** — not yet hands-on checked. Confirm a
    season's "Rank season" button (next to its "Complete"/`#N` badges on the show page) appears only
    when that season has something unranked, lands on that season's oldest-unranked episode, and
