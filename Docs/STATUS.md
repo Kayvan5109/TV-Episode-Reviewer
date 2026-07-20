@@ -548,6 +548,49 @@ third time. Merged (`711b0ff`), pushed, worktree/branch cleaned up. Now in Bucke
 migration (`supabase/migrations/20260720000000_all_star_rankings.sql`) applied to live Supabase, plus
 a hands-on check (needs 4+ tracked shows with a #1 episode each to actually see the feature).
 
+**Same session, continued.** Kayvan applied the migration and hands-on tested — found two real UX
+bugs after actually using the shipped feature:
+1. **The "Rank Top Episodes" button showed "Update" on the very first visit**, before ever clicking
+   anything. Root cause: placing the very first entrant into an empty pool needs zero comparator
+   calls by design (confirmed correct in the original build), so `getAllStarDisplay()` auto-places it
+   as a side effect of merely computing display state — the UI's `isFirstTime` check
+   (`display.ranked.length === 0`) was already false by the first render.
+2. **The whole ranked list disappeared whenever anything was pending** (not just the affected show),
+   and re-ranking a show so its #1 changed showed the "your #1 changed" notice correctly but the list
+   vanished instead of showing the new #1 in the old one's place. Kayvan's exact ask: *"the list
+   should re-appear with the new #1 in the place of the old one, but i should still have the prompt.
+   and keep the prompt the same."*
+Diagnosed both by reading the actual shipped code (`TopEpisodesSection.tsx`, `session.ts`) rather than
+guessing, then designed fixes that deliberately keep the real, already-reviewed comparison algorithm
+untouched: (1) a new tiny table, `all_star_progress` (one row per user, `has_completed_once`,
+migration `20260721000000_all_star_progress.sql`), latched permanently true once a full pass is
+genuinely completed, read fresh each render — not reset by the "reset from scratch" button, since
+having reset doesn't mean you've never completed a pass; (2) a purely **display-layer** augmentation
+in `getAllStarDisplay()` — the real `ranked`/`done`/`pendingCount` used by the actual placement
+algorithm stay completely unchanged, but a *separate*, cosmetic merged array splices each stale show's
+*live* #1 episode back into its old list position (marked `isPlaceholder: true`) purely for what gets
+rendered. Dispatched one implementer (`isolation: "worktree"`); it landed committed cleanly on its own
+branch (`worktree-agent-a7f0d6c9749f1fdc8`, commit `48857ae`, 327/327 tests, clean typecheck/lint/
+build, self-reported). Classified correctness-critical (touches the reconciliation logic of an
+already-reviewed feature plus a new table) — an independent reviewer was dispatched to verify
+specifically that the "purely cosmetic, doesn't touch the real algorithm" claim actually holds up,
+with particular attention to a timing edge case the implementer's own report flagged (the
+`has_completed_once` flag has a deliberate one-request lag before persisting as `true`, claimed
+harmless since the button never renders while `done` is true — flagged for the reviewer to verify
+rather than taken on faith).
+
+**Session paused here at 91% usage, before the independent review returned.** Nothing is at risk:
+`main` is clean and untouched (`8bdd0a0`), and the fix itself is safely committed on its own real,
+separate worktree branch (`worktree-agent-a7f0d6c9749f1fdc8` @ `48857ae`) — not merged, not lost.
+**Next session**: check whether the independent-reviewer dispatch from this session is still
+resumable (`SendMessage` to its existing session, if the harness carries that across a session
+boundary); if not, treat this as a fresh independent-review task — re-derive correctness from source
+the same way (see the dispatch brief for exactly what to check, especially the "does the placeholder
+splice ever leak into the real algorithm state" question), rather than assuming this session's
+dispatch actually completed a real review. Once verified, merge, apply the new migration to live
+Supabase, and get Kayvan's hands-on confirmation that both bugs are actually fixed before closing this
+out.
+
 ## Punch List (ranked — read this section first for "what's actually next")
 
 Every open item gets triaged into exactly one bucket the moment it surfaces, per
@@ -555,7 +598,17 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence:**
-1. ~~**All Stars Mode / "Top Episodes"**~~ — **built and merged 2026-07-19** (`711b0ff`), full design
+1. **Top Episodes bug fixes (button label + disappearing list), built and committed 2026-07-19 but
+   NOT yet merged — next session's clear top priority.** Fix sits on its own real, separate worktree
+   branch (`worktree-agent-a7f0d6c9749f1fdc8` @ `48857ae`), `main` untouched. An independent-reviewer
+   dispatch was started but hadn't returned before this session paused at 91% usage. See this file's
+   History (same date) for the full bug reports, root causes, fix design, and exactly what the next
+   session needs to independently verify before merging (the "does the display-layer placeholder
+   splice ever leak into the real algorithm state" question is the one thing worth real scrutiny, not
+   just re-running tests). Once verified and merged: a new migration
+   (`supabase/migrations/20260721000000_all_star_progress.sql`) needs Kayvan to apply it to live
+   Supabase, then a hands-on re-check of both bugs.
+2. ~~**All Stars Mode / "Top Episodes"**~~ — **built and merged 2026-07-19** (`711b0ff`), full design
    resolved with Kayvan and written up in this file's History (same date). Independent-reviewer-
    verified (schema/RLS, reconciliation logic, per-user isolation, the deliberate
    `addComparativeEpisode`-bypass-for-empty-pool reasoning — all confirmed correct by direct code
@@ -564,12 +617,12 @@ unless it's small or genuinely blocking.
    suite: clean typecheck/lint, 324/324 tests, clean build with `/top-episodes/rank` compiling
    correctly). Now in Bucket 2 — needs the new migration applied to live Supabase plus a hands-on
    check (needs 4+ tracked shows with a #1 episode each to actually see the feature).
-2. ~~**Live production bug, found 2026-07-19 via a Sentry error report: shows with enough episodes
+3. ~~**Live production bug, found 2026-07-19 via a Sentry error report: shows with enough episodes
    crash their entire rank flow**~~ — **fixed and merged 2026-07-19** (`0ccf337`), see History for the
    full account (all read call sites now scope by `user_id` + app-side filtering; the show-removal
    delete path now uses a `security invoker` Postgres RPC). Independent-reviewer-verified. Now in
    Bucket 2 — needs the new migration applied to live Supabase plus a hands-on check on a large show.
-3. **Worth remembering, not acting on yet**: the dashboard #1-episode item that used to sit here is
+4. **Worth remembering, not acting on yet**: the dashboard #1-episode item that used to sit here is
    built (see Bucket 2 item 1's History). This is exactly the "each show's #1 episode" data Bucket 4
    item 15 (All Stars Mode) will also need — no shared code was written now since All Stars isn't
    scheduled, but whoever builds All Stars later should check `website/src/app/dashboard/page.tsx`'s
