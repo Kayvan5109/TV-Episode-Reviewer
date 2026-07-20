@@ -587,7 +587,11 @@ Bucket 1 item 1 above). Deliberately **not merged** — session usage was alread
 by the time this landed, so rather than either (a) rush a follow-up fix dispatch under time pressure
 or (b) merge a branch with a confirmed, if minor, known-wrong behavior, this was left exactly as-is:
 committed on its own branch, `main` untouched, the fix fully specified in Bucket 1 item 1 for whoever
-picks this up next. No further dispatches started this session past this point.
+picks this up next. No further dispatches started this session past this point. **Session ended here
+at Kayvan's request.** Before closing out: pushed `worktree-agent-a7f0d6c9749f1fdc8` to `origin` (it
+had only been committed locally until now) — so next session's starting point is fully backed up on
+GitHub, not dependent on this machine's local worktree surviving. `git status`/`git log` confirmed
+clean, `main` matches `origin/main` at `1241461` plus this closing entry.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
