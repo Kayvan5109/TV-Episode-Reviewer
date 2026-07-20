@@ -528,9 +528,25 @@ show-removal RPC (`delete_show_ranking_data`, added this session for the URL-len
 extended to also clean up this pool's rows for a removed show. Dashboard restructured into "Shows" +
 "Top Episodes" sections; a new comparison route (outside the `/shows/[showId]/...` tree, since these
 comparisons cross shows) handles placement. Classified correctness-critical (new schema, cross-show
-algorithm reuse, per-user isolation across two new tables) — dispatched as one implementer, will get
-a full independent-reviewer pass before merging, same pipeline as the URL-length crash fix. See
-Bucket 1/History for the outcome once it lands.
+algorithm reuse, per-user isolation across two new tables) — dispatched as one implementer.
+
+**Same session, continued.** Implementer landed cleanly (committed correctly on its own branch this
+time — no recurrence of the uncommitted-work variant). Independent reviewer verified it thoroughly:
+read the migration and RLS policies in full against the existing per-user pattern, traced the
+reconciliation logic's three cases by hand (new/stale/orphaned) and confirmed a stale show's cleanup
+never touches another show's rows, verified the deliberate `addComparativeEpisode`-bypass reasoning
+by reading `engine.ts`/`constants.ts` directly (`effectiveColdStartThreshold` never returns `0`, so
+that wrapper would have incorrectly rejected the very first entrant into an empty pool —
+`placeEpisodeComparatively` itself has no such guard), and independently re-ran the full check suite
+(clean typecheck/lint, 324/324 tests, clean build) rather than trusting the implementer's own report.
+No issues found. PM then independently re-verified before merging too: read the migration, the
+reconciliation function (`loadAllStarPool`), and the dashboard diff directly (not just the reviewer's
+summary), confirmed the one change to previously-existing shared code (`ranking-session/session.ts`
+gained a small, pure, backward-compatible `topEpisodeOf` helper, now used by both the dashboard's
+existing per-show display and the new pool) was correctly additive, and re-ran the full check suite a
+third time. Merged (`711b0ff`), pushed, worktree/branch cleaned up. Now in Bucket 2 — needs the new
+migration (`supabase/migrations/20260720000000_all_star_rankings.sql`) applied to live Supabase, plus
+a hands-on check (needs 4+ tracked shows with a #1 episode each to actually see the feature).
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -539,12 +555,15 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence:**
-1. **All Stars Mode / "Top Episodes," dispatched 2026-07-19, in progress.** Full design resolved with
-   Kayvan and written up in this file's History (same date) — new schema, a new `all-star-session`
-   module reusing the existing comparative-placement algorithm over a cross-show pool, dashboard
-   restructured into "Shows" + "Top Episodes." Implementer dispatched; will get a full
-   independent-reviewer pass before merging (correctness-critical). Not yet landed as of this
-   writing.
+1. ~~**All Stars Mode / "Top Episodes"**~~ — **built and merged 2026-07-19** (`711b0ff`), full design
+   resolved with Kayvan and written up in this file's History (same date). Independent-reviewer-
+   verified (schema/RLS, reconciliation logic, per-user isolation, the deliberate
+   `addComparativeEpisode`-bypass-for-empty-pool reasoning — all confirmed correct by direct code
+   reading, not just re-running tests). PM independently re-verified before merging too (read the
+   migration, the reconciliation function, and the dashboard diff directly; re-ran the full check
+   suite: clean typecheck/lint, 324/324 tests, clean build with `/top-episodes/rank` compiling
+   correctly). Now in Bucket 2 — needs the new migration applied to live Supabase plus a hands-on
+   check (needs 4+ tracked shows with a #1 episode each to actually see the feature).
 2. ~~**Live production bug, found 2026-07-19 via a Sentry error report: shows with enough episodes
    crash their entire rank flow**~~ — **fixed and merged 2026-07-19** (`0ccf337`), see History for the
    full account (all read call sites now scope by `user_id` + app-side filtering; the show-removal
@@ -711,15 +730,23 @@ this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of t
 in Bucket 4, rather than being done piecemeal now.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. ~~**URL-length crash fix, built and merged 2026-07-19 (`0ccf337`), independent-reviewer-verified.**~~
+1. **All Stars Mode / "Top Episodes," built and merged 2026-07-19 (`711b0ff`)** — not yet hands-on
+   checked, and needs two things first: (a) Kayvan applies the new migration
+   (`supabase/migrations/20260720000000_all_star_rankings.sql`) to live Supabase; (b) needs 4 or
+   more tracked shows each with at least one comparatively-ranked episode (a live #1) to actually
+   see the "Top Episodes" section appear at all. Once both are true: confirm the "Rank Top Episodes"
+   button starts the comparison flow, the resulting full ranked list renders with each entry's show
+   name, and — if a chance arises to test it — that re-ranking one show's episodes triggers the
+   stale-show notice and targeted auto-update rather than silently going wrong.
+2. ~~**URL-length crash fix, built and merged 2026-07-19 (`0ccf337`), independent-reviewer-verified.**~~
    Kayvan applied the new migration (`20260719000000_delete_show_ranking_data.sql`) to live Supabase,
    then **hands-on confirmed 2026-07-19**: the show that was crashing now loads its rank flow
    normally, and removing a large show (the other silently-broken path) also works. Removed from
    Bucket 2.
-2. ~~**"Rank Season," built and merged 2026-07-19 (`0ccf337`)**~~ — **hands-on confirmed 2026-07-19**:
+3. ~~**"Rank Season," built and merged 2026-07-19 (`0ccf337`)**~~ — **hands-on confirmed 2026-07-19**:
    the season button works as designed, and whole-show "Rank all" still behaves exactly as before.
    Removed from Bucket 2.
-3. ~~**"Rank all" mode, built and merged 2026-07-18 (`63cc4ba`)**~~ — **hands-on confirmed working on
+4. ~~**"Rank all" mode, built and merged 2026-07-18 (`63cc4ba`)**~~ — **hands-on confirmed working on
    live Vercel, same session.** Kayvan then asked for the entry button to be made more prominent —
    restyled as a bordered button (blue, matching "Remove show"'s style) stacked underneath it, built
    and merged (`3826b16`), also hands-on confirmed. Removed from Bucket 2.
@@ -727,22 +754,22 @@ in Bucket 4, rather than being done piecemeal now.
    ranking" on the episode detail page used to drop out of rank-all mode silently —
    **fixed and merged 2026-07-18 (`b5db845`)**, `mode=rankAll` now carried through that whole
    round-trip. Not yet hands-on checked, folded into item 4 below.
-4. ~~**Season filter + episode search on the show page, built and merged 2026-07-18
+5. ~~**Season filter + episode search on the show page, built and merged 2026-07-18
    (`41468bb`)**~~ — **hands-on confirmed working on live Vercel, same session.** Removed from
    Bucket 2.
-5. ~~**Show page header mobile overlap fix, built and merged 2026-07-18 (`376d705`)**~~ — **hands-on
+6. ~~**Show page header mobile overlap fix, built and merged 2026-07-18 (`376d705`)**~~ — **hands-on
    confirmed working on a real phone, same session** (long title no longer overlaps "Remove show"/
    "Rank all"; desktop layout unchanged). Removed from Bucket 2.
-6. ~~**Three small builds, merged 2026-07-18 (`b5db845`)**~~ — **hands-on confirmed working on live
+7. ~~**Three small builds, merged 2026-07-18 (`b5db845`)**~~ — **hands-on confirmed working on live
    Vercel, 2026-07-19**: (a) rank-all mode, click a title mid-session, "↩ Return to ranking" lands
    back on the same question, auto-advance intact; (b) stale resubmission (browser-back
    double-submit) shows "This episode was already ranked — nothing changed." instead of a silent
    redirect; (c) season-rank `#N` badges match actual season average scores. Removed from Bucket 2.
    Kayvan flagged (b)'s notice should be **more visually prominent** than it is today — logged as a
    new Bucket 4 backlog item rather than fixed now.
-7. ~~**Dashboard #1-episode display, built and merged 2026-07-18 (`2a3c78a`)**~~ — **hands-on
+8. ~~**Dashboard #1-episode display, built and merged 2026-07-18 (`2a3c78a`)**~~ — **hands-on
    confirmed working on live Vercel, 2026-07-19.** Removed from Bucket 2.
-8. ~~**Sentry error monitoring**~~ — **fully done, 2026-07-18.** Kayvan created a Sentry project and
+9. ~~**Sentry error monitoring**~~ — **fully done, 2026-07-18.** Kayvan created a Sentry project and
    set `NEXT_PUBLIC_SENTRY_DSN` locally and on Vercel. First verification attempt surfaced a real bug
    (see History for the full investigation): `onRequestError`'s flush never actually completed on
    Vercel's Node.js runtime (`@sentry/core`'s `vercelWaitUntil` only works on Edge runtime), so
@@ -751,7 +778,7 @@ in Bucket 4, rather than being done piecemeal now.
    broken auto-detection. Re-verified with a second test throw: confirmed prompt delivery this time.
    Temporary test throw reverted (`e865c96`), sign-out restored. Removed from Bucket 2 — nothing left
    to do here.
-9. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
+10. **Throttled TMDB re-sync, built 2026-07-18, not yet hands-on checked** — see History for the full
    design. Can't be meaningfully verified by just clicking around today (the 24h throttle means a
    freshly-imported show won't actually re-sync for a day), so the real check is patient rather than
    immediate: next time a tracked show is known to have a new episode/season on TMDB, confirm it
@@ -760,7 +787,7 @@ in Bucket 4, rather than being done piecemeal now.
    (check the `shows` table has a populated `last_synced_at` column) and that a show page still loads
    normally post-push (the added `ensureShowSynced` call is fail-open, so even a broken TMDB call
    shouldn't break the page — but confirm that's actually true live, not just in tests).
-10. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
+11. **A big 2026-07-17 hands-on round confirmed nearly everything works** — see History for the full
    list (auth, search/import, dashboard, show detail page, the rankings page, cold start,
    comparative placement, re-ranking, removing a show all confirmed working end to end). What's
    genuinely still untested/unconfirmed, carried forward rather than chased right now:
@@ -772,11 +799,11 @@ in Bucket 4, rather than being done piecemeal now.
    - Direct-URL edge cases: visiting an already-ranked episode's rank URL directly.
    These are all low-priority, not blocking — pick up naturally during normal use rather than a
    dedicated pass.
-11. ~~**Popular shows browse view + genre filter on `/shows/search`, built and merged 2026-07-18
+12. ~~**Popular shows browse view + genre filter on `/shows/search`, built and merged 2026-07-18
    (`9c9df76`)**~~ — **hands-on confirmed working on live Vercel, 2026-07-19** (empty-query browse
    grid, genre filter, fallback to normal search on typing, Add/Rank buttons all behave correctly).
    Removed from Bucket 2.
-12. ~~**Stale-resubmission notice, made visually prominent — built and merged 2026-07-19
+13. ~~**Stale-resubmission notice, made visually prominent — built and merged 2026-07-19
    (`db11e0d`)**~~ — **hands-on confirmed 2026-07-19.** Removed from Bucket 2.
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
@@ -898,52 +925,18 @@ see Bucket 4.)
     via RLS, zero exceptions) gated behind one deliberate decision — "does this app grow a public/
     social layer at all?" — not something to approve piecemeal. Not scheduled; confirmed real and
     worth keeping visible in this queue, picked up whenever that decision is made.
-15. **"All Stars Mode" (name TBD)** — added 2026-07-18, Kayvan's idea, placed here (PM's call): a
-    much bigger, more open-ended item than most of this bucket, closer in kind to Tier B than a
-    small backlog entry, so it's logged with its real scope rather than understated. Once a user has
-    ranked episodes across 4+ different shows, their dashboard gets an option to rank those shows'
-    #1 episodes head-to-head against each other, building an "All Star" list — producing a single
-    cross-show "Top All Time" ranking, with the dashboard then displaying the resulting **Top 4**
-    (Letterboxd-style). **Re-confirmed and extended 2026-07-18** (Kayvan re-described the same idea
-    independently, with two new pieces of detail beyond what was already logged — both folded in
-    below rather than treated as a separate item):
-    - **The complete (not just Top 4) All-Star ranked list lives on the user's account page — mapped
-      to Tier B's already-planned `/u/[username]` public profile page** (see `AppSpec.md`'s Tier B
-      Detailed Design; today that page's spec only covers a "Follow" button, so this adds a real new
-      content section to it once both Tier B and this feature exist). **Resolved 2026-07-18, same
-      day**: the page and the All-Star list on it are public, same as the rest of Tier B — no
-      separate/special privacy setting for All-Stars specifically, it inherits the profile's existing
-      `rankings_visibility` toggle (`user_profiles.rankings_visibility`, `'private' | 'public'`,
-      default `'private'` — see `AppSpec.md`'s Tier B schema) the same way every other piece of Tier B
-      content already does. A user who flips their whole profile private hides their All-Star list
-      along with everything else on it, exactly like today's design for the rest of the page —
-      confirmed, not a special case.
-    - **Sharper (but not fully resolved) answer to "what happens when a show's #1 episode changes
-      after the fact"**: when this happens, the dashboard's Top 4 display should be removed/hidden
-      (not left showing a now-stale ranking) and replaced with a re-rank prompt in that same
-      dashboard slot. This confirms the *dashboard's* specific behavior; the deeper mechanism
-      question from the original write-up below is still open.
-    **Real open design question, not yet resolved**: every show's #1 episode already scores exactly
-    10 under the existing per-show formula (`scoreForPosition(1, N) = 10` regardless of `N` — see
-    `website/src/lib/ranking/score.ts`), so this can't be built by just sorting existing scores
-    across shows — every #1 episode would tie. It genuinely needs its own new head-to-head
-    comparison mechanism (most likely reusing the same binary-insertion engine, but over a new
-    "top episode per show" pool that isn't scoped to any single `show_id` the way today's
-    `episode_comparisons` are) — real new schema/persistence design, not a pure derived view like
-    the season-rankings redesign above.
-    **Resolved 2026-07-18: what happens when a show's #1 episode changes after the fact.** A
-    realistic scenario Kayvan flagged: a user ranks 4 shows (each only partially ranked — say half
-    their episodes), does an All Star ranking across those 4 shows' current #1 episodes, then keeps
-    ranking one of those shows later and a *different* episode overtakes the old #1. Decided: don't
-    silently invalidate or auto-resolve — **prompt the user to re-rank their All Stars list** when
-    the underlying #1 episode changes for any show already included (and, per the same-day
-    re-confirmation above, hide the stale Top 4 while that prompt is showing, rather than leaving it
-    displayed). Still needs, at build time: a way to detect "this show's #1 changed since the last
-    All Star ranking" (comparing the current #1 episode id per show against whatever was true when
-    the All Star ranking was last done) and a concrete re-ranking flow for that prompt (redo the
-    whole All Star comparison from scratch vs. only re-comparing the new episode against the
-    existing All Star order — not yet decided, a build-time design call). Not scheduled; a real
-    future item that needs its own design pass before it's buildable, not just a build slot.
+15. ~~**"All Stars Mode" (name TBD)**~~ — **built and merged 2026-07-19** (`711b0ff`), as "Top
+    Episodes." **Reclassified from this item's original write-up** at Kayvan's explicit request
+    (2026-07-19): single-player only, not Tier B — no account page, no public/private visibility
+    toggle, nothing social. The account-page/`/u/[username]`/Top-4-only pieces originally sketched
+    below never got built; the dashboard shows the *full* ranked list instead, with a Top-4-only
+    default deferred to whenever the account page and visual redesign actually happen. The two real
+    open questions this item was waiting on (the 4-show threshold, and what happens when a show's #1
+    changes after the fact) were resolved directly with Kayvan and built as specified: 4+ shows to
+    unlock the section, and a **targeted re-rank** (only the changed show's entry is replaced, others
+    untouched) **plus a visible notice** naming which show(s) changed, alongside a separate explicit
+    "reset from scratch" option — see this file's History (2026-07-19) for the full design and build
+    account. Now in Bucket 2 for the migration apply + hands-on check.
 16. **Other narrow-viewport candidates spotted during the 2026-07-18 mobile-audit-that-wasn't** — code-
     reading only, none confirmed as actual pain points (unlike Bucket 2 item 3's show-page-header bug,
     which Kayvan explicitly confirmed live): `AppHeader`'s nav bar (title + 3 links in one
