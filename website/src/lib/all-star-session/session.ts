@@ -463,7 +463,13 @@ export type AllStarDisplay =
  * as earlier displacements are spliced in, so later indices are computed against the
  * already-augmented length) -- `oldRank` is 1-based, so `oldRank - 1` is the corresponding 0-based
  * index; clamped to the current array length so an old position beyond the (possibly shorter) real
- * list still lands at the end rather than throwing/leaving a gap.
+ * list still lands at the end rather than throwing/leaving a gap. Because each splice index is
+ * computed against the already-augmented array, `staleDisplacements` MUST be processed in
+ * ascending `oldRank` order -- otherwise a later (numerically smaller) `oldRank` splices in after
+ * an earlier (numerically larger) one already shifted the array, landing every subsequent
+ * placeholder one slot too far right. `loadAllStarPool` builds `staleDisplacements` by iterating
+ * Supabase query rows with no guaranteed order, so the array is explicitly sorted here rather than
+ * relying on caller order.
  */
 function buildDisplayRanked(
   realRanked: readonly EpisodeId[],
@@ -477,7 +483,8 @@ function buildDisplayRanked(
     isPlaceholder: false,
   }));
 
-  for (const { showId, oldRank } of staleDisplacements) {
+  const orderedDisplacements = [...staleDisplacements].sort((a, b) => a.oldRank - b.oldRank);
+  for (const { showId, oldRank } of orderedDisplacements) {
     // Always defined: a stale displacement (case 2) is by definition a live-pool show -- only its
     // stored episode id was stale, not its live-pool membership.
     const liveEpisodeId = livePool.get(showId)!;

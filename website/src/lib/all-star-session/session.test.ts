@@ -598,6 +598,62 @@ describe('display-only placeholder augmentation for stale entries', () => {
       expect(step.subject).toBe('b2');
     }
   });
+
+  it('places every placeholder in oldRank order when 2+ shows go stale in the same reconciliation pass, regardless of the order the durable rows happen to be returned in', async () => {
+    // Six shows, `all_star_rankings` rows seeded directly (rather than via the full comparison
+    // loop) at old ranks 1..6: show-r2 (old rank 2) and show-r3 (old rank 3) will be stale --
+    // adjacent, non-extreme ranks, deliberately not at the head/tail of the list, since splicing at
+    // the extremes clamps to the same index regardless of processing order and wouldn't actually
+    // exercise the bug. The other four survive unchanged.
+    addFullyRankedShow('show-r1', ['r1']);
+    addFullyRankedShow('show-r2', ['r2new']); // live #1 has moved on to r2new
+    addFullyRankedShow('show-r3', ['r3new']); // live #1 has moved on to r3new
+    addFullyRankedShow('show-r4', ['r4']);
+    addFullyRankedShow('show-r5', ['r5']);
+    addFullyRankedShow('show-r6', ['r6']);
+
+    // Durable pool rows, still pointing at show-r2/show-r3's *old* episodes -- pushed in an order
+    // that does not match `rank_position` (r3's row before r1's, r2's row before r6's/r4's), the
+    // exact condition `loadAllStarPool`'s query has no `.order()` clause to prevent. If
+    // `buildDisplayRanked` simply spliced displacements in this (unsorted) encounter order instead
+    // of sorting by `oldRank` first, show-r3's placeholder would land before show-r2's and the
+    // whole tail would be shifted one slot wrong -- this is the exact counterexample the
+    // independent reviewer traced by hand.
+    const row = (showId: string, episodeId: string, rankPosition: number) => ({
+      user_id: 'user-1',
+      show_id: showId,
+      episode_id: episodeId,
+      rank_position: rankPosition,
+      created_at: '2026-01-01T00:00:00.000Z',
+    });
+    fake.allStarRankings.push(
+      row('show-r3', 'r3old', 3),
+      row('show-r1', 'r1', 1),
+      row('show-r5', 'r5', 5),
+      row('show-r2', 'r2old', 2),
+      row('show-r6', 'r6', 6),
+      row('show-r4', 'r4', 4)
+    );
+
+    const display = await getAllStarDisplay();
+    expect(display.eligible).toBe(true);
+    if (!display.eligible) return;
+
+    expect(display.done).toBe(false);
+    expect(display.pendingCount).toBe(2);
+    expect(new Set(display.staleShowIds)).toEqual(new Set(['show-r2', 'show-r3']));
+
+    // Correct order by oldRank regardless of the scrambled row order above: r1 (unchanged),
+    // show-r2's and show-r3's placeholders at their old ranks 2 and 3, then r4/r5/r6 (unchanged).
+    expect(display.ranked).toEqual([
+      { episodeId: 'r1', showId: 'show-r1', rank: 1, score: scoreForPosition(1, 6), isPlaceholder: false },
+      { episodeId: 'r2new', showId: 'show-r2', rank: 2, score: scoreForPosition(2, 6), isPlaceholder: true },
+      { episodeId: 'r3new', showId: 'show-r3', rank: 3, score: scoreForPosition(3, 6), isPlaceholder: true },
+      { episodeId: 'r4', showId: 'show-r4', rank: 4, score: scoreForPosition(4, 6), isPlaceholder: false },
+      { episodeId: 'r5', showId: 'show-r5', rank: 5, score: scoreForPosition(5, 6), isPlaceholder: false },
+      { episodeId: 'r6', showId: 'show-r6', rank: 6, score: scoreForPosition(6, 6), isPlaceholder: false },
+    ]);
+  });
 });
 
 describe('per-user isolation', () => {
