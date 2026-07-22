@@ -929,15 +929,9 @@ in Bucket 4, rather than being done piecemeal now.
    Removed from Bucket 2.
 13. ~~**Stale-resubmission notice, made visually prominent — built and merged 2026-07-19
    (`db11e0d`)**~~ — **hands-on confirmed 2026-07-19.** Removed from Bucket 2.
-14. **Username+password signup, built, independently reviewed (one real security bug found and fixed
-   pre-merge), and merged 2026-07-22 (`9807722`)** — not yet applied to live Supabase or hands-on
-   checked. Needs: apply the new migration (`supabase/migrations/20260722000000_user_profiles.sql`)
-   to live Supabase, then confirm hands-on — (a) sign up with just a username + password and land on
-   the dashboard immediately (no email-confirmation step); (b) log back out and back in using that
-   same username; (c) log in with Kayvan's existing email-based account to confirm nothing broke for
-   it; (d) trigger "forgot password" on the new username-only account and confirm the "no recovery
-   available, add an email first" message shows correctly rather than a silent failure or a misleading
-   "check your inbox."
+14. ~~**Username+password signup, built, independently reviewed (one real security bug found and fixed
+   pre-merge), and merged 2026-07-22 (`9807722`)**~~ — **hands-on confirmed 2026-07-22** (migration
+   applied, new signup/login/forgot-password flows all working). Removed from Bucket 2.
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
 (empty for now — every question posed 2026-07-17 is resolved: remove-show/re-ranking's scope, the
