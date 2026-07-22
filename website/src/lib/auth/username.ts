@@ -27,3 +27,20 @@ export function isValidUsername(username: string): boolean {
 export function syntheticEmailForUsername(username: string): string {
   return `${username.toLowerCase()}@${SYNTHETIC_EMAIL_DOMAIN}`;
 }
+
+/**
+ * Escapes both ILIKE wildcard characters (`%` -- any-number-of-characters, `_` -- any single
+ * character) so a value is matched as a literal string rather than a pattern.
+ *
+ * `signup/actions.ts`'s own pre-check only ever needs to escape `_`, since `isValidUsername()`
+ * already rejects `%` (and everything else outside `[a-zA-Z0-9_]`) upstream of that lookup.
+ * `login/actions.ts` and `forgot-password/actions.ts` accept arbitrary raw "username or email"
+ * input with no such upstream format check, so an unescaped `%` in the identifier would let a
+ * caller who only knows a *fragment* of a username match it via an ILIKE pattern instead of an
+ * exact value -- on forgot-password that could trigger a real reset email, or reveal account
+ * existence, without ever knowing the literal username. Use this helper anywhere raw user input
+ * is matched against `username` via `.ilike()`.
+ */
+export function escapeIlikePattern(value: string): string {
+  return value.replace(/[%_]/g, '\\$&');
+}

@@ -1,5 +1,6 @@
 'use server';
 
+import { escapeIlikePattern } from '@/lib/auth/username';
 import { createSupabaseServiceClient } from '@/lib/supabase/server';
 import { createSupabaseServerClient } from '@/lib/supabase/serverSession';
 
@@ -50,9 +51,11 @@ export async function forgotPassword(
   } else {
     const serviceClient = createSupabaseServiceClient();
     // ILIKE for a case-insensitive match (matching user_profiles' own `unique index on
-    // lower(username)`); `_` is escaped so it's matched literally rather than as an ILIKE
-    // "any single character" wildcard -- see signup/actions.ts's pre-check for the same pattern.
-    const escapedIdentifier = identifier.replace(/_/g, '\\_');
+    // lower(username)`); both ILIKE wildcards (`%`, `_`) are escaped so the identifier is matched
+    // literally rather than as a pattern -- see escapeIlikePattern's doc comment for why this
+    // matters here specifically (unlike signup/actions.ts's pre-check, this identifier has no
+    // upstream format check that would already rule `%` out).
+    const escapedIdentifier = escapeIlikePattern(identifier);
     const { data: profile, error: lookupError } = await serviceClient
       .from('user_profiles')
       .select('auth_email, has_real_email')

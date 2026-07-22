@@ -98,6 +98,20 @@ describe('login server action', () => {
     expect(signInWithPassword).not.toHaveBeenCalled();
   });
 
+  it('escapes ILIKE wildcards in the identifier so a partial pattern cannot match a real username', async () => {
+    // "adm%n" would, if `%` reached ILIKE unescaped, match any username starting with "adm" and
+    // ending with "n" (e.g. a real "admin") without the caller ever knowing the literal username.
+    // With the fix, `%` is escaped to a literal character, so the query looks for that exact
+    // (nonexistent) string and finds nothing.
+    maybeSingle.mockResolvedValue({ data: null, error: null });
+
+    const result = await login(undefined, formDataFor('adm%n', 'correctpass'));
+
+    expect(ilike).toHaveBeenCalledWith('username', 'adm\\%n');
+    expect(result).toEqual({ error: 'Invalid login credentials' });
+    expect(signInWithPassword).not.toHaveBeenCalled();
+  });
+
   it("surfaces Supabase's own error message rather than swallowing it", async () => {
     signInWithPassword.mockResolvedValue({ error: { message: 'Invalid login credentials' } });
 

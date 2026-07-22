@@ -124,4 +124,19 @@ describe('forgotPassword server action', () => {
     expect(result).toEqual({ status: 'error', error: 'No account found with that username.' });
     expect(resetPasswordForEmail).not.toHaveBeenCalled();
   });
+
+  it('escapes ILIKE wildcards in the identifier so a partial pattern cannot match a real username', async () => {
+    // "good%r" would, if `%` reached ILIKE unescaped, match any username starting with "good" and
+    // ending with "r" (e.g. a real "gooduser") without the caller ever knowing the literal
+    // username -- and could trigger a real reset email to that account. With the fix, `%` is
+    // escaped to a literal character, so the query looks for that exact (nonexistent) string and
+    // finds nothing.
+    maybeSingle.mockResolvedValue({ data: null, error: null });
+
+    const result = await forgotPassword(undefined, formDataFor('good%r'));
+
+    expect(ilike).toHaveBeenCalledWith('username', 'good\\%r');
+    expect(result).toEqual({ status: 'error', error: 'No account found with that username.' });
+    expect(resetPasswordForEmail).not.toHaveBeenCalled();
+  });
 });
