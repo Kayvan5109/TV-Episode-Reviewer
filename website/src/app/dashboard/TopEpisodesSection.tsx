@@ -17,14 +17,30 @@ import { ResetTopEpisodesButton } from './ResetTopEpisodesButton';
  * `topEpisodeById` lookup (bounded by how many shows a user tracks, not by any single show's
  * episode count; see Docs/STATUS.md Bucket 1 item 1's write-up of exactly this distinction).
  *
- * Three states, matching the UX spec exactly:
- *   - First time (nothing placed at all yet, nothing stale): a single "Rank Top Episodes" button.
+ * Three states, matching the UX spec exactly. "First time" vs "returning" is driven by the
+ * durable `display.hasCompletedOnce` flag (`all_star_progress.has_completed_once`), *not* by
+ * whether `display.ranked` happens to be empty right now — placing the very first entrant into an
+ * empty pool takes zero comparisons by design, so `ranked` can already be non-empty by the time a
+ * newly-eligible user's very first dashboard load finishes computing display state, before they've
+ * clicked anything. See `@/lib/all-star-session`'s `loadHasCompletedOnce` doc comment for the full
+ * writeup.
+ *
+ *   - First time (`!display.hasCompletedOnce`): a single "Rank Top Episodes" button. (The ranked
+ *     list, if any entries exist yet from the zero-comparison auto-placement above, still renders
+ *     alongside it -- see below.)
  *   - Some pending (new shows became eligible, and/or reconciliation just found stale entries):
  *     a notice naming which show(s) changed (the removal already happened automatically by the
  *     time this renders — see `@/lib/all-star-session`'s reconciliation), an "Update Top Episodes"
  *     button to continue placing, and a separate, quieter full-reset option.
- *   - Up to date: the full ranked list (rank, title, which show, score) plus the same quiet
- *     full-reset option.
+ *   - Up to date (`display.done`): the full ranked list (rank, title, which show, score) plus the
+ *     same quiet full-reset option.
+ *
+ * The ranked list and the "something's pending" notice/button are *not* mutually exclusive: the
+ * list renders whenever `display.ranked` has entries, regardless of `display.done` — a stale
+ * show's #1 changing shouldn't make the user's entire list disappear while they go re-confirm just
+ * that one show (see `@/lib/all-star-session`'s `buildDisplayRanked` for how a stale show's new #1
+ * gets a placeholder slot in the list at its old position). `entry.isPlaceholder` marks that
+ * synthetic, not-yet-reconfirmed slot with a lighter treatment + "pending" label.
  */
 export function TopEpisodesSection({
   display,
@@ -39,38 +55,54 @@ export function TopEpisodesSection({
     return null;
   }
 
-  const isFirstTime = display.ranked.length === 0 && display.staleShowIds.length === 0;
+  // Durable per-user history, not a per-request derived value -- see the module comment above and
+  // `@/lib/all-star-session`'s `loadHasCompletedOnce` for why `display.ranked.length === 0` used
+  // to be (and no longer is) how this was computed.
+  const isFirstTime = !display.hasCompletedOnce;
 
   return (
     <div className="flex w-full max-w-2xl flex-col gap-4">
       <h1 className="text-xl font-semibold">Top Episodes</h1>
 
-      {display.done && (
-        <>
-          <ol className="flex flex-col gap-2">
-            {display.ranked.map((entry) => {
-              const episode = episodeById.get(entry.episodeId);
-              return (
-                <li
-                  key={entry.episodeId}
-                  className="flex items-center justify-between rounded border border-black/10 p-3 dark:border-white/20"
-                >
-                  <span className="flex flex-col">
-                    <span className="font-medium">
-                      #{entry.rank} — {episode ? `S${episode.season_number}E${episode.episode_number} — ${episode.title}` : 'Unknown episode'}
-                    </span>
-                    <span className="text-xs text-black/60 dark:text-white/60">
-                      {showTitleById.get(entry.showId)?.title ?? 'Unknown show'}
-                    </span>
+      {/* Renders whenever there's anything placed, regardless of `display.done` -- the list and
+          the "something's pending" notice/button below are not mutually exclusive states. A stale
+          show's #1 changing shouldn't hide every other, unaffected show's correctly-placed entry;
+          its own old slot instead shows a placeholder (`entry.isPlaceholder`) for its new #1 until
+          the user actually confirms it via real comparative placement. */}
+      {display.ranked.length > 0 && (
+        <ol className="flex flex-col gap-2">
+          {display.ranked.map((entry) => {
+            const episode = episodeById.get(entry.episodeId);
+            return (
+              <li
+                key={entry.episodeId}
+                className={`flex items-center justify-between rounded border p-3 ${
+                  entry.isPlaceholder
+                    ? 'border-dashed border-black/20 opacity-70 dark:border-white/30'
+                    : 'border-black/10 dark:border-white/20'
+                }`}
+              >
+                <span className="flex flex-col">
+                  <span className="font-medium">
+                    #{entry.rank} — {episode ? `S${episode.season_number}E${episode.episode_number} — ${episode.title}` : 'Unknown episode'}
+                    {entry.isPlaceholder && (
+                      <span className="ml-2 rounded bg-black/10 px-1.5 py-0.5 text-xs font-normal text-black/60 dark:bg-white/10 dark:text-white/60">
+                        pending
+                      </span>
+                    )}
                   </span>
-                  <span className="text-sm text-black/60 dark:text-white/60">{entry.score.toFixed(1)}</span>
-                </li>
-              );
-            })}
-          </ol>
-          <ResetTopEpisodesButton />
-        </>
+                  <span className="text-xs text-black/60 dark:text-white/60">
+                    {showTitleById.get(entry.showId)?.title ?? 'Unknown show'}
+                  </span>
+                </span>
+                <span className="text-sm text-black/60 dark:text-white/60">{entry.score.toFixed(1)}</span>
+              </li>
+            );
+          })}
+        </ol>
       )}
+
+      {display.done && <ResetTopEpisodesButton />}
 
       {!display.done && isFirstTime && (
         <Link

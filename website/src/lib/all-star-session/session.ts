@@ -97,6 +97,11 @@ interface LoadedAllStarPool {
    *  #1 episode changed since it was last placed (case 2 of reconciliation below) — as opposed to
    *  a show that simply never had an entry before (case 1). */
   staleShowIds: string[];
+  /** For every case-2 (stale) show, the `rank_position` its now-removed entry held right before
+   *  removal — captured for display-only purposes (see `getAllStarDisplay`'s placeholder splice)
+   *  so the UI can show that show's new #1 sitting in the old entry's former slot until the user
+   *  actually places it for real. Never used for anything persisted or algorithm-affecting. */
+  staleDisplacements: { showId: string; oldRank: number }[];
 }
 
 /**
@@ -222,6 +227,7 @@ async function loadAllStarPool(supabase: SupabaseSessionClient, userId: string):
   const rankingRows = (rankingRowsRaw ?? []) as AllStarRankingRow[];
 
   const staleShowIds: string[] = [];
+  const staleDisplacements: { showId: string; oldRank: number }[] = [];
   const toRemove: { showId: string; episodeId: EpisodeId }[] = [];
   const survivors: AllStarRankingRow[] = [];
 
@@ -231,9 +237,12 @@ async function loadAllStarPool(supabase: SupabaseSessionClient, userId: string):
       // Case 3: orphaned -- show no longer has a live #1 at all.
       toRemove.push({ showId: row.show_id, episodeId: row.episode_id });
     } else if (liveEpisodeId !== row.episode_id) {
-      // Case 2: stale -- the show's #1 changed since this row was placed.
+      // Case 2: stale -- the show's #1 changed since this row was placed. Capture its old
+      // position (from the still-intact `row`) before it's removed below -- display-only, see
+      // `staleDisplacements`'s doc comment.
       toRemove.push({ showId: row.show_id, episodeId: row.episode_id });
       staleShowIds.push(row.show_id);
+      staleDisplacements.push({ showId: row.show_id, oldRank: row.rank_position });
     } else {
       survivors.push(row);
     }
@@ -295,7 +304,44 @@ async function loadAllStarPool(supabase: SupabaseSessionClient, userId: string):
     showIdByEpisodeId,
     pendingShowIds,
     staleShowIds,
+    staleDisplacements,
   };
+}
+
+/**
+ * Reads this user's durable "has ever fully completed a Top Episodes pass" flag
+ * (`all_star_progress.has_completed_once`) -- deliberately a plain `.eq('user_id', ...)` read
+ * scanned in application code (`[0]?.has_completed_once`), same style as every other read in this
+ * module, rather than `.maybeSingle()`, so the `FakeSupabase` test double doesn't need a second
+ * read-builder shape. No row at all (brand new user) means "never completed," i.e. `false`.
+ *
+ * Deliberately called *before* `loadAllStarPool` in `getAllStarDisplay` -- this reflects the
+ * user's prior history only, and must not be affected by anything derived or auto-placed during
+ * this request (see this module's top comment and `isFirstTime`'s bug writeup in Docs/STATUS.md
+ * Bucket 4 item 15).
+ */
+async function loadHasCompletedOnce(supabase: SupabaseSessionClient, userId: string): Promise<boolean> {
+  const { data, error } = await supabase.from('all_star_progress').select('has_completed_once').eq('user_id', userId);
+  if (error) {
+    throw new Error(`Failed to load all-star progress: ${error.message}`);
+  }
+  const rows = (data ?? []) as { has_completed_once: boolean }[];
+  return rows[0]?.has_completed_once ?? false;
+}
+
+/**
+ * Latches `all_star_progress.has_completed_once` to `true` for this user -- called every time
+ * `getAllStarDisplay` observes `done === true`, not just the first time (cheap, idempotent
+ * upsert). Deliberately never called from `resetAllStarRanking` -- see that function's doc
+ * comment for why a manual reset must not clear this flag.
+ */
+async function markAllStarProgressCompleted(supabase: SupabaseSessionClient, userId: string): Promise<void> {
+  const { error } = await supabase
+    .from('all_star_progress')
+    .upsert({ user_id: userId, has_completed_once: true, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+  if (error) {
+    throw new Error(`Failed to persist all-star progress: ${error.message}`);
+  }
 }
 
 /**
@@ -357,28 +403,97 @@ export interface AllStarRankedEntry {
   /** 1-based position within the pool, 1 = best. */
   rank: number;
   score: number;
+  /** `true` only for a synthetic, display-only splice-in standing in for a stale show's new #1
+   *  while the user hasn't yet run it through real comparative placement (see
+   *  `buildDisplayRanked`'s doc comment) -- `false` for every genuinely placed entry. The score
+   *  and rank on a placeholder entry are both position-based estimates over the merged display
+   *  array, not a real, comparison-verified placement. */
+  isPlaceholder: boolean;
 }
 
 /**
  * Everything the dashboard's "Top Episodes" section needs to render. `eligible` is `false` (and
  * nothing else is computed) whenever fewer than `ELIGIBILITY_THRESHOLD` tracked shows currently
  * have a live #1 episode -- see that constant's doc comment for why placement itself is skipped
- * below the threshold, not just hidden in the UI.
+ * below the threshold, not just hidden in the UI. `hasCompletedOnce` is present in both branches
+ * (durable per-user history, unrelated to eligibility) even though today's UI only reads it in the
+ * `eligible: true` branch, in case that changes later.
  */
 export type AllStarDisplay =
-  | { eligible: false }
+  | { eligible: false; hasCompletedOnce: boolean }
   | {
       eligible: true;
-      /** `true` once every eligible show's #1 has a place in the pool -- nothing pending. */
+      /** `true` once this user has ever fully completed a Top Episodes ranking pass, durably
+       *  latched via `all_star_progress` -- *not* reset by `resetAllStarRanking()`. Drives the
+       *  "Rank Top Episodes" (first time) vs "Update Top Episodes" (every time after) button
+       *  label; see `loadHasCompletedOnce`'s doc comment for why this can't be derived per-request
+       *  from `ranked`/`staleShowIds` the way it used to be. */
+      hasCompletedOnce: boolean;
+      /** `true` once every eligible show's #1 has a place in the pool -- nothing pending. Derived
+       *  from the real, non-augmented placement state -- unaffected by any placeholder splice-ins
+       *  in `ranked` below. */
       done: boolean;
-      /** Current placed order, best (rank 1) to worst. Excludes anything still pending. */
+      /** Current placed order, best (rank 1) to worst, for display. This is the real placed order
+       *  *augmented* with placeholder entries for stale shows (see `buildDisplayRanked`) -- it is
+       *  not the same array `done`/`pendingCount` are derived from. */
       ranked: AllStarRankedEntry[];
-      /** How many shows are currently waiting to be placed (new entrants + stale-replaced ones). */
+      /** How many shows are currently waiting to be placed (new entrants + stale-replaced ones).
+       *  Derived from the real, non-augmented placement state, same as `done`. */
       pendingCount: number;
       /** Which of the pending shows are pending *because* their #1 changed since it was last
        *  placed (as opposed to genuinely new) -- for the "your #1 for X changed" UI notice. */
       staleShowIds: string[];
     };
+
+/**
+ * Builds the *display-only* ranked array `getAllStarDisplay` returns: the real, algorithm-correct
+ * `realRanked` order (exactly what `done`/`pendingCount` are derived from, untouched), with one
+ * synthetic placeholder entry spliced in for each stale displacement -- so a show whose #1 just
+ * changed keeps a visible (if provisional) slot in the list, at that show's *old* position, using
+ * its *live* #1 episode id, instead of vanishing from the list entirely until the user finishes
+ * placing it for real (Kayvan's exact request, Docs/STATUS.md Bucket 4 item 15: "the list should
+ * re-appear with the new #1 in the place of the old one").
+ *
+ * Purely presentational: never writes anything, never affects `history`/`ranked` used for actual
+ * placement, and the returned array can contain more entries than `realRanked` (one per stale
+ * displacement) -- scores for the merged array are recomputed by the caller via
+ * `scoresForRankedList`, which works fine over any array purely by position.
+ *
+ * Splice index is `min(oldRank - 1, currentLength)` at the time of *that* splice (the array grows
+ * as earlier displacements are spliced in, so later indices are computed against the
+ * already-augmented length) -- `oldRank` is 1-based, so `oldRank - 1` is the corresponding 0-based
+ * index; clamped to the current array length so an old position beyond the (possibly shorter) real
+ * list still lands at the end rather than throwing/leaving a gap. Because each splice index is
+ * computed against the already-augmented array, `staleDisplacements` MUST be processed in
+ * ascending `oldRank` order -- otherwise a later (numerically smaller) `oldRank` splices in after
+ * an earlier (numerically larger) one already shifted the array, landing every subsequent
+ * placeholder one slot too far right. `loadAllStarPool` builds `staleDisplacements` by iterating
+ * Supabase query rows with no guaranteed order, so the array is explicitly sorted here rather than
+ * relying on caller order.
+ */
+function buildDisplayRanked(
+  realRanked: readonly EpisodeId[],
+  showIdByEpisodeId: ReadonlyMap<EpisodeId, string>,
+  livePool: ReadonlyMap<string, EpisodeId>,
+  staleDisplacements: readonly { showId: string; oldRank: number }[]
+): { episodeId: EpisodeId; showId: string; isPlaceholder: boolean }[] {
+  const merged = realRanked.map((episodeId) => ({
+    episodeId,
+    showId: showIdByEpisodeId.get(episodeId)!,
+    isPlaceholder: false,
+  }));
+
+  const orderedDisplacements = [...staleDisplacements].sort((a, b) => a.oldRank - b.oldRank);
+  for (const { showId, oldRank } of orderedDisplacements) {
+    // Always defined: a stale displacement (case 2) is by definition a live-pool show -- only its
+    // stored episode id was stale, not its live-pool membership.
+    const liveEpisodeId = livePool.get(showId)!;
+    const index = Math.min(oldRank - 1, merged.length);
+    merged.splice(index, 0, { episodeId: liveEpisodeId, showId, isPlaceholder: true });
+  }
+
+  return merged;
+}
 
 /**
  * Loads the Top Episodes pool's full display state: reconciles (see `loadAllStarPool`), then
@@ -395,30 +510,49 @@ export type AllStarDisplay =
 export async function getAllStarDisplay(): Promise<AllStarDisplay> {
   const supabase = await createSupabaseServerClient();
   const userId = await requireUserId(supabase);
+  // Read before doing anything else this request -- reflects prior history only, must not be
+  // affected by any auto-placement `deriveNextAllStarStep` below is about to do. See
+  // `loadHasCompletedOnce`'s doc comment.
+  const hasCompletedOnce = await loadHasCompletedOnce(supabase, userId);
   const loaded = await loadAllStarPool(supabase, userId);
 
   if (loaded.livePool.size < ELIGIBILITY_THRESHOLD) {
-    return { eligible: false };
+    return { eligible: false, hasCompletedOnce };
   }
 
   const { step, ranked } = await deriveNextAllStarStep(supabase, userId, loaded);
-  const scores = scoresForRankedList(ranked);
+  const done = step.type === 'done';
+  if (done) {
+    // Cheap and idempotent to call every time `done` is true, not just the first time -- this is
+    // what latches the flag permanently once true. See `markAllStarProgressCompleted`'s doc
+    // comment.
+    await markAllStarProgressCompleted(supabase, userId);
+  }
+
+  // Display-only augmentation, layered on top of the real, algorithm-correct `ranked`/`done`
+  // above -- see `buildDisplayRanked`'s doc comment. `done`/`pendingCount` below are still derived
+  // from the real, non-augmented `ranked`, not this merged array.
+  const displayRanked = buildDisplayRanked(ranked, loaded.showIdByEpisodeId, loaded.livePool, loaded.staleDisplacements);
+  const scores = scoresForRankedList(displayRanked.map((entry) => entry.episodeId));
 
   return {
     eligible: true,
-    done: step.type === 'done',
-    ranked: ranked.map((episodeId, index) => ({
-      episodeId,
-      showId: loaded.showIdByEpisodeId.get(episodeId)!,
+    hasCompletedOnce,
+    done,
+    ranked: displayRanked.map((entry, index) => ({
+      episodeId: entry.episodeId,
+      showId: entry.showId,
       rank: index + 1,
-      score: scores.get(episodeId)!,
+      score: scores.get(entry.episodeId)!,
+      isPlaceholder: entry.isPlaceholder,
     })),
     // Not `loaded.pendingShowIds.length` -- that's the *pre*-derivation count.
     // `deriveNextAllStarStep` may have just auto-placed one or more entrants that needed no new
     // question at all (e.g. the very first entrant into an empty pool), shrinking how many are
     // actually still pending by the time this returns. `livePool.size - ranked.length` reflects
     // the post-derivation truth: every live-pool show is either placed (counted in `ranked`) or
-    // still pending, with no third state.
+    // still pending, with no third state. Deliberately uses the real `ranked` (not
+    // `displayRanked`), same as `done` above.
     pendingCount: loaded.livePool.size - ranked.length,
     staleShowIds: loaded.staleShowIds,
   };
@@ -488,6 +622,10 @@ export async function submitAllStarComparisonAnswer(
  * see Docs/STATUS.md Bucket 4 item 15's UX spec: offered alongside the targeted reconciliation
  * notice, for a user who'd rather redo the whole comparison from scratch than trust the automatic
  * targeted patch.
+ *
+ * Deliberately does *not* touch `all_star_progress`: resetting someone's ranking data doesn't mean
+ * they've never completed a pass before -- that's literally why this reset button exists, to redo
+ * something they already built once. `has_completed_once` stays exactly as it was.
  */
 export async function resetAllStarRanking(): Promise<void> {
   const supabase = await createSupabaseServerClient();

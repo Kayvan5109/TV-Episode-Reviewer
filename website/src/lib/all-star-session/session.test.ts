@@ -6,7 +6,7 @@ import { scoreForPosition } from '@/lib/ranking/score';
  * In-memory fake standing in for the session-aware Supabase client, covering every table this
  * module (and, transitively, `@/lib/ranking-session`'s `getShowRankingDisplay`, which the live-pool
  * computation calls per tracked show) touches: `user_shows`, `episodes`, `episode_rankings`,
- * `episode_comparisons`, `all_star_rankings`, `all_star_comparisons`. Mirrors
+ * `episode_comparisons`, `all_star_rankings`, `all_star_comparisons`, `all_star_progress`. Mirrors
  * `@/lib/ranking-session/session.test.ts`'s `FakeSupabase` style closely (thenable read-chain
  * builders, a real in-memory table array rather than scripted per-call responses) -- see that
  * file's own doc comment for the full rationale.
@@ -60,6 +60,12 @@ interface FakeAllStarComparisonRow {
   episode_a_id: string;
   episode_b_id: string;
   result: string;
+}
+
+interface FakeAllStarProgressRow {
+  user_id: string;
+  has_completed_once: boolean;
+  updated_at: string;
 }
 
 interface FakeQueryBuilder<T> extends PromiseLike<{ data: T[]; error: null }> {
@@ -118,6 +124,7 @@ class FakeSupabase {
   comparisons: FakeComparisonRow[] = [];
   allStarRankings: FakeAllStarRankingRow[] = [];
   allStarComparisons: FakeAllStarComparisonRow[] = [];
+  allStarProgress: FakeAllStarProgressRow[] = [];
   currentUserId: string | null = 'user-1';
   private allStarComparisonIdCounter = 0;
   private allStarCreatedAtCounter = 0;
@@ -176,6 +183,22 @@ class FakeSupabase {
           return Promise.resolve({ data: null, error: null });
         },
         delete: () => makeDeleteBuilder(this.allStarComparisons),
+      };
+    }
+    if (table === 'all_star_progress') {
+      const builder = makeReadBuilder(this.allStarProgress);
+      return {
+        ...builder,
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars -- signature-compatible with the real `.upsert(row, options)`; the fake always matches on user_id.
+        upsert: (row: FakeAllStarProgressRow, _opts?: { onConflict: string }) => {
+          const idx = this.allStarProgress.findIndex((r) => r.user_id === row.user_id);
+          if (idx >= 0) {
+            this.allStarProgress[idx] = { ...this.allStarProgress[idx], ...row };
+          } else {
+            this.allStarProgress.push({ ...row });
+          }
+          return Promise.resolve({ data: null, error: null });
+        },
       };
     }
     throw new Error(`Unexpected table in test: ${table}`);
@@ -239,7 +262,7 @@ describe('eligibility threshold', () => {
     addFullyRankedShow('show-b', ['b1']);
     addFullyRankedShow('show-c', ['c1']);
 
-    await expect(getAllStarDisplay()).resolves.toEqual({ eligible: false });
+    await expect(getAllStarDisplay()).resolves.toEqual({ eligible: false, hasCompletedOnce: false });
   });
 
   it('excludes shows with zero ranked episodes from the eligibility count -- a 5th tracked-but-unranked show does not push a 3-eligible-show user over the threshold', async () => {
@@ -248,7 +271,7 @@ describe('eligibility threshold', () => {
     addFullyRankedShow('show-c', ['c1']);
     addUnrankedShow('show-unranked', ['u1', 'u2']);
 
-    await expect(getAllStarDisplay()).resolves.toEqual({ eligible: false });
+    await expect(getAllStarDisplay()).resolves.toEqual({ eligible: false, hasCompletedOnce: false });
   });
 
   it('becomes eligible at exactly 4 shows with a live #1', async () => {
@@ -270,7 +293,9 @@ describe('placement -- first entrant into an empty pool needs no comparison', ()
     // The first entrant (show-a's a1, first in user_shows order) needed no comparison at all --
     // it's already placed. The second (show-b's b1) needs a real question against it.
     expect(display.done).toBe(false);
-    expect(display.ranked).toEqual([{ episodeId: 'a1', showId: 'show-a', rank: 1, score: scoreForPosition(1, 1) }]);
+    expect(display.ranked).toEqual([
+      { episodeId: 'a1', showId: 'show-a', rank: 1, score: scoreForPosition(1, 1), isPlaceholder: false },
+    ]);
     expect(display.pendingCount).toBe(3);
 
     await expect(getNextAllStarStep()).resolves.toEqual({ type: 'compare', subject: 'b1', reference: 'a1' });
@@ -448,13 +473,196 @@ describe('resetAllStarRanking', () => {
   });
 });
 
+describe('hasCompletedOnce', () => {
+  it('stays false through the entire first pass, including the trivial auto-placed first entrant', async () => {
+    seedFourEligibleShows();
+
+    // The very first entrant (a1) auto-places with zero comparisons as a side effect of this very
+    // call -- `display.ranked` is already non-empty, but `hasCompletedOnce` must still read false,
+    // since this is a durable, per-user "ever fully completed a pass" flag, not derived from
+    // `ranked`/`staleShowIds`.
+    let display = await getAllStarDisplay();
+    expect(display.eligible).toBe(true);
+    if (!display.eligible) return;
+    expect(display.hasCompletedOnce).toBe(false);
+    expect(display.ranked).toHaveLength(1);
+    expect(display.done).toBe(false);
+
+    // Still false partway through -- two of four entrants placed, two pending.
+    await submitAllStarComparisonAnswer('b1', 'a1', 'better');
+    display = await getAllStarDisplay();
+    expect(display.eligible).toBe(true);
+    if (!display.eligible) return;
+    expect(display.hasCompletedOnce).toBe(false);
+    expect(display.done).toBe(false);
+  });
+
+  it('flips to true only once `done` is genuinely reached, and stays true after a reset', async () => {
+    seedFourEligibleShows();
+
+    await submitAllStarComparisonAnswer('b1', 'a1', 'better');
+    await submitAllStarComparisonAnswer('c1', 'b1', 'worse');
+    await submitAllStarComparisonAnswer('c1', 'a1', 'better');
+    await submitAllStarComparisonAnswer('d1', 'c1', 'worse');
+
+    // One comparison left before the pass is fully done -- still false.
+    let display = await getAllStarDisplay();
+    expect(display.eligible).toBe(true);
+    if (!display.eligible) return;
+    expect(display.done).toBe(false);
+    expect(display.hasCompletedOnce).toBe(false);
+
+    // The final answer completes the pass. `submitAllStarComparisonAnswer` itself never persists
+    // the progress flag (only `getAllStarDisplay` does) -- so the *next* `getAllStarDisplay` call
+    // is what latches it. That same call reads `hasCompletedOnce` (prior history) *before* it
+    // marks progress completed as a side effect of this request, so this first call reports
+    // `done: true` alongside `hasCompletedOnce: false` -- reflecting history up to but not
+    // including this request, exactly as documented (see `loadHasCompletedOnce`'s doc comment).
+    const step = await submitAllStarComparisonAnswer('d1', 'a1', 'better');
+    expect(step).toEqual({ type: 'done' });
+
+    display = await getAllStarDisplay();
+    expect(display.eligible).toBe(true);
+    if (!display.eligible) return;
+    expect(display.done).toBe(true);
+    expect(display.hasCompletedOnce).toBe(false);
+    expect(fake.allStarProgress.find((r) => r.user_id === 'user-1')?.has_completed_once).toBe(true);
+
+    // The *next* call reads the now-persisted flag.
+    display = await getAllStarDisplay();
+    expect(display.eligible).toBe(true);
+    if (!display.eligible) return;
+    expect(display.hasCompletedOnce).toBe(true);
+
+    // A manual reset clears the placed rankings/comparisons, but must not clear this flag --
+    // resetting doesn't mean the user has never completed a pass before.
+    await resetAllStarRanking();
+    display = await getAllStarDisplay();
+    expect(display.eligible).toBe(true);
+    if (!display.eligible) return;
+    // Post-reset, the first entrant auto-places again with zero comparisons, same as the very
+    // first pass ever -- but hasCompletedOnce must stay true throughout.
+    expect(display.hasCompletedOnce).toBe(true);
+  });
+});
+
+describe('display-only placeholder augmentation for stale entries', () => {
+  it('splices a placeholder for a stale show\'s new #1 at its old position, leaving pendingCount/done derived from the real state', async () => {
+    seedFourEligibleShows();
+    // Fully place all four: b1 > c1 > d1 > a1 (same order as the earlier full-loop test).
+    await submitAllStarComparisonAnswer('b1', 'a1', 'better');
+    await submitAllStarComparisonAnswer('c1', 'b1', 'worse');
+    await submitAllStarComparisonAnswer('c1', 'a1', 'better');
+    await submitAllStarComparisonAnswer('d1', 'c1', 'worse');
+    await submitAllStarComparisonAnswer('d1', 'a1', 'better');
+
+    // Show B's #1 changes: re-rank show-b so its live #1 is now a brand new episode, "b2". b1 held
+    // rank_position 1 (best) before this.
+    fake.episodes.push({ id: 'b2', show_id: 'show-b', season_number: 1, episode_number: 2 });
+    fake.rankings = fake.rankings.filter((r) => r.episode_id !== 'b1');
+    fake.rankings.push({
+      user_id: 'user-1',
+      episode_id: 'b2',
+      rank_position: 1,
+      cold_start_bucket: null,
+      cold_start_sequence: null,
+      created_at: '2026-01-02T00:00:00.000Z',
+    });
+
+    const display = await getAllStarDisplay();
+    expect(display.eligible).toBe(true);
+    if (!display.eligible) return;
+
+    // The real, algorithm-correct state: b2 is genuinely pending (needs a real comparison), so
+    // `done`/`pendingCount` reflect exactly 1 still-pending show, unaffected by the display merge.
+    expect(display.done).toBe(false);
+    expect(display.pendingCount).toBe(1);
+    expect(display.staleShowIds).toEqual(['show-b']);
+
+    // The display-only merged list: b2 sits at b1's old position (rank 1, index 0) as a
+    // placeholder, with the other three shows' real, already-placed entries shifted down but
+    // otherwise untouched.
+    expect(display.ranked).toEqual([
+      { episodeId: 'b2', showId: 'show-b', rank: 1, score: scoreForPosition(1, 4), isPlaceholder: true },
+      { episodeId: 'c1', showId: 'show-c', rank: 2, score: scoreForPosition(2, 4), isPlaceholder: false },
+      { episodeId: 'd1', showId: 'show-d', rank: 3, score: scoreForPosition(3, 4), isPlaceholder: false },
+      { episodeId: 'a1', showId: 'show-a', rank: 4, score: scoreForPosition(4, 4), isPlaceholder: false },
+    ]);
+
+    // The placeholder is purely presentational: b2 still has no `all_star_rankings` row (it hasn't
+    // actually been placed yet) and still needs a real comparison to resolve.
+    expect(fake.allStarRankings.find((r) => r.episode_id === 'b2')).toBeUndefined();
+    const step = await getNextAllStarStep();
+    expect(step.type).toBe('compare');
+    if (step.type === 'compare') {
+      expect(step.subject).toBe('b2');
+    }
+  });
+
+  it('places every placeholder in oldRank order when 2+ shows go stale in the same reconciliation pass, regardless of the order the durable rows happen to be returned in', async () => {
+    // Six shows, `all_star_rankings` rows seeded directly (rather than via the full comparison
+    // loop) at old ranks 1..6: show-r2 (old rank 2) and show-r3 (old rank 3) will be stale --
+    // adjacent, non-extreme ranks, deliberately not at the head/tail of the list, since splicing at
+    // the extremes clamps to the same index regardless of processing order and wouldn't actually
+    // exercise the bug. The other four survive unchanged.
+    addFullyRankedShow('show-r1', ['r1']);
+    addFullyRankedShow('show-r2', ['r2new']); // live #1 has moved on to r2new
+    addFullyRankedShow('show-r3', ['r3new']); // live #1 has moved on to r3new
+    addFullyRankedShow('show-r4', ['r4']);
+    addFullyRankedShow('show-r5', ['r5']);
+    addFullyRankedShow('show-r6', ['r6']);
+
+    // Durable pool rows, still pointing at show-r2/show-r3's *old* episodes -- pushed in an order
+    // that does not match `rank_position` (r3's row before r1's, r2's row before r6's/r4's), the
+    // exact condition `loadAllStarPool`'s query has no `.order()` clause to prevent. If
+    // `buildDisplayRanked` simply spliced displacements in this (unsorted) encounter order instead
+    // of sorting by `oldRank` first, show-r3's placeholder would land before show-r2's and the
+    // whole tail would be shifted one slot wrong -- this is the exact counterexample the
+    // independent reviewer traced by hand.
+    const row = (showId: string, episodeId: string, rankPosition: number) => ({
+      user_id: 'user-1',
+      show_id: showId,
+      episode_id: episodeId,
+      rank_position: rankPosition,
+      created_at: '2026-01-01T00:00:00.000Z',
+    });
+    fake.allStarRankings.push(
+      row('show-r3', 'r3old', 3),
+      row('show-r1', 'r1', 1),
+      row('show-r5', 'r5', 5),
+      row('show-r2', 'r2old', 2),
+      row('show-r6', 'r6', 6),
+      row('show-r4', 'r4', 4)
+    );
+
+    const display = await getAllStarDisplay();
+    expect(display.eligible).toBe(true);
+    if (!display.eligible) return;
+
+    expect(display.done).toBe(false);
+    expect(display.pendingCount).toBe(2);
+    expect(new Set(display.staleShowIds)).toEqual(new Set(['show-r2', 'show-r3']));
+
+    // Correct order by oldRank regardless of the scrambled row order above: r1 (unchanged),
+    // show-r2's and show-r3's placeholders at their old ranks 2 and 3, then r4/r5/r6 (unchanged).
+    expect(display.ranked).toEqual([
+      { episodeId: 'r1', showId: 'show-r1', rank: 1, score: scoreForPosition(1, 6), isPlaceholder: false },
+      { episodeId: 'r2new', showId: 'show-r2', rank: 2, score: scoreForPosition(2, 6), isPlaceholder: true },
+      { episodeId: 'r3new', showId: 'show-r3', rank: 3, score: scoreForPosition(3, 6), isPlaceholder: true },
+      { episodeId: 'r4', showId: 'show-r4', rank: 4, score: scoreForPosition(4, 6), isPlaceholder: false },
+      { episodeId: 'r5', showId: 'show-r5', rank: 5, score: scoreForPosition(5, 6), isPlaceholder: false },
+      { episodeId: 'r6', showId: 'show-r6', rank: 6, score: scoreForPosition(6, 6), isPlaceholder: false },
+    ]);
+  });
+});
+
 describe('per-user isolation', () => {
   it('never lets one user\'s pool leak into another user\'s live-pool computation or display', async () => {
     seedFourEligibleShows(); // all seeded for user-1
 
     fake.currentUserId = 'user-2';
     // user-2 has no tracked shows at all.
-    await expect(getAllStarDisplay()).resolves.toEqual({ eligible: false });
+    await expect(getAllStarDisplay()).resolves.toEqual({ eligible: false, hasCompletedOnce: false });
 
     fake.currentUserId = 'user-1';
     const display = await getAllStarDisplay();
