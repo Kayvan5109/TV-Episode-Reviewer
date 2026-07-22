@@ -17,19 +17,20 @@ const privateRow: ProfileRow = {
 };
 
 describe('resolveProfileView', () => {
-  it('treats a null row (RLS returned nothing) as not found', () => {
+  it('treats a null row (profile_identity_by_username found nothing -- genuinely nonexistent username) as not found', () => {
     expect(resolveProfileView(null, 'viewer')).toEqual({ found: false });
   });
 
   it(
-    'renders identically for a genuinely nonexistent username and a private username that is not ' +
-      "the viewer's own -- both surface to this function as `null` (RLS returns no row for either " +
-      'case), so the same `{ found: false }` shape covers both, by construction, not by a case-by-case check',
+    "finds a private profile that isn't the viewer's own, with isOwnProfile: false -- revised " +
+      "2026-07-22: a private profile is now identifiable, no longer collapsed with a nonexistent " +
+      'one (see this file\'s header comment for the full history)',
     () => {
-      const nonexistent = resolveProfileView(null, 'viewer');
-      const privateNotMine = resolveProfileView(null, 'viewer');
-      expect(nonexistent).toEqual(privateNotMine);
-      expect(nonexistent).toEqual({ found: false });
+      expect(resolveProfileView(privateRow, 'viewer')).toEqual({
+        found: true,
+        profile: privateRow,
+        isOwnProfile: false,
+      });
     }
   );
 

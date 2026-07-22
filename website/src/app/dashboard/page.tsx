@@ -5,10 +5,12 @@ import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/serverSession';
 import { AppHeader } from '@/components/AppHeader';
 import { getAllStarDisplay } from '@/lib/all-star-session';
+import { lookupProfileIdentitiesByUserIds } from '@/lib/profiles/profileIdentity';
 import { getShowRankingDisplay, topEpisodeOf } from '@/lib/ranking-session';
 import { ensureShowSynced } from '@/lib/shows/refreshShow';
 
 import { logout } from './actions';
+import { IncomingFollowRequestActions } from './IncomingFollowRequestActions';
 import { TopEpisodesSection } from './TopEpisodesSection';
 
 export const metadata: Metadata = {
@@ -70,30 +72,39 @@ export default async function DashboardPage() {
 
   const myShows = (myShowsData ?? []) as unknown as MyShowRow[];
 
-  // "Following" section (Docs/AppSpec.md's Tier B Detailed Design — Social Layer, Phase 1 of the
-  // build): a plain list of who this user follows, usernames linking to their profiles -- the
-  // design doc explicitly leaves this widget's exact shape open ("not designing that widget in
-  // detail here since it's presentation, not architecture"), so this is deliberately just a list,
-  // nothing fancier. Two queries rather than one embedded join: `follows.followee_id` and
-  // `user_profiles.user_id` both reference `auth.users`, not each other directly, so there's no FK
-  // path between the two tables for Postgrest to auto-embed through -- same batched-lookup shape
-  // this page already uses for `topEpisodeIds`/`allStarEpisodeIds` above.
+  // "Following" section (Docs/AppSpec.md's Tier B Detailed Design — Social Layer): a plain list of
+  // who this user follows, usernames linking to their profiles -- the design doc explicitly leaves
+  // this widget's exact shape open ("not designing that widget in detail here since it's
+  // presentation, not architecture"), so this is deliberately just a list, nothing fancier. Two
+  // queries rather than one embedded join: `follows.followee_id` and `user_profiles.user_id` both
+  // reference `auth.users`, not each other directly, so there's no FK path between the two tables
+  // for Postgrest to auto-embed through -- same batched-lookup shape this page already uses for
+  // `topEpisodeIds`/`allStarEpisodeIds` above.
+  //
+  // **Revised 2026-07-22** (fixes the display bug from Docs/STATUS.md's "Kayvan's hands-on testing
+  // of Phase 1" History entry): previously resolved via a direct `user_profiles` query, which the
+  // widened-but-still-public-or-you SELECT policy silently dropped once a followee went private --
+  // the entry just vanished from this list, even though the underlying `follows` row (the actual
+  // relationship) was never deleted. Now goes through `lookupProfileIdentitiesByUserIds`
+  // (`@/lib/profiles/profileIdentity`), the SECURITY DEFINER safe-projection RPC that resolves ANY
+  // existing user_id -- so a followed-then-gone-private user still appears here, with whatever
+  // identity info is safe to show (username at minimum), instead of silently disappearing.
   const { data: followingData } = await supabase.from('follows').select('followee_id').eq('follower_id', user.id);
   const followeeIds = ((followingData ?? []) as { followee_id: string }[]).map((row) => row.followee_id);
+  const followingProfiles: FollowingProfile[] = await lookupProfileIdentitiesByUserIds(followeeIds);
 
-  let followingProfiles: FollowingProfile[] = [];
-  if (followeeIds.length > 0) {
-    // Scoped by `user_profiles`' own widened SELECT policy, not just this `.in()` filter: a
-    // followee who has since flipped back to private simply won't come back here (their row no
-    // longer matches the "public" policy, and it was never this viewer's own row) -- exactly the
-    // "a stale follows row confers no actual access once someone goes private" behavior the RLS
-    // migration's own comment describes, with zero extra code needed to get it.
-    const { data: followingProfilesData } = await supabase
-      .from('user_profiles')
-      .select('user_id, username, display_name')
-      .in('user_id', followeeIds);
-    followingProfiles = (followingProfilesData ?? []) as FollowingProfile[];
-  }
+  // "Follow requests" section -- incoming pending requests to follow this user's (private) profile,
+  // for this user to accept/deny (Docs/AppSpec.md's "Follow requests (private profiles only)"
+  // feature flow: "a plain list of requesters' usernames with Accept/Deny buttons is enough, no need
+  // for anything fancier" -- matches the Following list's own "keep it simple" precedent above).
+  // Same batched-lookup shape as Following: `follow_requests.requester_id` isn't an FK Postgrest can
+  // auto-embed `user_profiles` through, and the safe-projection RPC is what makes any requester's
+  // identity resolvable here regardless of their own rankings_visibility (a request can only ever
+  // come from someone requesting to follow a private profile, but the *requester's own* visibility
+  // is unrelated and could be either).
+  const { data: incomingRequestsData } = await supabase.from('follow_requests').select('requester_id').eq('target_id', user.id);
+  const requesterIds = ((incomingRequestsData ?? []) as { requester_id: string }[]).map((row) => row.requester_id);
+  const incomingRequestProfiles: FollowingProfile[] = await lookupProfileIdentitiesByUserIds(requesterIds);
 
   // Best-effort background refresh of every tracked show's episode list from TMDB (throttled to
   // once per SYNC_STALE_AFTER_MS per show — see `ensureShowSynced`). This page doesn't display any
@@ -308,6 +319,25 @@ export default async function DashboardPage() {
             </ul>
           )}
         </div>
+
+        {incomingRequestProfiles.length > 0 && (
+          <div className="flex w-full max-w-2xl flex-col gap-3">
+            <h2 className="text-lg font-semibold">Follow requests</h2>
+            <ul className="flex flex-col gap-2">
+              {incomingRequestProfiles.map((profile) => (
+                <li
+                  key={profile.user_id}
+                  className="flex items-center justify-between gap-3 rounded border border-black/10 p-3 dark:border-white/20"
+                >
+                  <Link href={`/u/${profile.username}`} className="text-sm underline underline-offset-2">
+                    {profile.display_name ?? profile.username} (@{profile.username})
+                  </Link>
+                  <IncomingFollowRequestActions requesterId={profile.user_id} />
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <TopEpisodesSection
           display={allStarDisplay}
