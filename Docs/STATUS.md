@@ -826,20 +826,10 @@ this queue** — reconfirmed 2026-07-17 that it stays bundled with the rest of t
 in Bucket 4, rather than being done piecemeal now.
 
 **Bucket 2 — Bugs/features needing hands-on verification or fixing:**
-1. **All Stars Mode / "Top Episodes," built and merged 2026-07-19 (`711b0ff`)** — Kayvan applied the
-   new migration (`20260720000000_all_star_rankings.sql`) to live Supabase — still not yet hands-on
-   checked. Needs 4+ tracked shows each with at least one comparatively-ranked episode (a live #1)
-   to actually see the "Top Episodes" section appear at all. Once that's true: confirm the "Rank Top
-   Episodes" button starts the comparison flow, the resulting full ranked list renders with each
-   entry's show name, and — if a chance arises to test it — that re-ranking one show's episodes
-   triggers the stale-show notice and targeted auto-update rather than silently going wrong.
-   **Also needs, on top of the above** (bug fixes on this same feature, built and merged 2026-07-19/
-   2026-07-22, see History): the "Rank Top Episodes"/"Update" button shows the correct label on first
-   visit (not "Update" before anything's been ranked); the ranked list stays visible with the new #1
-   spliced into the old one's place whenever a show goes stale, rather than the whole list vanishing;
-   and, if 2+ shows happen to go stale between visits, that the placeholders land in the correct order
-   (the exact case the 2026-07-22 follow-up fix addressed). Needs a second new migration applied first:
-   `supabase/migrations/20260721000000_all_star_progress.sql`.
+1. ~~**All Stars Mode / "Top Episodes," built and merged 2026-07-19 (`711b0ff`), plus the button-label/
+   disappearing-list/multi-stale-ordering bug fixes, built and merged 2026-07-19/2026-07-22**~~ —
+   **hands-on confirmed working 2026-07-22** (both migrations applied to live Supabase, including
+   `20260721000000_all_star_progress.sql`). Removed from Bucket 2.
 2. ~~**URL-length crash fix, built and merged 2026-07-19 (`0ccf337`), independent-reviewer-verified.**~~
    Kayvan applied the new migration (`20260719000000_delete_show_ranking_data.sql`) to live Supabase,
    then **hands-on confirmed 2026-07-19**: the show that was crashing now loads its rank flow
