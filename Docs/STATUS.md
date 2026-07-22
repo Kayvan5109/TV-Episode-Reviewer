@@ -648,6 +648,51 @@ now-moot Judgment Call #2. **Design-only, nothing built yet** — Bucket 1 item 
 buildable, classified correctness-critical (auth surface, new Admin API usage, real password-reset
 behavior change), so it'll need the full implementer + independent-reviewer pipeline once picked up.
 
+**Same session, continued — dispatched the build at Kayvan's request, 17% usage spent.** One
+implementer (`isolation: "worktree"`) built the full design: `supabase/migrations/
+20260722000000_user_profiles.sql` (plain `text` + `unique index on lower(username)`, not `citext` —
+this project has never enabled that extension, confirmed by checking existing migrations first, so a
+functional index gets the same guarantee with zero new dependency), a rewritten `signup/actions.ts`
+(username pre-check → `auth.admin.createUser` with `email_confirm: true` → `user_profiles` insert →
+roll back the orphaned auth account via `admin.deleteUser` if the insert loses a race → sign in via
+the normal session client → redirect), and `login`/`forgot-password` both updated to accept "username
+or email," resolving a username to its real `auth_email` via a service-role lookup. Landed clean
+(356/356 tests, clean typecheck/lint/build) on its own branch, `main` untouched.
+Independent reviewer (fresh context, no visibility into the implementer's own report) traced every
+piece by hand rather than trusting the self-report: the creation/rollback sequence, session
+establishment, RLS policy shape (compared directly against `all_star_rankings`/`user_shows`'s
+existing migrations), and PII handling all held up. **But found one real, previously-unflagged
+security bug**: `login/actions.ts` and `forgot-password/actions.ts` both escaped `_` before their
+`ILIKE` username lookup (a legal username character that's also an ILIKE single-character wildcard)
+but never escaped `%` (ILIKE's multi-character wildcard) — unlike `signup/actions.ts`'s own pre-check,
+which is safe only because `isValidUsername()` already rejects `%` upstream before that lookup ever
+runs. Concrete impact: someone who only knows a *fragment* of a username (e.g. "adm" and "n") could
+submit `adm%n` and have it match a real account via pattern, not exact value — on forgot-password this
+could trigger a real password-reset email to that account's real address, or reveal account existence,
+without ever knowing the literal username. Untested (neither test file covered a `%`-containing
+identifier). **Not a theoretical concern** — genuinely exploitable as designed, so this got fixed
+before merging rather than logged for later, matching this project's standard for correctness-critical
+auth work.
+Dispatched a follow-up fix (narrow, already fully diagnosed by the reviewer): both files now escape
+`%` alongside `_` via a new shared `escapeIlikePattern()` helper (`lib/auth/username.ts`, next to
+`isValidUsername`/`syntheticEmailForUsername`), plus a regression test in each file asserting the
+escaped pattern reaches `ilike()` literally and the downstream sensitive call
+(`signInWithPassword`/`resetPasswordForEmail`) never fires for a wildcard-containing identifier.
+PM independently verified the fix before merging rather than trusting either agent's report: read the
+exact diff (confirmed `value.replace(/[%_]/g, '\\$&')` correctly escapes both wildcards, and that
+`signup/actions.ts` — already safe — was correctly left untouched), read both new tests to confirm
+they actually assert the escaped literal pattern rather than padding the count, then independently
+reran the full check suite in a fresh separate worktree (358/358 tests, clean typecheck/lint/build).
+Also read the full migration directly (RLS policy, constraints, doc comments) rather than just the
+reviewer's summary. `main` hadn't moved since the design was written, so this was a clean fast-forward
+merge. Reran the full suite a second time on `main` post-merge (same clean result) before pushing
+(`9807722`). Branch and worktree deleted (local + remote) after merging.
+**Bucket 1 is now empty.** Still needs, before this is closed out entirely: the new migration applied
+to live Supabase, and Kayvan's hands-on check — new signup with just a username+password, log back in
+with that username, log in with an existing email-based account (confirms nothing broke for the
+current account), and a forgot-password attempt on a synthetic-email-only account (confirms the
+"no recovery" message shows correctly rather than a silent failure). See Bucket 2 for the tracked item.
+
 ## Punch List (ranked — read this section first for "what's actually next")
 
 Every open item gets triaged into exactly one bucket the moment it surfaces, per
@@ -655,73 +700,9 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence:**
-1. **Change signup to username+password, email optional/deferred — logged 2026-07-20, Kayvan's
-   explicit high-priority request. Design pass completed 2026-07-22, now buildable.** Currently:
-   `website/src/app/signup/actions.ts` calls `supabase.auth.signUp({ email, password })` directly —
-   Supabase Auth's native sign-up API requires an email (or phone) address, and this project's live
-   Supabase settings have "Confirm email" on, so every new account needs to click a confirmation link
-   before it can log in (`SignupForm.tsx`'s "Check your email to confirm your account" state).
-   **Design, resolved 2026-07-22** (each open question from the original write-up walked through
-   directly with Kayvan rather than guessed at, since this touches auth/account security — an area
-   this project has already flagged for extra care, `Docs/Risks.md`'s note on trusting Supabase with
-   auth in the first place):
-   - **Technical approach, verified current before building on it** (Supabase's product surface
-     changes, so this wasn't assumed from training data): confirmed via a live web search that
-     Supabase Auth is still fundamentally email/phone-based in 2026, no native username-only signup
-     exists. The standard workaround — a synthetic/shadow email generated from the username — is still
-     the right approach, but with one real wrinkle the original write-up hadn't caught: this project's
-     "Confirm email" setting means a client-side `signUp()` call to a synthetic, unreachable address
-     would leave every new account permanently stuck unconfirmed. Fix: create the user server-side via
-     the **Admin API** (`auth.admin.createUser({ email: syntheticEmail, password, email_confirm: true,
-     ... })`), which marks the account confirmed immediately regardless of the project-wide setting —
-     this bypasses "Confirm email" only for these synthetic accounts, real-email flows elsewhere are
-     unaffected. No new infrastructure needed: `website/src/lib/supabase/server.ts`'s
-     `createSupabaseServiceClient()` (the service-role client already used for TMDB writes) is exactly
-     what an admin-createUser call needs. `admin.createUser` doesn't itself establish a session (it's
-     a service-role operation, not a user-facing sign-in), so the signup action still needs to follow
-     up with a normal `signInWithPassword({ email: syntheticEmail, password })` via the regular
-     session-aware client to actually log the new user in, same as today's flow ends with a redirect
-     to `/dashboard`.
-   - **Unify with Tier B's `user_profiles.username`** (Kayvan's choice, over keeping two separate
-     username concepts that would later need merging) — `user_profiles` is now created **at signup**,
-     not opt-in later. `AppSpec.md`'s Tier B Detailed Design updated accordingly (2026-07-22): the
-     table gains `auth_email` (a denormalized copy of `auth.users.email`, needed so username-based
-     login can resolve to the real auth email `signInWithPassword` requires, without an admin-API call
-     on every login — must be kept in sync any time a real email is later added/changed, most notably
-     by Tier B's own future "add an email" flow) and `has_real_email` (boolean, drives the "no
-     recovery possible" branch below). `rankings_visibility` still defaults to `'private'` regardless
-     — unifying the identity concept doesn't change the default-private posture.
-   - **Login form accepts "username or email"** as one field for every account, not just
-     synthetic-email ones — resolves via `@` presence: an email goes straight to
-     `signInWithPassword`, a username looks up `user_profiles.auth_email` first. Consistent behavior
-     for every account rather than a special case only for username-only signups.
-   - **Password reset without an email on file** (Kayvan's choice): **no recovery path at all** until
-     an email is added — clearly warned about at signup and on the account page, not silently
-     discovered later. `forgot-password`'s flow needs to accept a username too (not just email),
-     resolve it, and check `has_real_email` before attempting `resetPasswordForEmail` — a
-     no-real-email account gets a clear "no recovery available, add an email from your account page
-     first" message instead of a silent no-op or a misleading generic "check your inbox."
-   - Username uniqueness/validation: unique (citext or lowercased), 3-20 characters, letters/digits/
-     underscores only — server-side authoritative, client-side mirrored for immediate feedback.
-   - **Kayvan's own existing account(s)** (Kayvan's choice): **coexist, no forced migration** — old
-     accounts keep working by email exactly as today, `username` stays nullable for them, settable
-     later via settings whenever convenient. No backfill needed.
-   - **Scope** (Kayvan's choice): **signup replacement only** in this build. The account-page "add an
-     email later" flow is explicitly *not* bundled here — it's deferred to live under Tier B (the
-     account/settings surface Tier B builds is the natural home for it, especially now that
-     `user_profiles` is shared infrastructure between the two), not picked up as a near-term follow-up
-     on its own.
-   - Side benefit, still true: username-only signup needs zero email sent at signup time at all, which
-     sidesteps Bucket 4 item 3's default-provider 2-emails/hour cap for the *signup* path specifically
-     (password-reset emails still need it — doesn't make that backlog item moot, just lowers its
-     urgency for the signup flow).
-   **Classified correctness-critical** (auth surface, a new Admin API usage, a real change to
-   password-reset behavior) — needs the full implementer + independent-reviewer pipeline once built,
-   matching this project's standard for auth/data-layer work, not just PM self-review. **Now
-   genuinely buildable — the only Bucket 1 item.** Item 2 (Top Episodes bug fixes) is fully built and
-   merged as of 2026-07-22, moved to Bucket 2 for the migration + hands-on check (see below); the
-   other former Bucket 1 entries were already-resolved historical duplicates of Bucket 2 items,
-   removed in the same 2026-07-22 cleanup pass.
+(empty — username+password signup, the last item, is fully built, independently reviewed, and merged
+as of 2026-07-22, `9807722`. See History for the full design/build/review account. Now in Bucket 2 for
+the migration + hands-on check.)
 
 **"Tier A" — a small batch pulled from an external design review, decided 2026-07-17, now the
 front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
@@ -948,6 +929,15 @@ in Bucket 4, rather than being done piecemeal now.
    Removed from Bucket 2.
 13. ~~**Stale-resubmission notice, made visually prominent — built and merged 2026-07-19
    (`db11e0d`)**~~ — **hands-on confirmed 2026-07-19.** Removed from Bucket 2.
+14. **Username+password signup, built, independently reviewed (one real security bug found and fixed
+   pre-merge), and merged 2026-07-22 (`9807722`)** — not yet applied to live Supabase or hands-on
+   checked. Needs: apply the new migration (`supabase/migrations/20260722000000_user_profiles.sql`)
+   to live Supabase, then confirm hands-on — (a) sign up with just a username + password and land on
+   the dashboard immediately (no email-confirmation step); (b) log back out and back in using that
+   same username; (c) log in with Kayvan's existing email-based account to confirm nothing broke for
+   it; (d) trigger "forgot password" on the new username-only account and confirm the "no recovery
+   available, add an email first" message shows correctly rather than a silent failure or a misleading
+   "check your inbox."
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
 (empty for now — every question posed 2026-07-17 is resolved: remove-show/re-ranking's scope, the
