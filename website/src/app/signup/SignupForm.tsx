@@ -10,31 +10,26 @@ const initialState: SignupFormState = undefined;
 export function SignupForm() {
   const [state, formAction, pending] = useActionState(signup, initialState);
 
-  if (state?.status === 'confirmEmail') {
-    return (
-      <div className="flex w-full max-w-sm flex-col gap-3 text-center">
-        <p>Check your email to confirm your account, then log in.</p>
-        <Link href="/login" className="underline">
-          Go to login
-        </Link>
-      </div>
-    );
-  }
-
   return (
     <form action={formAction} className="flex w-full max-w-sm flex-col gap-4">
       <div className="flex flex-col gap-1">
-        <label htmlFor="email" className="text-sm font-medium">
-          Email
+        <label htmlFor="username" className="text-sm font-medium">
+          Username
         </label>
         <input
-          id="email"
-          name="email"
-          type="email"
+          id="username"
+          name="username"
+          type="text"
           required
-          autoComplete="email"
+          minLength={3}
+          maxLength={20}
+          pattern="[a-zA-Z0-9_]{3,20}"
+          autoComplete="username"
           className="rounded border border-black/20 px-3 py-2 dark:border-white/30"
         />
+        <p className="text-xs text-black/60 dark:text-white/60">
+          3-20 characters: letters, numbers, and underscores only.
+        </p>
       </div>
 
       <div className="flex flex-col gap-1">

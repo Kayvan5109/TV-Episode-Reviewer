@@ -8,11 +8,23 @@ vi.mock('@/lib/supabase/serverSession', () => ({
   })),
 }));
 
+// The service-role client used to resolve a username to its auth_email/has_real_email before
+// authentication -- see actions.ts's doc comment for why this can't go through the session-aware
+// client.
+const maybeSingle = vi.fn();
+const ilike = vi.fn(() => ({ maybeSingle }));
+const select = vi.fn(() => ({ ilike }));
+const from = vi.fn(() => ({ select }));
+
+vi.mock('@/lib/supabase/server', () => ({
+  createSupabaseServiceClient: vi.fn(() => ({ from })),
+}));
+
 import { forgotPassword } from './actions';
 
-function formDataFor(email?: string) {
+function formDataFor(identifier?: string) {
   const formData = new FormData();
-  if (email !== undefined) formData.set('email', email);
+  if (identifier !== undefined) formData.set('identifier', identifier);
   return formData;
 }
 
@@ -28,15 +40,15 @@ describe('forgotPassword server action', () => {
     process.env.NEXT_PUBLIC_SITE_URL = originalSiteUrl;
   });
 
-  it('rejects a missing email without calling Supabase', async () => {
+  it('rejects a missing identifier without calling Supabase', async () => {
     const result = await forgotPassword(undefined, formDataFor(undefined));
-    expect(result).toEqual({ status: 'error', error: 'Enter an email address.' });
+    expect(result).toEqual({ status: 'error', error: 'Enter your username or email address.' });
     expect(resetPasswordForEmail).not.toHaveBeenCalled();
   });
 
-  it('treats a whitespace-only email as missing', async () => {
+  it('treats a whitespace-only identifier as missing', async () => {
     const result = await forgotPassword(undefined, formDataFor('   '));
-    expect(result).toEqual({ status: 'error', error: 'Enter an email address.' });
+    expect(result).toEqual({ status: 'error', error: 'Enter your username or email address.' });
     expect(resetPasswordForEmail).not.toHaveBeenCalled();
   });
 
@@ -52,15 +64,16 @@ describe('forgotPassword server action', () => {
     expect(resetPasswordForEmail).not.toHaveBeenCalled();
   });
 
-  it('calls resetPasswordForEmail with the trimmed email and the site URL as redirectTo', async () => {
+  it('calls resetPasswordForEmail with the trimmed email and the site URL as redirectTo, given an email directly', async () => {
     resetPasswordForEmail.mockResolvedValue({ error: null });
 
     await forgotPassword(undefined, formDataFor('  a@b.com  '));
 
+    expect(from).not.toHaveBeenCalled();
     expect(resetPasswordForEmail).toHaveBeenCalledWith('a@b.com', { redirectTo: 'https://example.com' });
   });
 
-  it('returns a generic "sent" state on success, revealing nothing about whether the account exists', async () => {
+  it('returns a generic "sent" state on success given an email directly, revealing nothing about whether the account exists', async () => {
     resetPasswordForEmail.mockResolvedValue({ error: null });
 
     const result = await forgotPassword(undefined, formDataFor('a@b.com'));
@@ -74,5 +87,41 @@ describe('forgotPassword server action', () => {
     const result = await forgotPassword(undefined, formDataFor('a@b.com'));
 
     expect(result).toEqual({ status: 'error', error: 'Email rate limit exceeded' });
+  });
+
+  it('resolves a username with has_real_email true to its auth_email and sends a reset link, "sent" state', async () => {
+    maybeSingle.mockResolvedValue({
+      data: { auth_email: 'gooduser@users.episode-ranker.internal', has_real_email: true },
+      error: null,
+    });
+    resetPasswordForEmail.mockResolvedValue({ error: null });
+
+    const result = await forgotPassword(undefined, formDataFor('gooduser'));
+
+    expect(resetPasswordForEmail).toHaveBeenCalledWith('gooduser@users.episode-ranker.internal', {
+      redirectTo: 'https://example.com',
+    });
+    expect(result).toEqual({ status: 'sent' });
+  });
+
+  it('returns a "noRecovery" state for a username-backed account with has_real_email false, without calling resetPasswordForEmail', async () => {
+    maybeSingle.mockResolvedValue({
+      data: { auth_email: 'gooduser@users.episode-ranker.internal', has_real_email: false },
+      error: null,
+    });
+
+    const result = await forgotPassword(undefined, formDataFor('gooduser'));
+
+    expect(result).toEqual({ status: 'noRecovery' });
+    expect(resetPasswordForEmail).not.toHaveBeenCalled();
+  });
+
+  it('returns a distinct error for an unrecognized username, revealing (deliberately) that it does not exist', async () => {
+    maybeSingle.mockResolvedValue({ data: null, error: null });
+
+    const result = await forgotPassword(undefined, formDataFor('nosuchuser'));
+
+    expect(result).toEqual({ status: 'error', error: 'No account found with that username.' });
+    expect(resetPasswordForEmail).not.toHaveBeenCalled();
   });
 });

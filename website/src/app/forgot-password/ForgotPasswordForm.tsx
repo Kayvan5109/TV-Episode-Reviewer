@@ -21,18 +21,33 @@ export function ForgotPasswordForm() {
     );
   }
 
+  if (state?.status === 'noRecovery') {
+    return (
+      <div className="flex w-full max-w-sm flex-col gap-3 text-center">
+        <p>
+          This account doesn&apos;t have an email on file, so we can&apos;t send a recovery link. Add an
+          email from your account page once you&apos;re signed in, then you&apos;ll be able to reset your
+          password this way.
+        </p>
+        <Link href="/login" className="underline">
+          Back to login
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <form action={formAction} className="flex w-full max-w-sm flex-col gap-4">
       <div className="flex flex-col gap-1">
-        <label htmlFor="email" className="text-sm font-medium">
-          Email
+        <label htmlFor="identifier" className="text-sm font-medium">
+          Username or email
         </label>
         <input
-          id="email"
-          name="email"
-          type="email"
+          id="identifier"
+          name="identifier"
+          type="text"
           required
-          autoComplete="email"
+          autoComplete="username"
           className="rounded border border-black/20 px-3 py-2 dark:border-white/30"
         />
       </div>
