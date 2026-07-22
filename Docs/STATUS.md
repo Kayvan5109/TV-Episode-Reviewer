@@ -758,6 +758,43 @@ a hands-on check — see Bucket 2. Remaining phases (community rank + Discover, 
 collections — comments is not one of them, see the correction above) remain queued in that recommended
 order, not yet started.
 
+**Same session, continued — Kayvan's hands-on testing of Phase 1 found two real issues.**
+1. **`/settings` errored "Couldn't find your profile"** for Kayvan's original account (created via the
+   old email-based signup flow, before `user_profiles` existed at all) — every account created through
+   the *new* signup flow gets a row automatically, but nothing ever built the "claim a username later"
+   path the original signup design explicitly promised legacy accounts. Root-caused directly (not
+   guessed): `settings/page.tsx` had no handling for a missing row at all. Fixed via one implementer
+   dispatch: a new `claimUsername` action + form, plus `user_profiles`' first-ever INSERT policy (own
+   row only — the other half of a sentence already written in `AppSpec.md`'s Tier B RLS design that
+   Phase 1 only built the UPDATE half of). The one detail that had to be gotten right: a legacy account
+   already has a real email, so the new row must be created with `has_real_email: true` and the actual
+   `auth_email`, not the synthetic-signup defaults. Independent reviewer traced all of this plus the
+   race-condition handling and confirmed it correct; PM independently re-verified (read the migration
+   directly) and reran the full suite (395/395, clean) before merging (`7a2fdf6`). Now in Bucket 2 for
+   the migration + hands-on check.
+2. **Hands-on testing also surfaced a real design gap, not a bug**: following worked for public
+   profiles, but Kayvan found no way to follow a private one (expected — no button shown), a private
+   profile 404'd identically to a nonexistent one (deliberate, by Phase 1's original anti-enumeration
+   design), and — the one genuine bug in this batch — an already-followed user going private silently
+   dropped out of the follower's "Following" list, even though the underlying relationship was never
+   supposed to be deleted. Kayvan asked for a real design change: private profiles should show identity
+   (username + follower/following counts) rather than 404, gated behind a request-to-follow/accept flow
+   instead of instant following. This reverses two explicit prior decisions (`AppSpec.md`'s foundational
+   question #2 and Judgment Call #1, both about *why* following was one-directional/no-approval and
+   *why* no followers-only tier existed) — flagged directly to Kayvan rather than silently building a
+   reversal, since the original reasoning had been reviewed and shipped just this session. Walked
+   through the open questions live: confirmed approval applies to private profiles only (public stays
+   instant, unchanged); confirmed accepted followers don't gain any new data visibility in this build
+   (deferred — no "view another user's rankings" page exists anywhere in the app yet, for anyone, so
+   there's nothing concrete to extend); confirmed the "stay following" issue is exactly the display bug
+   diagnosed above, not something needing new design. Wrote the full resolution into `AppSpec.md`
+   (foundational question #1's revision, Judgment Call #1's supersession, and a new "Follow requests"
+   feature-flow entry) with dated correction notes rather than silently overwriting the shipped-this-
+   session original reasoning. Also caught and fixed two more small pieces of the same doc drift found
+   while in that section: Judgment Call #4 (about comments) was stale for the same reason the "Scope for
+   v1" list was — comments were declined 2026-07-18, this call was never marked moot.
+**Design resolved, not yet built** — see the next entry for the build itself.
+
 ## Punch List (ranked — read this section first for "what's actually next")
 
 Every open item gets triaged into exactly one bucket the moment it surfaces, per
@@ -1220,6 +1257,12 @@ see Bucket 4.)
     or a lint/code-review convention forbidding `select('*')` on this table. Not urgent (no live bug),
     but worth doing before more Tier B phases add more cross-user `user_profiles` reads that could each
     independently make the same mistake.
+23. **Accepted followers of a private profile should eventually see more** (e.g. that user's actual
+    show rankings) — logged 2026-07-22, Kayvan's stated end goal for the follow-requests feature. Not
+    designed or built: there's no "view another user's rankings" page anywhere in this app yet, for
+    public or private profiles alike, so there's nothing concrete to extend yet. Revisit once (or if) a
+    per-user rankings view gets designed — see `AppSpec.md`'s "Follow requests" feature flow for the
+    full context this was deferred from.
 
 **Bucket 5 — Rework flagged for a later phase, not being worked now:**
 (empty for now)

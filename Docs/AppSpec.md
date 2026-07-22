@@ -226,9 +226,23 @@ building it is still a real decision to make consciously when the time comes —
 
 Four foundational questions were resolved with Kayvan before writing this (2026-07-17), and
 everything below is designed around these answers:
-1. **Rankings are private by default; a user opts in to make them public.** No third
-   "followers-only" tier — see the Judgment Calls section below for why.
-2. **Following is one-directional, no approval required** (like Letterboxd, not Facebook).
+1. ~~**Rankings are private by default; a user opts in to make them public.** No third
+   "followers-only" tier~~ — **revised 2026-07-22, after Phase 1 shipped and Kayvan tried it
+   hands-on.** The original reasoning (Judgment Calls #1 below) for no followers-only tier was that,
+   *without* approval-required following, such a tier would be fake — anyone could self-grant access
+   just by clicking follow. Kayvan's hands-on feedback resolved that exact objection by adding
+   approval: **private profiles are now visible enough to be discoverable (username + follower/
+   following counts, still no rankings data) and followable only via a request the target must
+   accept** — see "Follow requests" in Feature flows below for the full build. Public profiles are
+   unaffected: following one is still instant, no approval, exactly as originally designed (Kayvan
+   confirmed approval should apply to private profiles only, not universally). Rankings themselves
+   still are not shown to an accepted follower of a private account in this build — Kayvan flagged
+   that eventually followers should see more (e.g. a followed private user's actual rankings), but
+   there's no "view someone's rankings" page anywhere in this app yet for either public or private
+   users, so that's logged as real, deliberately deferred future scope (`STATUS.md` Bucket 4) rather
+   than guessed at here.
+2. ~~**Following is one-directional, no approval required**~~ (like Letterboxd, not Facebook) — **still
+   true for public profiles**; superseded for private profiles by the revision to #1 above.
 3. **Community-rank aggregates only ever include users whose rankings are public** — a user who
    stays private never contributes to any aggregate, anonymized or not. One consistent rule.
 4. **Shared collections are genuinely public** — viewable by anyone with the link, no account
@@ -371,6 +385,49 @@ profile is private, or if it's your own). Following is instant, no request/accep
 follower's dashboard could reasonably show a "people I follow" section — not designing that widget
 in detail here since it's presentation, not architecture.
 
+**Follow requests (private profiles only) — added 2026-07-22**, after Phase 1 shipped and Kayvan
+tried it hands-on. Two real gaps found: (1) `/u/[username]` originally 404'd identically for a
+private profile and a genuinely nonexistent one (a deliberate anti-enumeration choice at the time),
+which Kayvan found too opaque in practice — wanted to at least see *who* a private account belongs to
+before deciding whether to follow; (2) following was purely instant/no-approval for every profile,
+public or private, which for a private account meant visibility was really controlled by nothing more
+than whether someone clicked Follow — see Judgment Calls #1's supersession above for the full
+reasoning chain.
+- **Private profiles are now visible enough to identify**: username, display name, and follower/
+  following counts render exactly like a public profile's — only the actual rankings/comparison data
+  stays hidden (there's no page that shows another user's rankings yet regardless of visibility, so
+  this doesn't change what's technically exposed today, just what's *visible as existing*). A
+  genuinely nonexistent username still 404s — that distinction is now real and intentional, not
+  collapsed the way Phase 1 originally built it.
+- **Public profiles are unaffected**: following is still instant, no approval, exactly as originally
+  designed — Kayvan explicitly confirmed the approval requirement is for private profiles only.
+- **New `follow_requests` table** (kept separate from `follows`, not a status column on it — mirrors
+  this project's existing precedent of keeping structurally-different states in separate tables rather
+  than overloading one with a status enum, e.g. `all_star_rankings` vs. `episode_rankings`): requester
+  + target + timestamp, composite PK, `check (requester_id <> target_id)`. Insert only as yourself, and
+  only when the target is currently private (the exact mirror-image condition of `follows`' own insert
+  check, which requires the target be public) — keeps the two paths mutually exclusive: a public
+  target gets an instant `follows` row, a private target gets a `follow_requests` row pending approval.
+  Both parties can read a pending request; either party can delete it (requester cancels, target
+  denies) — denying has no side effect beyond removing the row, no "blocked" concept (matches this
+  design's existing "no defensive tooling yet" posture elsewhere). **Accepting** is the one operation
+  that must be atomic across both tables (delete the request, insert into `follows`) — a
+  `security invoker` Postgres function scoped to the target's own pending requests only, not a
+  client-side two-step that could leave inconsistent state if the second call failed.
+- **An already-accepted follow relationship survives the target going private** — this was always the
+  intended design (`follows` rows are never auto-deleted on a visibility flip, see the RLS section
+  above), but Phase 1 had a real display bug: the dashboard's "Following" list resolved each entry's
+  profile via a query that the widened `user_profiles` SELECT policy silently blocks once the target
+  goes private, so the entry just vanished from the list — indistinguishable from having unfollowed.
+  Fixed as a display-only change: an entry whose profile can't be resolved (private, not followed
+  by you in the sense of being visible) still renders, just without the details RLS now hides.
+- **Deliberately deferred, not part of this build**: Kayvan's stated end goal is that an accepted
+  follower should eventually see *more* of a private user's data (e.g. their actual rankings) — but
+  no "view another user's rankings" page exists anywhere in this app yet, for public or private
+  profiles alike, so there's nothing concrete to extend yet. Logged as a real future item
+  (`STATUS.md` Bucket 4) rather than guessed at here; revisit once (or if) a per-user rankings view
+  gets designed.
+
 **Community rank.** *Written 2026-07-17, before the episode detail page existed — corrected
 2026-07-19: `/shows/[showId]/episodes/[episodeId]` was built 2026-07-18 as Tier A item 8 (title,
 air date, synopsis, still image, season-finale flag, personal win/loss record, director/writer/cast,
@@ -463,12 +520,16 @@ before, after, or independently of the broader Tier B go/no-go decision.
 
 Real decisions made while designing this that weren't put in front of Kayvan individually — surface
 these before building, don't treat them as silently settled:
-1. **Binary private/public visibility, no "followers-only" tier.** Reasoned out during design: since
-   following requires no approval, a "followers-only" tier would mean anyone could grant themselves
-   access just by following — it wouldn't actually gate anything, so it would be a fake privacy
-   control. A real followers-only tier would need to change the follow model to require approval
-   (declined earlier this session in favor of the simpler one-directional model). Binary is the only
-   version of "followers-only" that's actually coherent given the follow model already chosen.
+1. ~~**Binary private/public visibility, no "followers-only" tier.**~~ — **superseded 2026-07-22**,
+   after Phase 1 shipped and Kayvan tried it hands-on. The original reasoning (below, kept as
+   historical record) was correct as far as it went, and directly predicted its own resolution: "A
+   real followers-only tier would need to change the follow model to require approval" — which is
+   exactly what got built (see foundational question #1's revision above, and "Follow requests" in
+   Feature flows). Original reasoning: "since following requires no approval, a 'followers-only' tier
+   would mean anyone could grant themselves access just by following — it wouldn't actually gate
+   anything, so it would be a fake privacy control... Binary is the only version of 'followers-only'
+   that's actually coherent given the follow model already chosen." True until the follow model
+   itself changed for private profiles.
 2. ~~**Username required before any social feature is usable at all**~~ — **moot as of 2026-07-22**:
    every account now gets a username at signup (see the updated `user_profiles` note above), so this
    is no longer a separate onboarding step gating social features specifically.
@@ -476,9 +537,9 @@ these before building, don't treat them as silently settled:
    standard choice, but genuinely just one of several reasonable formulas — confirm it "feels right"
    once there's real two-user data to try it against, same spirit as the score-from-position
    formula's own "expect to tune" framing.
-4. **Comments are visible to any signed-in user regardless of the commenter's own
-   `rankings_visibility`** — treated as a deliberate public act distinct from ranking data. Worth
-   confirming this reads as intuitive rather than inconsistent once it's actually in front of users.
+4. ~~**Comments are visible to any signed-in user regardless of the commenter's own
+   `rankings_visibility`**~~ — **moot, comments declined outright 2026-07-18** (see the "Scope for v1"
+   correction above). Kept here as a historical record only.
 5. **No moderation beyond delete-your-own-comment.** Reasonable for a small, personal/friends-scale
    app; would need real reconsideration before ever opening this to strangers at any real scale.
 
