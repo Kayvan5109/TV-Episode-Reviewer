@@ -622,6 +622,32 @@ Kayvan to apply the new migration (`supabase/migrations/20260721000000_all_star_
 live Supabase, then a hands-on re-check of both original bugs (button label, disappearing list) plus
 the specific multi-stale-shows case this session's fix addressed — see Bucket 2 for the tracked item.
 
+**Same session, continued.** Kayvan applied the migration and hands-on confirmed everything working
+(both original Top Episodes bugs plus the ordering fix) — removed from Bucket 2. With the queue
+otherwise empty (Bucket 1 down to the not-yet-buildable signup item, Bucket 3 empty), presented
+options rather than picking unilaterally: the signup redesign's design pass, the visual-design 88-
+question doc, or Tier B. Kayvan chose the signup design pass.
+Verified the technical premise before bringing decisions to Kayvan rather than assuming it still held
+(Supabase's product surface changes, and this was explicitly flagged as unconfirmed): a live web
+search confirmed the synthetic-email workaround is still the right approach in 2026, but surfaced a
+real wrinkle the original write-up missed — this project's "Confirm email" setting means a
+client-side `signUp()` to an unreachable synthetic address would strand every new account
+unconfirmed, so account creation needs to go through the Admin API (`auth.admin.createUser` with
+`email_confirm: true`) instead, using the service-role client this app already has
+(`createSupabaseServiceClient()`, currently only used for TMDB writes). Then walked through each of
+the four remaining open decisions directly with Kayvan (not guessed at): unify signup's username with
+Tier B's `user_profiles.username` rather than keep two concepts (chosen: unify); what happens with no
+recovery email on file (chosen: no recovery until one's added, clearly warned about); what happens to
+Kayvan's own existing email-first account (chosen: coexist, no forced migration); and whether to bundle
+the account-page "add an email later" flow into this build (chosen: no — deferred specifically to live
+under Tier B, once its own account/settings surface exists). Wrote the finalized design into this
+file's Bucket 1 item 1 (replacing the open-questions framing) and into `AppSpec.md`'s Tier B
+`user_profiles` section (now created at signup rather than opt-in, with two new fields — `auth_email`
+and `has_real_email` — needed to make username-based login and the no-recovery decision work) plus its
+now-moot Judgment Call #2. **Design-only, nothing built yet** — Bucket 1 item 1 is now genuinely
+buildable, classified correctness-critical (auth surface, new Admin API usage, real password-reset
+behavior change), so it'll need the full implementer + independent-reviewer pipeline once picked up.
+
 ## Punch List (ranked — read this section first for "what's actually next")
 
 Every open item gets triaged into exactly one bucket the moment it surfaces, per
@@ -630,47 +656,72 @@ unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence:**
 1. **Change signup to username+password, email optional/deferred — logged 2026-07-20, Kayvan's
-   explicit high-priority request, design-only so far, not built.** Currently:
+   explicit high-priority request. Design pass completed 2026-07-22, now buildable.** Currently:
    `website/src/app/signup/actions.ts` calls `supabase.auth.signUp({ email, password })` directly —
    Supabase Auth's native sign-up API requires an email (or phone) address, and this project's live
    Supabase settings have "Confirm email" on, so every new account needs to click a confirmation link
    before it can log in (`SignupForm.tsx`'s "Check your email to confirm your account" state).
-   **Wanted instead**: sign up with just a username + password; add an email later, optionally, from
-   the account page.
-   **Why this isn't a simple form-field swap** — flagging the real open questions rather than
-   guessing at answers, since this touches auth/account security, an area this project has already
-   flagged for extra care (`Docs/Risks.md`'s note on trusting Supabase with auth in the first place):
-   - Supabase Auth's `signUp`/`auth.users` model is fundamentally email-or-phone-based — there's no
-     native "username only" identity. The standard workaround (used by many Supabase apps) is a
-     synthetic/shadow email generated from the username under the hood (e.g.
-     `{username}@users.internal`), with the real Supabase Auth machinery (sessions, password hashing,
-     RLS's `auth.uid()`) working exactly as it does today, unaffected — username becomes a
-     presentation-layer concept, not a new auth backend. Worth confirming this is actually still the
-     right/current approach (Supabase's own product surface changes) before building, not assumed.
-   - **Direct overlap with Tier B's already-designed `user_profiles.username`** (`AppSpec.md`'s Tier B
-     Detailed Design) — that design has usernames as an *opt-in, added-after-signup* concept for
-     public profiles specifically, created "the first time they set a username (not at signup)." This
-     request effectively promotes username to a core Phase 1 identity, required *at* signup. Needs
-     reconciling into one design, not two separate username concepts that later have to be merged.
-   - **Password reset without an email on file** — today's `forgot-password`/`reset-password` flow is
-     entirely email-based. What happens for a user who never added one? (No recovery path at all until
-     they add an email? Some other mechanism? This needs a real, deliberate answer, not a gap.)
-   - Username uniqueness/validation rules (case sensitivity, allowed characters, length) — Tier B's
-     write-up already sketches "unique, citext or lowercased" for its own username field; reuse that
-     reasoning rather than re-deriving it.
-   - What happens to Kayvan's own existing account(s), signed up the current email-first way — does
-     this need a one-time migration/backfill, or do old and new accounts just coexist with different
-     signup shapes?
-   - Side benefit worth noting: username-only signup needs zero email sent at signup time at all,
-     which sidesteps Bucket 4 item 3's default-provider 2-emails/hour cap for the *signup* path
-     specifically (password-reset emails, and any later "add an email" confirmation, would still need
-     it — this doesn't make that backlog item moot, just lowers its urgency for the signup flow).
-   Needs a real design pass (the questions above resolved with Kayvan) before this is buildable, not
-   just a build slot — flagged here as high priority per Kayvan's explicit framing. **Now the only
-   Bucket 1 item** — item 2 (Top Episodes bug fixes) is fully built and merged as of 2026-07-22, moved
-   to Bucket 2 for the migration + hands-on check (see below); the other former Bucket 1 entries were
-   already-resolved historical duplicates of Bucket 2 items, removed here in a cleanup pass rather than
-   left cluttering the "blocking" bucket.
+   **Design, resolved 2026-07-22** (each open question from the original write-up walked through
+   directly with Kayvan rather than guessed at, since this touches auth/account security — an area
+   this project has already flagged for extra care, `Docs/Risks.md`'s note on trusting Supabase with
+   auth in the first place):
+   - **Technical approach, verified current before building on it** (Supabase's product surface
+     changes, so this wasn't assumed from training data): confirmed via a live web search that
+     Supabase Auth is still fundamentally email/phone-based in 2026, no native username-only signup
+     exists. The standard workaround — a synthetic/shadow email generated from the username — is still
+     the right approach, but with one real wrinkle the original write-up hadn't caught: this project's
+     "Confirm email" setting means a client-side `signUp()` call to a synthetic, unreachable address
+     would leave every new account permanently stuck unconfirmed. Fix: create the user server-side via
+     the **Admin API** (`auth.admin.createUser({ email: syntheticEmail, password, email_confirm: true,
+     ... })`), which marks the account confirmed immediately regardless of the project-wide setting —
+     this bypasses "Confirm email" only for these synthetic accounts, real-email flows elsewhere are
+     unaffected. No new infrastructure needed: `website/src/lib/supabase/server.ts`'s
+     `createSupabaseServiceClient()` (the service-role client already used for TMDB writes) is exactly
+     what an admin-createUser call needs. `admin.createUser` doesn't itself establish a session (it's
+     a service-role operation, not a user-facing sign-in), so the signup action still needs to follow
+     up with a normal `signInWithPassword({ email: syntheticEmail, password })` via the regular
+     session-aware client to actually log the new user in, same as today's flow ends with a redirect
+     to `/dashboard`.
+   - **Unify with Tier B's `user_profiles.username`** (Kayvan's choice, over keeping two separate
+     username concepts that would later need merging) — `user_profiles` is now created **at signup**,
+     not opt-in later. `AppSpec.md`'s Tier B Detailed Design updated accordingly (2026-07-22): the
+     table gains `auth_email` (a denormalized copy of `auth.users.email`, needed so username-based
+     login can resolve to the real auth email `signInWithPassword` requires, without an admin-API call
+     on every login — must be kept in sync any time a real email is later added/changed, most notably
+     by Tier B's own future "add an email" flow) and `has_real_email` (boolean, drives the "no
+     recovery possible" branch below). `rankings_visibility` still defaults to `'private'` regardless
+     — unifying the identity concept doesn't change the default-private posture.
+   - **Login form accepts "username or email"** as one field for every account, not just
+     synthetic-email ones — resolves via `@` presence: an email goes straight to
+     `signInWithPassword`, a username looks up `user_profiles.auth_email` first. Consistent behavior
+     for every account rather than a special case only for username-only signups.
+   - **Password reset without an email on file** (Kayvan's choice): **no recovery path at all** until
+     an email is added — clearly warned about at signup and on the account page, not silently
+     discovered later. `forgot-password`'s flow needs to accept a username too (not just email),
+     resolve it, and check `has_real_email` before attempting `resetPasswordForEmail` — a
+     no-real-email account gets a clear "no recovery available, add an email from your account page
+     first" message instead of a silent no-op or a misleading generic "check your inbox."
+   - Username uniqueness/validation: unique (citext or lowercased), 3-20 characters, letters/digits/
+     underscores only — server-side authoritative, client-side mirrored for immediate feedback.
+   - **Kayvan's own existing account(s)** (Kayvan's choice): **coexist, no forced migration** — old
+     accounts keep working by email exactly as today, `username` stays nullable for them, settable
+     later via settings whenever convenient. No backfill needed.
+   - **Scope** (Kayvan's choice): **signup replacement only** in this build. The account-page "add an
+     email later" flow is explicitly *not* bundled here — it's deferred to live under Tier B (the
+     account/settings surface Tier B builds is the natural home for it, especially now that
+     `user_profiles` is shared infrastructure between the two), not picked up as a near-term follow-up
+     on its own.
+   - Side benefit, still true: username-only signup needs zero email sent at signup time at all, which
+     sidesteps Bucket 4 item 3's default-provider 2-emails/hour cap for the *signup* path specifically
+     (password-reset emails still need it — doesn't make that backlog item moot, just lowers its
+     urgency for the signup flow).
+   **Classified correctness-critical** (auth surface, a new Admin API usage, a real change to
+   password-reset behavior) — needs the full implementer + independent-reviewer pipeline once built,
+   matching this project's standard for auth/data-layer work, not just PM self-review. **Now
+   genuinely buildable — the only Bucket 1 item.** Item 2 (Top Episodes bug fixes) is fully built and
+   merged as of 2026-07-22, moved to Bucket 2 for the migration + hands-on check (see below); the
+   other former Bucket 1 entries were already-resolved historical duplicates of Bucket 2 items,
+   removed in the same 2026-07-22 cleanup pass.
 
 **"Tier A" — a small batch pulled from an external design review, decided 2026-07-17, now the
 front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and

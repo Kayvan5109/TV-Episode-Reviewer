@@ -266,13 +266,25 @@ All new tables live alongside the existing `shows`/`episodes`/`episode_rankings`
 `episode_comparisons`/`user_shows` schema (`supabase/migrations/`) — nothing here changes any
 existing table.
 
-**`user_profiles`** — one row per user, created the first time they set a username (not at signup;
-see Judgment Calls on why this is opt-in rather than automatic).
+**`user_profiles`** — one row per user, **created at signup** (updated 2026-07-22 from the original
+"opt-in, first time they set a username" design below — see `STATUS.md`'s username+password signup
+entry for the full account. Superseded by the decision to unify signup-time identity with this same
+table, rather than build two separate username concepts that would need reconciling once Tier B
+ships. The "opt-in" framing this note used to carry is now moot: every account gets a row here from
+day one, not just users who later opt into a public profile).
 - `user_id` (PK, references `auth.users`)
-- `username` (unique, citext or lowercased — the public handle; `auth.users.email` must never be
-  exposed to any other user anywhere in this feature set)
+- `username` (unique, citext or lowercased, 3-20 chars, letters/digits/underscores — the public
+  handle; `auth.users.email` must never be exposed to any other user anywhere in this feature set)
 - `display_name` (nullable — falls back to `username` if unset)
-- `rankings_visibility` (`text`, `'private' | 'public'`, default `'private'`)
+- `rankings_visibility` (`text`, `'private' | 'public'`, default `'private'` — unaffected by the
+  above change; unifying the *identity* concept doesn't change the default-private posture)
+- `auth_email` (denormalized copy of `auth.users.email` — needed so username-based login can resolve
+  to the actual auth email `signInWithPassword` requires, without an admin-API round trip on every
+  login attempt. Must be kept in sync whenever an account's real email changes, most notably by
+  Tier B's own future "add an email" account-page flow.)
+- `has_real_email` (`boolean`, default `false` — `true` once a real email is on file, `false` for
+  accounts created via synthetic-email-only signup. Drives the "no recovery possible" branch on the
+  forgot-password flow.)
 - `created_at`
 
 **`follows`**
@@ -450,9 +462,9 @@ these before building, don't treat them as silently settled:
    control. A real followers-only tier would need to change the follow model to require approval
    (declined earlier this session in favor of the simpler one-directional model). Binary is the only
    version of "followers-only" that's actually coherent given the follow model already chosen.
-2. **Username required before any social feature is usable at all**, rather than defaulting to
-   something derived from the account (email should never be exposed). Simple and safe, but means a
-   real onboarding step — flagged as a UX flow to design properly, not detailed here.
+2. ~~**Username required before any social feature is usable at all**~~ — **moot as of 2026-07-22**:
+   every account now gets a username at signup (see the updated `user_profiles` note above), so this
+   is no longer a separate onboarding step gating social features specifically.
 3. **Taste similarity formula** (Kendall's-Tau-style concordant-pair percentage) is a defensible,
    standard choice, but genuinely just one of several reasonable formulas — confirm it "feels right"
    once there's real two-user data to try it against, same spirit as the score-from-position
