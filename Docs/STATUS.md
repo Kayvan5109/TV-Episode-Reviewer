@@ -1127,6 +1127,13 @@ see Bucket 4.)
     against the old dashboard-link value). Production/Vercel was never affected either way, as
     previously reasoned — this was purely a local-dev-only config file, gitignored, never committed.
     Removed from Bucket 4.
+21. **"Rank Random" button — logged 2026-07-22, Kayvan's idea.** A new button underneath "Rank all"
+    on the show page, a different color (purple, Kayvan's initial pick) from "Rank all"'s existing
+    blue and "Remove show"'s red. Presumably picks a random unranked episode rather than "Rank all"'s
+    oldest-first ordering (`orderOldestFirst` in `lib/ranking/rankAllOrder.ts`) — exact behavior (a
+    single random pick that returns to the show page after, vs. a full random-order auto-advance
+    session like "Rank all" itself) not yet confirmed with Kayvan, flagged here rather than guessed
+    at. Not scheduled/built.
 
 **Bucket 5 — Rework flagged for a later phase, not being worked now:**
 (empty for now)
