@@ -242,7 +242,14 @@ everything below is designed around these answers:
 - One-directional following.
 - Community rank (aggregate score across public users) shown next to "your rank" on an episode.
 - A taste-similarity score between two users with public rankings.
-- Flat (non-threaded) per-episode comments, with an author-set spoiler tag.
+- ~~Flat (non-threaded) per-episode comments, with an author-set spoiler tag.~~ **Declined outright,
+  2026-07-18** (the same session, later — see the Second Design Review Triage's "Discussion /
+  comments / polls" entry below, and `STATUS.md` Bucket 4 item 14): moderation burden for a solo
+  developer with no moderation tooling. This line was never removed when that decision was made —
+  caught and corrected 2026-07-22 while resuming Tier B work. The rest of this section (schema, RLS,
+  feature flow) still contains the original `episode_comments` design below, left in place as a
+  historical record with the same correction note rather than deleted, per this project's "don't
+  silently overwrite prior reasoning" discipline — but it is NOT part of the current build plan.
 - Collections: private by default, shareable via an unguessable link (no account needed to view).
 - A Discover page built on the same community-rank aggregate (trending, disagreements, hidden gems).
 
@@ -308,7 +315,8 @@ day one, not just users who later opt into a public profile).
 - Primary key `(collection_id, episode_id)` — an episode appears at most once per collection, but
   can appear in many different collections
 
-**`episode_comments`**
+**`episode_comments`** — **declined outright 2026-07-18, not being built** (see the "Scope for v1"
+correction above). Kept here as a historical record only.
 - `id` (uuid PK)
 - `episode_id` (references `episodes`), `user_id` (author, references `auth.users`)
 - `body` (text)
@@ -345,9 +353,9 @@ for everything user-scoped, service-role client only for the one narrow case bel
   exist for anonymous requests at all). The random, unguessable `share_token` *is* the security
   boundary here, the same trust model as a Google Docs "anyone with the link" share — not "this data
   is public," just "this data is reachable if you have the specific secret."
-- **`episode_comments`**: any authenticated user can read any comment (posting a comment is a
-  deliberate public act, unlike ranking data — this is intentionally *not* gated by the commenter's
-  own `rankings_visibility`). Insert only as yourself; delete only your own.
+- ~~**`episode_comments`**: any authenticated user can read any comment...~~ **declined outright
+  2026-07-18, not being built** (see the "Scope for v1" correction above). Kept here as a historical
+  record only.
 
 ### Feature flows
 
@@ -386,9 +394,8 @@ standard rank-correlation approach (Kendall's Tau, expressed as a percentage rat
 comparison history. Undefined (show "not enough shared data yet," not a number) if there's no show
 both have ranked with at least 2 shared episodes each.
 
-**Comments.** Flat list under the new episode detail page, newest first. `contains_spoilers` comments
-render blurred/collapsed behind a "Show spoiler" click. No editing — delete and repost. No reporting
-pipeline in v1 (see Scope above).
+~~**Comments.** Flat list under the new episode detail page...~~ **declined outright 2026-07-18, not
+being built** (see the "Scope for v1" correction above). Kept here as a historical record only.
 
 **Collections.** A signed-in user manages their own collections at `/collections` (list, create,
 reorder items, add a note per item). "Share" generates a `share_token` the first time it's clicked

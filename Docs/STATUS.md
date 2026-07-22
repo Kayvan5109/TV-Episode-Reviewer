@@ -693,6 +693,71 @@ with that username, log in with an existing email-based account (confirms nothin
 current account), and a forgot-password attempt on a synthetic-email-only account (confirms the
 "no recovery" message shows correctly rather than a silent failure). See Bucket 2 for the tracked item.
 
+**Same session, continued.** Kayvan applied the migration and hands-on confirmed the new signup/
+login/forgot-password flows all working — removed from Bucket 2. At 37% usage, Kayvan asked to start
+building Tier B (the social layer, `AppSpec.md`'s "Tier B Detailed Design"). PM recommendation, not
+picked unilaterally: don't build Tier B's remaining pieces (profiles/visibility, following, community
+rank, taste similarity, collections) in one dispatch — collections is meaningfully riskier than the
+rest (this app's first-ever unauthenticated route, deliberately bypassing RLS via the service-role
+client) — recommended a sequenced build instead, one reviewed slice at a time. Kayvan confirmed: start
+with Phase 1 (profiles/visibility + public profile page + following, the actual foundation the rest
+sits on).
+**Real doc inconsistency caught and fixed while re-grounding in the design**: the recommendation above
+originally, mistakenly, also counted per-episode comments among Tier B's pieces — `AppSpec.md`'s Tier
+B Detailed Design section (written 2026-07-17) still listed comments as fully in-scope, with a
+complete schema/RLS/feature-flow design. But comments were actually **declined outright** later that
+same broader session (2026-07-18's Second Design Review Triage, moderation burden for a solo
+developer) — correctly reflected in this file's own Bucket 4 item 14, but the Tier B Detailed Design
+section itself was never updated to match, so it silently kept describing a feature that had already
+been killed. Caught before it propagated into an actual build (this session's phase plan, below, was
+corrected before dispatching anything) — fixed properly in `AppSpec.md` with dated correction notes on
+each of the three places the stale design appeared (scope list, data model, RLS design, feature flow),
+per this project's "don't silently overwrite prior reasoning" discipline, rather than just deleting
+the old text.
+**Built Tier B Phase 1**: widened `user_profiles`' SELECT (a new, additional permissive policy for
+`rankings_visibility = 'public'` rows, left alongside — not replacing — the existing own-row policy
+from the signup build) and added its first-ever UPDATE policy (own row only, for `/settings`); a new
+`follows` table (one-directional, no approval — Letterboxd model) with this app's first cross-table
+RLS check (the INSERT policy's `WITH CHECK` rejects following a non-public profile at the DB layer,
+not just in the UI) and a `check (follower_id <> followee_id)` constraint; a `SECURITY DEFINER`
+`follow_counts()` function (this app's first — everything else uses `SECURITY INVOKER`) that returns
+only the two aggregate counts, independently re-checking the target's visibility itself rather than
+trusting callers already did. New `/settings` (display name, visibility toggle) and `/u/[username]`
+(public profile, Follow/Unfollow, counts) — a nonexistent username and an existing-but-private one
+render identically (`notFound()`) by construction, since the widened SELECT policy returns null for
+both and `resolveProfileView()` has no branch that could tell them apart. Dashboard gained a plain
+"Following" list. Classified correctness-critical for a specific reason beyond the usual auth/data-
+layer bar: this is the first RLS policy in the app's history that isn't purely single-user — every
+table before this one scoped every command to `user_id = auth.uid()`, full stop.
+Independent reviewer traced every piece by hand against Postgres RLS semantics rather than trusting
+the implementer's report: the widened SELECT policy's row-vs-column-level distinction (confirmed no
+query in the diff selects `auth_email`/`has_real_email` for a public profile — checked every one),
+the cross-table `WITH CHECK` subquery (correct, real DB-layer enforcement), the self-follow CHECK
+constraint, the `SECURITY DEFINER` function's `search_path` hardening and its own independent
+visibility re-check, and the private≡nonexistent invariant (traced end-to-end including the Follow
+action's own error paths, confirmed no distinguishing signal anywhere) — all held up. One non-blocking
+hardening suggestion, not a bug: Postgres RLS is row-level, so the new public-read policy technically
+permits selecting `auth_email`/`has_real_email` for a public row — today's code never does, verified
+by reading every query, but nothing at the DB layer would stop a future `select('*')` from leaking it.
+Logged as a follow-up (Bucket 4) rather than blocking the merge, per the reviewer's own explicit
+verdict ("safe to merge as-is").
+PM independently re-verified before merging too: read the full migration directly (not just the
+reviewer's summary) — confirmed the same things by hand, including noticing the profile page reuses
+`escapeIlikePattern` (from the earlier signup security fix) for the username URL-segment lookup, a
+good consistency catch by the implementer that wasn't explicitly requested. Reran the full check suite
+independently in a fresh worktree (383/383 tests, clean typecheck/lint/build), confirmed `main` was
+genuinely untouched by the implementer's self-reported (and self-corrected) wrong-directory mistake
+during the build. `main` had only moved with a docs-only commit in the meantime, so this was a clean,
+conflict-free non-ff merge. Reran the full suite a second time on `main` post-merge (same clean
+result) before pushing (`db69dc7`). Branch and worktree deleted after merging.
+Mid-session, Kayvan also logged a new idea (a "Rank Random" button under "Rank all," purple) — logged
+to Bucket 4, not built this session.
+**Tier B Phase 1 is built, reviewed, and merged.** Still needs: the new migration
+(`supabase/migrations/20260722010000_follows_and_profile_settings.sql`) applied to live Supabase, and
+a hands-on check — see Bucket 2. Remaining phases (community rank + Discover, taste similarity,
+collections — comments is not one of them, see the correction above) remain queued in that recommended
+order, not yet started.
+
 ## Punch List (ranked — read this section first for "what's actually next")
 
 Every open item gets triaged into exactly one bucket the moment it surfaces, per
@@ -932,6 +997,15 @@ in Bucket 4, rather than being done piecemeal now.
 14. ~~**Username+password signup, built, independently reviewed (one real security bug found and fixed
    pre-merge), and merged 2026-07-22 (`9807722`)**~~ — **hands-on confirmed 2026-07-22** (migration
    applied, new signup/login/forgot-password flows all working). Removed from Bucket 2.
+15. **Tier B Phase 1 (profile settings, public profiles, following), built, independently reviewed,
+   and merged 2026-07-22 (`db69dc7`)** — not yet applied to live Supabase or hands-on checked. Needs:
+   apply the new migration (`supabase/migrations/20260722010000_follows_and_profile_settings.sql`) to
+   live Supabase, then confirm hands-on — (a) flip `rankings_visibility` to public from `/settings`;
+   (b) visit that profile's `/u/[username]` from a second account (or Kayvan's own, viewing someone
+   else's) and confirm it renders with a working Follow button; (c) follow, confirm it shows up on the
+   dashboard's "Following" list and the target's follower count increments; (d) unfollow, confirm it's
+   removed; (e) with the profile flipped back to private, confirm `/u/[username]` now shows the same
+   "not found" page as a genuinely nonexistent username (the two must be indistinguishable).
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
 (empty for now — every question posed 2026-07-17 is resolved: remove-show/re-ranking's scope, the
@@ -1134,6 +1208,18 @@ see Bucket 4.)
     single random pick that returns to the show page after, vs. a full random-order auto-advance
     session like "Rank all" itself) not yet confirmed with Kayvan, flagged here rather than guessed
     at. Not scheduled/built.
+22. **`user_profiles` hardening: guard against a future accidental `select('*')` leaking `auth_email`/
+    `has_real_email`** — logged 2026-07-22, from Tier B Phase 1's independent review. Postgres RLS is
+    row-level, not column-level: the SELECT policy added for public profiles (Tier B Phase 1) grants
+    row access to the *entire* `user_profiles` row for any public profile, including the two columns
+    that must never reach another user's browser (`auth_email`, `has_real_email` — see the
+    username+password signup design for why). Today's code is safe — every query in the codebase uses
+    an explicit column list, verified by both the independent reviewer and PM directly — but nothing at
+    the DB layer would stop a future query from accidentally widening that with `select('*')`. Reviewer's
+    suggested fix: either a restricted Postgres view exposing only the safe columns for cross-user reads,
+    or a lint/code-review convention forbidding `select('*')` on this table. Not urgent (no live bug),
+    but worth doing before more Tier B phases add more cross-user `user_profiles` reads that could each
+    independently make the same mistake.
 
 **Bucket 5 — Rework flagged for a later phase, not being worked now:**
 (empty for now)
