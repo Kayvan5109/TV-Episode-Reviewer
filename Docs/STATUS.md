@@ -793,7 +793,53 @@ order, not yet started.
    session original reasoning. Also caught and fixed two more small pieces of the same doc drift found
    while in that section: Judgment Call #4 (about comments) was stale for the same reason the "Scope for
    v1" list was — comments were declined 2026-07-18, this call was never marked moot.
-**Design resolved, not yet built** — see the next entry for the build itself.
+**Design resolved, then built the same session.** One implementer dispatch, the biggest single build
+this session: two new `SECURITY DEFINER` "safe projection" functions
+(`profile_identity_by_username`/`profile_identities_by_user_ids`, returning only `user_id`/`username`/
+`display_name`/`rankings_visibility` — never `auth_email`/`has_real_email` — for any existing user,
+nothing for a nonexistent one) — this is also what resolves Bucket 4 item 22's hardening suggestion
+from Phase 1's review, since it's the app's first deliberate safe-projection pattern for cross-user
+profile reads, exactly what that item recommended; `follow_counts` widened to return counts for any
+existing profile, not just public-or-you; a new `follow_requests` table (kept structurally separate
+from `follows`, mirroring the `all_star_rankings`/`episode_rankings` precedent) with RLS requiring the
+target be currently private at insert time — the mirror image of `follows`' own insert check, which
+requires the target be public, keeping the two paths mutually exclusive; a **second**, additional
+INSERT policy on `follows` letting the *target* (not just the follower) write the accepted row, gated
+by a matching pending request; and `accept_follow_request`, a `security invoker` function (matching
+`delete_show_ranking_data`'s precedent, not `follow_counts`'s `security definer` — it only ever needs
+the caller's own already-granted RLS access) that atomically inserts into `follows` then deletes the
+`follow_requests` row, with an explicit defensive re-check that the caller is genuinely the request's
+target before doing anything. App layer: `/u/[username]` now renders identity for a private profile
+(still 404s for a genuinely nonexistent one), shows Follow/Request-to-follow/Following depending on
+state, and an already-accepted follower of a now-private target correctly still sees "Following," never
+a re-request prompt; dashboard gained an incoming "Follow requests" section (Accept/Deny) and the
+Following list's display bug (a followed user vanishing once they go private) is fixed via the new
+safe-projection lookup. 420/420 tests, clean typecheck/lint/build, self-reported.
+Independent reviewer gave this the most scrutiny of any review so far this session, specifically the
+new second `follows` INSERT policy (the first time in this app's history that someone *other than* the
+row's own primary actor can insert into a relationship table) — traced the `EXISTS` subquery by hand
+and confirmed it binds to the exact requester/target pair being inserted, confirmed Postgres's
+OR-composition of the two `follows` INSERT policies can't combine into anything neither policy alone
+permits, confirmed `accept_follow_request`'s insert-then-delete ordering is both correct and necessary
+(the new INSERT policy's `EXISTS` needs the `follow_requests` row still present) and that a failure
+partway through can't leave a half-completed state (implicit single transaction, no exception
+swallowing). No security bug found in any of the seven areas reviewed. Two non-blocking polish notes:
+`accept_follow_request` doesn't pin `search_path` like the other new functions do (harmless here since
+it's `security invoker` with fully schema-qualified references, but an inconsistency); and a real,
+useful process observation carried forward rather than fixed now — this codebase has no DB-level
+automated test harness for RLS policies anywhere (not a regression from this build, true of Phase 1's
+policies too), so the highest-stakes claims in every one of these reviews are verified by hand-tracing
+the SQL, not by an automated test that would catch a future regression.
+PM independently re-verified before merging too: read the full migration directly (not just the
+reviewer's summary) — traced the same INSERT-policy and `accept_follow_request` logic by hand and
+reached the identical conclusions. Reran the full check suite independently in a fresh worktree
+(420/420, clean typecheck/lint/build). `main` hadn't moved since the branch was cut, so this was a
+clean fast-forward. Reran the suite a second time on `main` post-merge (same result) before pushing
+(`9235133`). Branch and worktree deleted after merging.
+**Tier B's follow system (Phase 1 + this private-profile extension) is now fully built and reviewed.**
+Still needs: this migration
+(`supabase/migrations/20260722030000_follow_requests_and_private_profile_visibility.sql`) applied to
+live Supabase (on top of Phase 1's still-pending migration), and a hands-on check — see Bucket 2.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -1034,15 +1080,26 @@ in Bucket 4, rather than being done piecemeal now.
 14. ~~**Username+password signup, built, independently reviewed (one real security bug found and fixed
    pre-merge), and merged 2026-07-22 (`9807722`)**~~ — **hands-on confirmed 2026-07-22** (migration
    applied, new signup/login/forgot-password flows all working). Removed from Bucket 2.
-15. **Tier B Phase 1 (profile settings, public profiles, following), built, independently reviewed,
-   and merged 2026-07-22 (`db69dc7`)** — not yet applied to live Supabase or hands-on checked. Needs:
-   apply the new migration (`supabase/migrations/20260722010000_follows_and_profile_settings.sql`) to
-   live Supabase, then confirm hands-on — (a) flip `rankings_visibility` to public from `/settings`;
-   (b) visit that profile's `/u/[username]` from a second account (or Kayvan's own, viewing someone
-   else's) and confirm it renders with a working Follow button; (c) follow, confirm it shows up on the
-   dashboard's "Following" list and the target's follower count increments; (d) unfollow, confirm it's
-   removed; (e) with the profile flipped back to private, confirm `/u/[username]` now shows the same
-   "not found" page as a genuinely nonexistent username (the two must be indistinguishable).
+15. ~~**Tier B Phase 1 (profile settings, public profiles, following), built, independently reviewed,
+   and merged 2026-07-22 (`db69dc7`)**~~ — **hands-on confirmed 2026-07-22**: visibility toggle,
+   public-profile Follow/Unfollow, and follower counts all work. Two real issues surfaced during this
+   check, both since built, reviewed, and merged — see History: (a) `/settings` erroring for
+   Kayvan's original email-based account, fixed by the "claim a username later" build (`7a2fdf6`) —
+   **not yet independently hands-on re-confirmed**; (b) the "removed as a follower when the target
+   goes private" bug, fixed as part of the follow-requests build (`9235133`) — see item 16.
+16. **Follow requests + private-profile identity, built, independently reviewed, and merged
+   2026-07-22 (`9235133`)** — not yet applied to live Supabase or hands-on checked. Needs: apply this
+   migration (`supabase/migrations/20260722030000_follow_requests_and_private_profile_visibility.sql`)
+   to live Supabase — on top of Phase 1's own migration, already applied — then confirm hands-on:
+   (a) on the email-based account, claim a username from `/settings` (the fix from item 15a); (b) visit
+   a **private** profile via direct `/u/[username]` link and confirm it now shows identity + follower/
+   following counts instead of a 404, with a genuinely nonexistent username still 404ing; (c) click
+   "Request to follow" on a private profile, then from the target's own account confirm the request
+   shows up on the dashboard and Accept/Deny both work correctly; (d) after accepting, confirm the
+   requester now shows "Following" (not a re-request prompt) on that profile; (e) with an existing
+   accepted follow relationship, flip the target to private and confirm the follower still shows up
+   correctly in the follower's "Following" list (the original display bug, now fixed) rather than
+   vanishing.
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
 (empty for now — every question posed 2026-07-17 is resolved: remove-show/re-ranking's scope, the
