@@ -841,6 +841,52 @@ Still needs: this migration
 (`supabase/migrations/20260722030000_follow_requests_and_private_profile_visibility.sql`) applied to
 live Supabase (on top of Phase 1's still-pending migration), and a hands-on check — see Bucket 2.
 
+**Session ended here at Kayvan's request, 94% usage.** This was the longest, highest-stakes session
+this project has had — everything above is merged to `main` and pushed to `origin`
+(`3ae27fd` at close), `git status`/`git log` confirmed clean, local matches remote exactly. Five
+stale local branch refs left over from the recurring Windows worktree-deletion issue (all fully
+merged, no unique commits — verified before deleting) were cleaned up; the underlying issue itself
+(`.git/worktrees/*` directories that fail to delete on Windows, `git worktree list` still correctly
+shows them unregistered) is unchanged and still just cosmetic noise, not touched this session. No
+background agents or open worktrees left running.
+
+**What happened, in order**: picked up exactly where the prior session's notes said to (the Top
+Episodes multi-stale-show ordering fix, fully specified and waiting) — dispatched, independently
+reviewed, PM-verified, merged. Then, with the queue genuinely empty, did a full design pass on
+username+password signup (the session's own top-priority backlog item): verified the technical
+approach was still current via live web search rather than assumed, caught a real gap the original
+write-up missed (this project's "Confirm email" setting requires the Admin API, not a plain
+client-side `signUp`), resolved four real open product decisions directly with Kayvan, then built it
+— implementer, independent review (caught and fixed one genuine, exploitable security bug: an
+unescaped `%` in an `ILIKE` username lookup), merged, Kayvan confirmed hands-on. Then, at Kayvan's
+request, started Tier B (the social layer) — recommended against building all six of its pieces in
+one dispatch given two are meaningfully riskier than the rest, sequenced instead, built Phase 1
+(profiles/visibility/following, this app's first-ever RLS policy that isn't purely single-user),
+independently reviewed, merged, Kayvan confirmed hands-on and found two real issues from actually
+using it: a legacy-account settings bug (fixed, reviewed, merged, not yet hands-on re-confirmed) and
+a real design gap Kayvan asked to change (private profiles should be identifiable and followable via
+request/approval, not a flat 404) — which meant reversing two decisions shipped earlier the *same*
+session, done with the reversal flagged explicitly and the docs corrected with dated notes rather than
+silently overwritten. Built, reviewed (this build got the most scrutiny of any review this session,
+specifically its new "target can insert into `follows`" RLS pattern), merged. Along the way, caught
+and fixed a real pre-existing doc inconsistency (comments had been declined outright back on
+2026-07-18 but `AppSpec.md`'s Tier B design section never stopped describing them as in-scope) before
+it could propagate into an actual build, and logged one new backlog idea (a "Rank Random" button,
+purple, exact behavior still unconfirmed).
+
+**What's actually left, concretely** (all in Bucket 2 below, none of it blocking — this is Kayvan's
+own hands-on-testing queue, not open engineering work): apply the follow-requests migration to live
+Supabase; hands-on re-confirm the legacy-account settings fix now that a username can actually be
+claimed; hands-on walk through the full request/accept/deny flow and the "still following after they
+go private" fix. **The next real build decision** is which Tier B phase comes next — community rank +
+Discover (recommended next, since they share the same aggregate infrastructure), taste similarity, or
+collections (deliberately last in the original sequencing, given it's this app's first unauthenticated
+route) — not yet started, no design work done on any of them beyond what's already in `AppSpec.md`'s
+original Tier B Detailed Design section. Two things worth a look whenever there's spare capacity, not
+urgent: Bucket 4 item 22 (the `user_profiles` hardening — partially addressed this session, a DB-layer
+guard still doesn't exist) and the `search_path`-pin inconsistency on `accept_follow_request` flagged
+by its own reviewer as harmless-but-worth-tidying.
+
 ## Punch List (ranked — read this section first for "what's actually next")
 
 Every open item gets triaged into exactly one bucket the moment it surfaces, per
@@ -848,9 +894,10 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence:**
-(empty — username+password signup, the last item, is fully built, independently reviewed, and merged
-as of 2026-07-22, `9807722`. See History for the full design/build/review account. Now in Bucket 2 for
-the migration + hands-on check.)
+(empty as of session close, 2026-07-22. Username+password signup and Tier B Phase 1 + the follow-
+requests extension are all fully built, independently reviewed, and merged — see History for the
+full account of each. Nothing is currently blocking; Bucket 2 below has the pending hands-on checks,
+and picking the next Tier B phase is the next real build decision, not yet made.)
 
 **"Tier A" — a small batch pulled from an external design review, decided 2026-07-17, now the
 front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
@@ -1303,23 +1350,37 @@ see Bucket 4.)
     session like "Rank all" itself) not yet confirmed with Kayvan, flagged here rather than guessed
     at. Not scheduled/built.
 22. **`user_profiles` hardening: guard against a future accidental `select('*')` leaking `auth_email`/
-    `has_real_email`** — logged 2026-07-22, from Tier B Phase 1's independent review. Postgres RLS is
-    row-level, not column-level: the SELECT policy added for public profiles (Tier B Phase 1) grants
-    row access to the *entire* `user_profiles` row for any public profile, including the two columns
-    that must never reach another user's browser (`auth_email`, `has_real_email` — see the
-    username+password signup design for why). Today's code is safe — every query in the codebase uses
-    an explicit column list, verified by both the independent reviewer and PM directly — but nothing at
-    the DB layer would stop a future query from accidentally widening that with `select('*')`. Reviewer's
-    suggested fix: either a restricted Postgres view exposing only the safe columns for cross-user reads,
-    or a lint/code-review convention forbidding `select('*')` on this table. Not urgent (no live bug),
-    but worth doing before more Tier B phases add more cross-user `user_profiles` reads that could each
-    independently make the same mistake.
+    `has_real_email`** — logged 2026-07-22, from Tier B Phase 1's independent review. **Partially
+    addressed 2026-07-22, not fully closed.** The follow-requests build added exactly the pattern this
+    item asked for — two `SECURITY DEFINER` "safe projection" functions
+    (`profile_identity_by_username`/`profile_identities_by_user_ids`) that return only the safe
+    columns, never `auth_email`/`has_real_email` — and both new app-layer cross-user reads (the
+    `/u/[username]` page, the dashboard's Following/incoming-requests lists) now go through them
+    instead of a raw table query. But this only guards the code paths that were touched by that build;
+    the underlying gap is unchanged — Postgres RLS is still row-level, not column-level, so a raw
+    `select('*')` (or any explicit-but-wrong column list) directly against `user_profiles` from a
+    *future* piece of code would still technically be capable of reading those two columns for any
+    public or (as of the follow-requests build) any *identifiable* profile. No DB-layer guard (a
+    restricted view, a REVOKE on those two columns for the `authenticated` role, etc.) exists yet.
+    Worth doing before more Tier B phases add more direct `user_profiles` reads, though the safe-
+    projection functions are now the established, preferred pattern to reach for first.
 23. **Accepted followers of a private profile should eventually see more** (e.g. that user's actual
     show rankings) — logged 2026-07-22, Kayvan's stated end goal for the follow-requests feature. Not
     designed or built: there's no "view another user's rankings" page anywhere in this app yet, for
     public or private profiles alike, so there's nothing concrete to extend yet. Revisit once (or if) a
     per-user rankings view gets designed — see `AppSpec.md`'s "Follow requests" feature flow for the
     full context this was deferred from.
+24. **No DB-level automated test harness for RLS policies anywhere in this project** — observed
+    2026-07-22, by the follow-requests build's independent reviewer. Every RLS-correctness claim in
+    every review so far (Tier B Phase 1, the settings INSERT policy, the follow-requests cross-actor
+    INSERT policy) has been verified by a reviewer hand-tracing the SQL against real Postgres RLS
+    semantics, plus mocked unit tests that simulate a DB rejection/acceptance rather than actually
+    exercising it — never an automated test that runs against a real Postgres instance and would catch
+    a future regression to an already-reviewed policy. Not a regression from any specific build, and
+    not urgent enough to have blocked any merge so far (hand-tracing by an independent reviewer plus
+    PM re-verification has caught every real issue found this session) — but worth a real look
+    (something like pgTAP, or a local Supabase instance the test suite could spin up against) given how
+    much of this app's newest surface now depends on RLS correctness specifically.
 
 **Bucket 5 — Rework flagged for a later phase, not being worked now:**
 (empty for now)
