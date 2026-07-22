@@ -593,6 +593,35 @@ had only been committed locally until now) — so next session's starting point 
 GitHub, not dependent on this machine's local worktree surviving. `git status`/`git log` confirmed
 clean, `main` matches `origin/main` at `1241461` plus this closing entry.
 
+**New session, 2026-07-22.** Opened per procedure (`STATUS.md` first). Picked up exactly where the
+prior session left off: Bucket 1 item 2, the one-line ordering fix already fully specified there.
+Dispatched one implementer agent (`isolation: "worktree"`), instructed to start from the existing
+`worktree-agent-a7f0d6c9749f1fdc8` branch (not `main`) and fix only the diagnosed bug — sort
+`staleDisplacements` by `oldRank` ascending in `buildDisplayRanked`
+(`website/src/lib/all-star-session/session.ts`) before the splice loop, since splice indices are
+computed against the already-augmented array and are only correct if processed in ascending old-rank
+order. Agent chose that fix over adding `.order('rank_position')` to the underlying Supabase query,
+noting the test suite's fake Supabase client's `.order()` is a no-op anyway, so only the local sort
+is actually verifiable/effective. Added one new regression test exercising 2+ shows going stale in
+the same reconciliation pass with durable rows seeded in scrambled order — the exact condition the
+original bug needed. Landed as commit `0e99e7a`, pushed to `origin/worktree-agent-a7f0d6c9749f1fdc8`
+on top of `48857ae`.
+PM (not a second independent reviewer — matches this file's own prior judgment call that this fix was
+small enough not to need the full pipeline) verified directly rather than trusting the agent's
+self-report: read the diff (confirmed only the two intended files changed), hand-traced the
+counterexample against the new test to confirm it genuinely fails on the old code and passes on the
+new code, then independently reran typecheck/lint/tests in a fresh separate worktree (328/328, clean).
+`main` had moved on with docs-only commits since the branch was cut, so this was a real (conflict-free
+— confirmed via `git diff --stat` that only `Docs/STATUS.md` changed on `main` in the meantime, wholly
+disjoint from the branch's code files) merge, not a fast-forward. Reran the full check suite a second
+time on `main` post-merge (clean typecheck/lint, 328/328 tests) plus a full production build (all
+routes compiled) before pushing. Pushed (`ffe83fe`). Both the fix branch and the agent's own worktree
+branch deleted (local + remote) after merging.
+**Bucket 1 item 2 is now fully built and merged.** Still needs, before it's closed out entirely:
+Kayvan to apply the new migration (`supabase/migrations/20260721000000_all_star_progress.sql`) to
+live Supabase, then a hands-on re-check of both original bugs (button label, disappearing list) plus
+the specific multi-stale-shows case this session's fix addressed — see Bucket 2 for the tracked item.
+
 ## Punch List (ranked — read this section first for "what's actually next")
 
 Every open item gets triaged into exactly one bucket the moment it surfaces, per
@@ -637,56 +666,11 @@ unless it's small or genuinely blocking.
      specifically (password-reset emails, and any later "add an email" confirmation, would still need
      it — this doesn't make that backlog item moot, just lowers its urgency for the signup flow).
    Needs a real design pass (the questions above resolved with Kayvan) before this is buildable, not
-   just a build slot — flagged here as high priority per Kayvan's explicit framing, but not yet
-   sequenced ahead of or behind item 2 below; that's Kayvan's call whenever this gets picked up.
-2. **Top Episodes bug fixes (button label + disappearing list), built and committed 2026-07-19,
-   independent-reviewed same session — NOT yet merged, one real bug found first. Next session's clear
-   top priority.** Fix sits on its own real, separate worktree branch
-   (`worktree-agent-a7f0d6c9749f1fdc8` @ `48857ae`), `main` untouched. Independent review (same
-   session) confirmed the highest-risk claim holds — the display-layer placeholder splice genuinely
-   never leaks into the real placement algorithm; `done`/`pendingCount` stay correctly derived from
-   the real, non-augmented state; Bug 1's "has completed once" flag and its one-request lag are
-   provably harmless (traced through `TopEpisodesSection.tsx`'s actual render branches);
-   `resetAllStarRanking` confirmed to genuinely never touch the new table; the new migration's RLS
-   matches the established pattern exactly; reviewer's own fresh check-suite run also passed
-   (327/327). **But found one real, previously-unflagged bug**: `buildDisplayRanked` in
-   `website/src/lib/all-star-session/session.ts` (~lines 468-489) splices stale-show placeholders in
-   whatever order the `all_star_rankings` query happens to return rows (that query has no
-   `.order('rank_position', ...)`, ~lines 220-223) rather than sorted by each displacement's
-   `oldRank` — hand-traced counterexample confirmed: when **2+ shows go stale in the same
-   reconciliation pass** (an ordinary usage pattern, not a rare edge case — e.g. re-ranking two shows
-   before your next dashboard visit), the resulting display order can come out wrong. Display-only,
-   non-crashing, no duplicate/corrupted data, doesn't touch the real algorithm — but ships a visibly
-   wrong list order for exactly the "list re-appears in the old place" behavior Kayvan asked for.
-   Untested (the one placeholder-splice test only covers a single stale show). **Fix is small and
-   already identified**: sort `staleDisplacements` by `oldRank` ascending before the splice loop (or
-   add `.order('rank_position')` to the `all_star_rankings` query). Not fixed yet — session paused at
-   91%+ usage before a new dispatch could be started; deliberately left unmerged rather than ship a
-   known-wrong ordering under time pressure. **Next session**: dispatch the one-line fix (small enough
-   it may not need a full second independent-reviewer pass, PM's judgment call at the time), merge,
-   apply the new migration (`supabase/migrations/20260721000000_all_star_progress.sql`) to live
-   Supabase, then get Kayvan's hands-on re-check of both original bugs plus the multi-stale-shows case
-   specifically.
-3. ~~**All Stars Mode / "Top Episodes"**~~ — **built and merged 2026-07-19** (`711b0ff`), full design
-   resolved with Kayvan and written up in this file's History (same date). Independent-reviewer-
-   verified (schema/RLS, reconciliation logic, per-user isolation, the deliberate
-   `addComparativeEpisode`-bypass-for-empty-pool reasoning — all confirmed correct by direct code
-   reading, not just re-running tests). PM independently re-verified before merging too (read the
-   migration, the reconciliation function, and the dashboard diff directly; re-ran the full check
-   suite: clean typecheck/lint, 324/324 tests, clean build with `/top-episodes/rank` compiling
-   correctly). Now in Bucket 2 — needs the new migration applied to live Supabase plus a hands-on
-   check (needs 4+ tracked shows with a #1 episode each to actually see the feature).
-4. ~~**Live production bug, found 2026-07-19 via a Sentry error report: shows with enough episodes
-   crash their entire rank flow**~~ — **fixed and merged 2026-07-19** (`0ccf337`), see History for the
-   full account (all read call sites now scope by `user_id` + app-side filtering; the show-removal
-   delete path now uses a `security invoker` Postgres RPC). Independent-reviewer-verified. Now in
-   Bucket 2 — needs the new migration applied to live Supabase plus a hands-on check on a large show.
-5. **Worth remembering, not acting on yet**: the dashboard #1-episode item that used to sit here is
-   built (see Bucket 2 item 1's History). This is exactly the "each show's #1 episode" data Bucket 4
-   item 15 (All Stars Mode) will also need — no shared code was written now since All Stars isn't
-   scheduled, but whoever builds All Stars later should check `website/src/app/dashboard/page.tsx`'s
-   `topEpisodeIdByShowId`/batched-episode-lookup approach for reusable plumbing before re-deriving it
-   from scratch.
+   just a build slot — flagged here as high priority per Kayvan's explicit framing. **Now the only
+   Bucket 1 item** — item 2 (Top Episodes bug fixes) is fully built and merged as of 2026-07-22, moved
+   to Bucket 2 for the migration + hands-on check (see below); the other former Bucket 1 entries were
+   already-resolved historical duplicates of Bucket 2 items, removed here in a cleanup pass rather than
+   left cluttering the "blocking" bucket.
 
 **"Tier A" — a small batch pulled from an external design review, decided 2026-07-17, now the
 front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
@@ -849,6 +833,13 @@ in Bucket 4, rather than being done piecemeal now.
    Episodes" button starts the comparison flow, the resulting full ranked list renders with each
    entry's show name, and — if a chance arises to test it — that re-ranking one show's episodes
    triggers the stale-show notice and targeted auto-update rather than silently going wrong.
+   **Also needs, on top of the above** (bug fixes on this same feature, built and merged 2026-07-19/
+   2026-07-22, see History): the "Rank Top Episodes"/"Update" button shows the correct label on first
+   visit (not "Update" before anything's been ranked); the ranked list stays visible with the new #1
+   spliced into the old one's place whenever a show goes stale, rather than the whole list vanishing;
+   and, if 2+ shows happen to go stale between visits, that the placeholders land in the correct order
+   (the exact case the 2026-07-22 follow-up fix addressed). Needs a second new migration applied first:
+   `supabase/migrations/20260721000000_all_star_progress.sql`.
 2. ~~**URL-length crash fix, built and merged 2026-07-19 (`0ccf337`), independent-reviewer-verified.**~~
    Kayvan applied the new migration (`20260719000000_delete_show_ranking_data.sql`) to live Supabase,
    then **hands-on confirmed 2026-07-19**: the show that was crashing now loads its rank flow
