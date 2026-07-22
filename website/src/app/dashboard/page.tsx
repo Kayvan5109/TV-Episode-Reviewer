@@ -34,6 +34,12 @@ interface MyShowRow {
   } | null;
 }
 
+interface FollowingProfile {
+  user_id: string;
+  username: string;
+  display_name: string | null;
+}
+
 /**
  * Authenticated landing page: "my shows" (see `user_shows` — the design decision for tracking
  * "shows I've added", documented in `supabase/migrations/20260715010000_user_shows.sql`) plus a
@@ -63,6 +69,31 @@ export default async function DashboardPage() {
     .order('created_at', { ascending: false });
 
   const myShows = (myShowsData ?? []) as unknown as MyShowRow[];
+
+  // "Following" section (Docs/AppSpec.md's Tier B Detailed Design — Social Layer, Phase 1 of the
+  // build): a plain list of who this user follows, usernames linking to their profiles -- the
+  // design doc explicitly leaves this widget's exact shape open ("not designing that widget in
+  // detail here since it's presentation, not architecture"), so this is deliberately just a list,
+  // nothing fancier. Two queries rather than one embedded join: `follows.followee_id` and
+  // `user_profiles.user_id` both reference `auth.users`, not each other directly, so there's no FK
+  // path between the two tables for Postgrest to auto-embed through -- same batched-lookup shape
+  // this page already uses for `topEpisodeIds`/`allStarEpisodeIds` above.
+  const { data: followingData } = await supabase.from('follows').select('followee_id').eq('follower_id', user.id);
+  const followeeIds = ((followingData ?? []) as { followee_id: string }[]).map((row) => row.followee_id);
+
+  let followingProfiles: FollowingProfile[] = [];
+  if (followeeIds.length > 0) {
+    // Scoped by `user_profiles`' own widened SELECT policy, not just this `.in()` filter: a
+    // followee who has since flipped back to private simply won't come back here (their row no
+    // longer matches the "public" policy, and it was never this viewer's own row) -- exactly the
+    // "a stale follows row confers no actual access once someone goes private" behavior the RLS
+    // migration's own comment describes, with zero extra code needed to get it.
+    const { data: followingProfilesData } = await supabase
+      .from('user_profiles')
+      .select('user_id, username, display_name')
+      .in('user_id', followeeIds);
+    followingProfiles = (followingProfilesData ?? []) as FollowingProfile[];
+  }
 
   // Best-effort background refresh of every tracked show's episode list from TMDB (throttled to
   // once per SYNC_STALE_AFTER_MS per show — see `ensureShowSynced`). This page doesn't display any
@@ -252,6 +283,28 @@ export default async function DashboardPage() {
                     </li>
                   );
                 })}
+            </ul>
+          )}
+        </div>
+
+        <div className="flex w-full max-w-2xl flex-col gap-3">
+          <h2 className="text-lg font-semibold">Following</h2>
+          {followingProfiles.length === 0 ? (
+            <p className="text-sm text-black/60 dark:text-white/60">
+              You&apos;re not following anyone yet.
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {followingProfiles.map((profile) => (
+                <li key={profile.user_id}>
+                  <Link
+                    href={`/u/${profile.username}`}
+                    className="text-sm underline underline-offset-2"
+                  >
+                    {profile.display_name ?? profile.username} (@{profile.username})
+                  </Link>
+                </li>
+              ))}
             </ul>
           )}
         </div>
