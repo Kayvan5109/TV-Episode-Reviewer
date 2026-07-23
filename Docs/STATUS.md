@@ -974,7 +974,50 @@ page) — bundled into one dispatch, matching this project's precedent for cohes
 features (Phase 1, the follow-request extension), rather than split further. Classified
 correctness-critical (new cross-user data exposure, new file-upload security surface) — will get a
 full independent-reviewer pass, explicitly instructed to give the new RLS policies the most scrutiny
-of anything in the diff, before merging. Not yet built — in progress.
+of anything in the diff, before merging.
+
+**Same session, continued.** Implementer landed cleanly (437/437 tests, clean typecheck/lint/build,
+self-reported) on its own branch (`worktree-agent-a86333d41751928ef`, commit `4d59e1e`) —
+`git worktree list` confirmed real isolation held, `main` untouched throughout. One real process note
+the implementer itself flagged: the PM-authored migration existed only as an uncommitted file in
+`main`'s own working directory (not yet in git history, since it was deliberately left uncommitted
+pending Kayvan's migration-apply step) — the implementer correctly read it from the main checkout,
+confirmed it byte-identical, and copied it verbatim into its own worktree so the branch was
+self-contained; the PM confirmed the two copies matched exactly (`diff`, no output) before merging.
+Independent reviewer then gave this the most scrutiny of any review this session, per the dispatch
+brief: hand-traced both arms of all three new cross-user SELECT policies against Postgres RLS
+semantics (confirmed the "public" arm only ever matches a genuinely-visible public row, the "followed"
+arm only ever matches the caller's own always-visible `follows` row — neither can silently evaluate
+false-when-true, the exact bug class from earlier today, nor true-when-false, a new leak), traced the
+Storage path-prefix policy against `storage.foldername()`'s actual behavior and confirmed the one real
+upload call site matches what the policy assumes, confirmed `getAccountShows`/`getAccountTopEpisodes`
+are genuinely read-only (grepped for any write call, confirmed neither reuses
+`getShowRankingDisplay`/`getAllStarDisplay`), and confirmed the page's `hasAccess` gate actually
+prevents fetching (not just rendering) content for a denied viewer. Independently re-ran the full
+check suite fresh (tsc/lint clean, 437/437, build succeeded). **Verdict: safe to merge as-is.** One
+low-severity, non-blocking note: `updateAvatar` persists any caller-supplied string to the caller's
+*own* `avatar_url` after only a non-empty check, rather than verifying it points at an object the
+caller actually uploaded — blast radius is self-scoped and render-only (React-escaped `<img src>`, no
+script execution), already explicitly acknowledged as an accepted trade-off in the action's own doc
+comment; logged as a small hardening item (Bucket 4) rather than chased now.
+PM independently re-verified before merging too, not on the reviewer's word alone: read
+`accountView.ts`, the rebuilt `/u/[username]/page.tsx`, and `AvatarUploadForm.tsx`/`actions.ts`
+directly, reached the same conclusions by hand: confirmed no write calls in either `accountView`
+module, confirmed the page's Shows/Top-Episodes/Collections block is entirely inside the `hasAccess`
+conditional (not fetched-but-hidden), confirmed no `/shows/[showId]` links appear on another user's
+shows list, confirmed the client upload path is keyed off `auth.uid()` at the RLS layer (the client-
+supplied `userId` prop is untrusted but harmless — a tampered value is simply rejected by the policy,
+never trusted). Independently reran the full suite a second time in a fresh check of the worktree
+(clean) before merging. Committed the migration + docs on `main` first (`48b1677`), then merged
+(`--no-ff`, since `main` had moved — this session's own follow-request-fix commit — since the branch
+was cut), confirmed the migration file resolved as identical content on both sides (no conflict), then
+reran the full suite a third time on merged `main` (clean typecheck/lint, 437/437 tests) before
+pushing. Worktree and branches cleaned up.
+**Account page is now built, reviewed, and merged.** Still needs: the migration
+(`supabase/migrations/20260723010000_account_page_visibility.sql`) applied to live Supabase, then a
+real hands-on check — critically, from a **second account** (or an accepted-follower relationship),
+confirming another user's shows/top episodes actually render when public/followed and are correctly
+withheld when private and not followed — see Bucket 2.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -1233,15 +1276,17 @@ in Bucket 4, rather than being done piecemeal now.
    request, Accept and Deny both working, the accepted requester showing "Following" afterward, and an
    existing follower correctly staying visible in "Following" after the target goes private. Removed
    from Bucket 2.
-17. **Account page, migration written 2026-07-23, build in progress** — needs
-   `supabase/migrations/20260723010000_account_page_visibility.sql` applied to live Supabase (adds
+17. **Account page, built, independently reviewed, and merged 2026-07-23 (`48b1677`, `4d59e1e`)** —
+   not yet applied to live Supabase or hands-on checked. Needs: apply
+   `supabase/migrations/20260723010000_account_page_visibility.sql` to live Supabase (adds
    `user_profiles.avatar_url`, the `avatars` Storage bucket, widens the safe-projection identity RPCs,
-   adds cross-user SELECT policies on `user_shows`/`episode_rankings`/`all_star_rankings`), then once
-   the implementer + independent-reviewer pass lands: hands-on check avatar upload on `/settings`,
-   confirm your own account page shows your shows/top episodes/collections placeholder correctly, and
-   — the real point of this feature — confirm a **second** account (or a follower relationship) can
-   see another user's shows/top episodes when public or followed, and correctly cannot when private
-   and not followed.
+   adds cross-user SELECT policies on `user_shows`/`episode_rankings`/`all_star_rankings`), then
+   confirm hands-on: (a) avatar upload on `/settings` (PNG/JPEG/WEBP, rejects an oversized or wrong-
+   type file); (b) your own account page (`/u/[your-username]`) shows your avatar, shows list, top
+   episodes, and the "No collections yet." placeholder correctly; (c) — the real point of this feature
+   — from a **second** account (or via an accepted-follower relationship), confirm another user's
+   shows/top episodes actually render when their profile is public or you follow them, and are
+   correctly withheld (private-account message only, no shows/episodes) when private and not followed.
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
 (empty for now — every question posed 2026-07-17 is resolved: remove-show/re-ranking's scope, the
@@ -1476,6 +1521,14 @@ see Bucket 4.)
     PM re-verification has caught every real issue found this session) — but worth a real look
     (something like pgTAP, or a local Supabase instance the test suite could spin up against) given how
     much of this app's newest surface now depends on RLS correctness specifically.
+25. **`updateAvatar` trusts a caller-supplied avatar URL** — flagged 2026-07-23 by the account page's
+    independent reviewer, non-blocking. `settings/actions.ts`'s `updateAvatar` writes any non-empty
+    string to the caller's own `avatar_url` without verifying it actually points at an object the
+    caller uploaded to their own `avatars` Storage path — a user could point their own avatar at an
+    arbitrary external image. Blast radius is self-scoped (own row only) and render-only (a plain
+    `<img src>`, React-escaped, no script execution) — not a real vulnerability, just looser than it
+    needs to be. If ever tightened: validate the URL is under the app's own `avatars` bucket, prefixed
+    with the caller's own `user_id`.
 
 **Bucket 5 — Rework flagged for a later phase, not being worked now:**
 (empty for now)
