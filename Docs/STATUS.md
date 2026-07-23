@@ -887,6 +887,47 @@ urgent: Bucket 4 item 22 (the `user_profiles` hardening — partially addressed 
 guard still doesn't exist) and the `search_path`-pin inconsistency on `accept_follow_request` flagged
 by its own reviewer as harmless-but-worth-tidying.
 
+**New session, 2026-07-23.** Opened per procedure (`STATUS.md` first, confirmed clean state matching
+`main` at `30b00dc`). Kayvan chose to do the follow-requests hands-on check first. Applying the
+migration went fine, but the very first real attempt — sending a follow request to a private profile
+— failed with "Couldn't send a follow request." **Found and fixed a real bug in the just-merged
+migration** (`20260722030000_follow_requests_and_private_profile_visibility.sql`), diagnosed directly
+by reading the migration SQL rather than guessing: the `follow_requests` INSERT policy's `WITH CHECK`
+confirms the target is private via `exists (select 1 from user_profiles where user_id = target_id and
+rankings_visibility = 'private')` — but that subquery runs under the *requester's own* RLS, and
+`user_profiles`' SELECT policies only ever expose a caller's own row or `public` rows. A private
+target's row is invisible to that subquery no matter what, so the `exists` check is unconditionally
+`false` and the insert is rejected every time, regardless of the target's real visibility — the check
+doesn't fail closed on a bad request, it fails closed on *every* request. Root cause confirmed by
+reading `20260722010000_follows_and_profile_settings.sql`'s SELECT policies directly (only "own row"
+and "public") and by confirming the unit tests never would have caught this (they mock the Supabase
+client entirely, per Bucket 4 item 24's already-logged "no DB-level RLS test harness" gap). The
+mirror-image check on `follows`' own INSERT policy (target must be `public`) works fine, since a
+public row genuinely is visible under RLS to any authenticated caller — private rows have no
+equivalent "anyone can see this" policy, by design, so the same subquery pattern silently breaks only
+for the private case.
+**Fixed** with a new migration, `20260723000000_fix_follow_request_visibility_check.sql`: a small
+`SECURITY DEFINER` helper, `is_profile_private(uuid) returns boolean`, that checks visibility directly
+(bypassing `user_profiles`' RLS by design — same bypass pattern this codebase already uses for
+`follow_counts`/the safe-projection functions), then the `follow_requests` INSERT policy is dropped
+and recreated to call it instead of querying `user_profiles` directly. The helper returns only a
+boolean, no new data exposure — this doesn't widen any access, it just makes the intended check
+actually evaluate correctly. No app code changed (`npx tsc --noEmit` clean, lint clean, 420/420 tests
+unchanged — confirms the bug was purely in the SQL, invisible to the existing mocked-client test
+suite). **Logged as a Deviation Awaiting Review**: this is a security-relevant RLS fix done solo,
+without an independent-reviewer pass, given how small and mechanically-verifiable it is (one function,
+hand-traced against Postgres RLS semantics, directly mirroring an already-reviewed pattern in the
+same codebase) — worth a second look next session per this project's own standing practice rather than
+silently treated as settled.
+**Same session, continued.** Kayvan applied the fix migration and confirmed the follow request now
+sends successfully, then walked through the rest of the Bucket 2 item 16 checklist and confirmed
+everything working: legacy-account username claim, private-profile identity display, Accept/Deny, the
+post-accept "Following" state, and the survives-going-private fix. **Bucket 2 item 16 is now fully
+closed** — Tier B's follow system (Phase 1 + the private-profile/follow-request extension) is
+completely built, reviewed, and hands-on verified end to end. Not yet committed — see the migration
+fix's own Deviations entry, still open for a next-session second look despite the feature itself now
+confirmed working functionally.
+
 ## Punch List (ranked — read this section first for "what's actually next")
 
 Every open item gets triaged into exactly one bucket the moment it surfaces, per
@@ -1134,19 +1175,16 @@ in Bucket 4, rather than being done piecemeal now.
    Kayvan's original email-based account, fixed by the "claim a username later" build (`7a2fdf6`) —
    **not yet independently hands-on re-confirmed**; (b) the "removed as a follower when the target
    goes private" bug, fixed as part of the follow-requests build (`9235133`) — see item 16.
-16. **Follow requests + private-profile identity, built, independently reviewed, and merged
-   2026-07-22 (`9235133`)** — not yet applied to live Supabase or hands-on checked. Needs: apply this
-   migration (`supabase/migrations/20260722030000_follow_requests_and_private_profile_visibility.sql`)
-   to live Supabase — on top of Phase 1's own migration, already applied — then confirm hands-on:
-   (a) on the email-based account, claim a username from `/settings` (the fix from item 15a); (b) visit
-   a **private** profile via direct `/u/[username]` link and confirm it now shows identity + follower/
-   following counts instead of a 404, with a genuinely nonexistent username still 404ing; (c) click
-   "Request to follow" on a private profile, then from the target's own account confirm the request
-   shows up on the dashboard and Accept/Deny both work correctly; (d) after accepting, confirm the
-   requester now shows "Following" (not a re-request prompt) on that profile; (e) with an existing
-   accepted follow relationship, flip the target to private and confirm the follower still shows up
-   correctly in the follower's "Following" list (the original display bug, now fixed) rather than
-   vanishing.
+16. ~~**Follow requests + private-profile identity, built, independently reviewed, and merged
+   2026-07-22 (`9235133`)**~~ — migration applied 2026-07-23; first hands-on attempt (sending a
+   request) failed, which surfaced and led to fixing a real RLS bug in the migration itself (see
+   History and Deviations Awaiting Review, both 2026-07-23) via a follow-up migration
+   (`20260723000000_fix_follow_request_visibility_check.sql`). After applying that fix, **Kayvan
+   hands-on confirmed the full checklist working**: legacy-account username claim from `/settings`,
+   a private profile showing identity (not 404) via direct `/u/[username]` link, sending a follow
+   request, Accept and Deny both working, the accepted requester showing "Following" afterward, and an
+   existing follower correctly staying visible in "Following" after the target goes private. Removed
+   from Bucket 2.
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
 (empty for now — every question posed 2026-07-17 is resolved: remove-show/re-ranking's scope, the
@@ -1391,6 +1429,20 @@ Solo judgment calls made mid-session that weren't slept on get logged here and s
 start of the next session for a second look — even solo, "I decided this at 11pm without thinking
 it through" is worth a deliberate re-check, not silent acceptance.
 
+- 2026-07-23: **Fixed a real RLS bug in the follow-requests feature solo, without an independent-
+  reviewer pass.** Full diagnosis and fix are in this file's History (2026-07-23 entry) and in
+  `supabase/migrations/20260723000000_fix_follow_request_visibility_check.sql`'s own header comment —
+  short version: the just-merged `follow_requests` INSERT policy's visibility check queried
+  `user_profiles` under the requester's own RLS, which can never see a private target's row, so the
+  check was unconditionally false and every follow request was rejected. Fixed with a `SECURITY
+  DEFINER` boolean-only helper (`is_profile_private`), mirroring the already-reviewed `follow_counts`
+  bypass pattern. Done directly (not dispatched to an implementer + independent reviewer) because the
+  fix is small and mechanically verifiable — one function, hand-traced against Postgres RLS semantics,
+  same bypass shape as existing reviewed code, no new data exposure (returns only a boolean), no app
+  code touched. Still worth a second pair of eyes next session specifically because it's RLS/security
+  surface and this project has no automated way to catch a subtly-wrong policy (see Bucket 4 item 24)
+  — confirm the reasoning holds and that `is_profile_private` couldn't be used to probe visibility for
+  something other than the one gated insert it's meant for.
 - 2026-07-18: **The recurring `isolation: "worktree"` bug (logged below, previous session) has a new,
   more concerning variant.** Dispatched an implementer agent for keyboard shortcuts (was Tier A item
   1). Immediately after dispatch, `git worktree list` was checked per the existing mitigation and
