@@ -3,8 +3,11 @@
  * `supabase/migrations/20260722030000_follow_requests_and_private_profile_visibility.sql`
  * (`profile_identity_by_username`, `profile_identities_by_user_ids`) -- SECURITY DEFINER functions
  * that return only the columns safe to show any other user (`user_id`, `username`, `display_name`,
- * `rankings_visibility` -- never `auth_email`/`has_real_email`) for ANY existing user, regardless of
- * `rankings_visibility`, and nothing at all for a nonexistent user/username.
+ * `rankings_visibility`, `avatar_url` -- never `auth_email`/`has_real_email`) for ANY existing user,
+ * regardless of `rankings_visibility`, and nothing at all for a nonexistent user/username.
+ *
+ * Widened 2026-07-23 (`supabase/migrations/20260723010000_account_page_visibility.sql`) to also
+ * return `avatar_url` -- same safe tier as the rest, needed for the account page's avatar display.
  *
  * This is the app's first deliberate safe-projection pattern for cross-user `user_profiles` reads
  * (Docs/STATUS.md Bucket 4 item 22) -- callers that need to resolve or display another user's
@@ -25,6 +28,7 @@ export interface ProfileIdentity {
   username: string;
   display_name: string | null;
   rankings_visibility: 'private' | 'public';
+  avatar_url: string | null;
 }
 
 /**

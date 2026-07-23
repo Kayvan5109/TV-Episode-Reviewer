@@ -25,7 +25,7 @@ vi.mock('next/cache', () => ({
   revalidatePath: vi.fn(),
 }));
 
-import { claimUsername, updateProfile } from './actions';
+import { claimUsername, updateAvatar, updateProfile } from './actions';
 
 function formDataFor(displayName?: string, visibility?: string) {
   const formData = new FormData();
@@ -199,5 +199,48 @@ describe('claimUsername server action', () => {
 
     expect(result).toEqual({ status: 'error', error: 'Something went wrong. Please try again.' });
     expect(insert).not.toHaveBeenCalled();
+  });
+});
+
+describe('updateAvatar server action', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+    eq.mockResolvedValue({ error: null });
+  });
+
+  it('redirects to /login when signed out, without writing', async () => {
+    getUser.mockResolvedValue({ data: { user: null } });
+    await expect(updateAvatar('https://example.com/avatars/user-1/avatar-1.png')).rejects.toThrow(
+      'REDIRECT:/login'
+    );
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('rejects an empty avatar URL without writing', async () => {
+    const result = await updateAvatar('');
+    expect(result).toEqual({ status: 'error', error: 'Invalid avatar URL.' });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('rejects a whitespace-only avatar URL without writing', async () => {
+    const result = await updateAvatar('   ');
+    expect(result).toEqual({ status: 'error', error: 'Invalid avatar URL.' });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('updates avatar_url on user_profiles scoped to the signed-in user', async () => {
+    const result = await updateAvatar('https://example.com/avatars/user-1/avatar-1.png');
+
+    expect(from).toHaveBeenCalledWith('user_profiles');
+    expect(update).toHaveBeenCalledWith({ avatar_url: 'https://example.com/avatars/user-1/avatar-1.png' });
+    expect(eq).toHaveBeenCalledWith('user_id', 'user-1');
+    expect(result).toEqual({ status: 'success' });
+  });
+
+  it("surfaces the DB's own error (e.g. a rejected update) rather than swallowing it", async () => {
+    eq.mockResolvedValue({ error: { message: 'new row violates row-level security policy' } });
+    const result = await updateAvatar('https://example.com/avatars/user-1/avatar-1.png');
+    expect(result).toEqual({ status: 'error', error: 'new row violates row-level security policy' });
   });
 });

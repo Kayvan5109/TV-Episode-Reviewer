@@ -10,6 +10,8 @@ export type UpdateProfileState = { status: 'error'; error: string } | { status: 
 
 export type ClaimUsernameState = { status: 'error'; error: string } | { status: 'success' } | undefined;
 
+export type UpdateAvatarState = { status: 'error'; error: string } | { status: 'success' };
+
 const DISPLAY_NAME_MAX_LENGTH = 40;
 
 const USERNAME_TAKEN_ERROR = 'That username is already taken. Please choose another.';
@@ -155,5 +157,54 @@ export async function claimUsername(
   }
 
   revalidatePath('/settings');
+  return { status: 'success' };
+}
+
+/**
+ * Server Action backing `/settings`'s avatar upload control (`./AvatarUploadForm.tsx`). Called
+ * directly from the client component as a normal async function (not wired through
+ * `useActionState`/`<form action>`, since the actual upload -- `supabase.storage.from('avatars')
+ * .upload(...)` -- has to happen client-side via the browser Supabase client; this action only
+ * persists the resulting public URL onto `user_profiles.avatar_url` once that upload has already
+ * succeeded).
+ *
+ * Deliberately does NOT touch Supabase Storage itself -- by the time this is called, the file is
+ * already uploaded (the object-level RLS on `storage.objects`, restricted to a
+ * `{auth.uid()}/...` path prefix -- see
+ * `supabase/migrations/20260723010000_account_page_visibility.sql` -- is what actually enforced that
+ * only the signed-in user could write to their own folder; this action just needs to trust the URL
+ * it's given came from a real upload this same session performed, which is why it re-derives the
+ * signed-in user itself rather than accepting one).
+ *
+ * Uses the session-aware client, not the service-role client -- same reasoning as `updateProfile`
+ * above: a normal per-user write, backed by `user_profiles`' existing `user_id = auth.uid()` UPDATE
+ * policy, with the explicit `.eq('user_id', user.id)` below as defense-in-depth on top of it.
+ *
+ * Only a minimal shape check on `avatarUrl` (non-empty string) -- the real validation (file type,
+ * size cap) already happened client-side in `AvatarUploadForm` before the upload was even attempted;
+ * this action has no way to re-validate an already-uploaded object's contents anyway.
+ */
+export async function updateAvatar(avatarUrl: string): Promise<UpdateAvatarState> {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect('/login');
+  }
+
+  if (typeof avatarUrl !== 'string' || avatarUrl.trim().length === 0) {
+    return { status: 'error', error: 'Invalid avatar URL.' };
+  }
+
+  const { error } = await supabase.from('user_profiles').update({ avatar_url: avatarUrl }).eq('user_id', user.id);
+
+  if (error) {
+    return { status: 'error', error: error.message };
+  }
+
+  revalidatePath('/settings');
+  revalidatePath('/dashboard');
   return { status: 'success' };
 }

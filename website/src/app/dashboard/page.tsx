@@ -61,6 +61,18 @@ export default async function DashboardPage() {
     redirect('/login');
   }
 
+  // Own-row avatar lookup (Docs/STATUS.md, 2026-07-23 account page build) -- purely a small display
+  // addition next to "Logged in as", not a security-relevant read: `user_profiles`' own SELECT
+  // policy already lets a user read their own row unconditionally. `maybeSingle()` since a legacy,
+  // pre-`user_profiles` account (see `settings/page.tsx`'s `ClaimUsernameForm` doc comment) has no
+  // row at all -- absent, not an error, and just falls back to no avatar/placeholder below.
+  const { data: ownProfileData } = await supabase
+    .from('user_profiles')
+    .select('avatar_url, username')
+    .eq('user_id', user.id)
+    .maybeSingle();
+  const ownProfile = ownProfileData as { avatar_url: string | null; username: string } | null;
+
   // RLS already scopes `user_shows` to this user's own rows (see the migration's policies); the
   // explicit `.eq` below is defense-in-depth, not the security boundary — `user.id` comes from the
   // revalidated session above, never from client input.
@@ -209,9 +221,25 @@ export default async function DashboardPage() {
       <AppHeader />
       <div className="flex flex-1 flex-col items-center gap-8 p-8">
         <div className="flex w-full max-w-2xl items-center justify-between">
-          <p className="text-lg">
-            Logged in as <span className="font-medium">{user.email}</span>
-          </p>
+          <div className="flex items-center gap-3">
+            {ownProfile?.avatar_url ? (
+              // eslint-disable-next-line @next/next/no-img-element -- external Supabase Storage CDN image.
+              <img
+                src={ownProfile.avatar_url}
+                alt=""
+                width={40}
+                height={40}
+                className="h-10 w-10 rounded-full object-cover"
+              />
+            ) : (
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/10 text-sm font-medium dark:bg-white/10">
+                {(ownProfile?.username ?? user.email ?? '?').charAt(0).toUpperCase()}
+              </span>
+            )}
+            <p className="text-lg">
+              Logged in as <span className="font-medium">{user.email}</span>
+            </p>
+          </div>
           <form action={logout}>
             <button
               type="submit"
