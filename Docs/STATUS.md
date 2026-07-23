@@ -1607,12 +1607,12 @@ see Bucket 4.)
     restricted view, a REVOKE on those two columns for the `authenticated` role, etc.) exists yet.
     Worth doing before more Tier B phases add more direct `user_profiles` reads, though the safe-
     projection functions are now the established, preferred pattern to reach for first.
-23. **Accepted followers of a private profile should eventually see more** (e.g. that user's actual
-    show rankings) — logged 2026-07-22, Kayvan's stated end goal for the follow-requests feature. Not
-    designed or built: there's no "view another user's rankings" page anywhere in this app yet, for
-    public or private profiles alike, so there's nothing concrete to extend yet. Revisit once (or if) a
-    per-user rankings view gets designed — see `AppSpec.md`'s "Follow requests" feature flow for the
-    full context this was deferred from.
+23. ~~**Accepted followers of a private profile should eventually see more** (e.g. that user's actual
+    show rankings)~~ — logged 2026-07-22, Kayvan's stated end goal for the follow-requests feature.
+    **Resolved 2026-07-23** by the account page: an accepted follower of a private profile now sees
+    that user's shows, progress, and top episodes via `/u/[username]` (gated by the same `hasAccess`
+    check as the public case) — this is exactly the "per-user rankings view" this item was waiting on.
+    Removed from Bucket 4.
 24. **No DB-level automated test harness for RLS policies anywhere in this project** — observed
     2026-07-22, by the follow-requests build's independent reviewer. Every RLS-correctness claim in
     every review so far (Tier B Phase 1, the settings INSERT policy, the follow-requests cross-actor
