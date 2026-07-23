@@ -1112,11 +1112,11 @@ genuine SQL syntax issue it'll only surface when Kayvan actually applies the mig
 error there is a safe failure mode (paste it back rather than retry), not a silent-wrong-data risk.
 Committed the migration + docs on `main` first (`85d59e1`), merged (`--no-ff`, main had moved since
 the branch was cut), reran the full suite a second time on merged `main` (clean) before pushing.
-Worktree and branches cleaned up. **Community rank is now built and merged.** Still needs: the
-migration (`supabase/migrations/20260723030000_community_rank.sql`) applied to live Supabase, then a
-hands-on check — an episode with rank_position set for 2+ public users should show "Community: X.X (n
-people)"; an episode nobody public has ranked should show "Not enough community data yet" — see
-Bucket 2.
+Worktree and branches cleaned up. **Community rank is now built and merged.**
+
+**Same session, continued.** Kayvan applied the migration — the never-run-against-real-Postgres
+caveat didn't bite, it applied cleanly on the first try — and hands-on confirmed community rank
+working correctly on the episode detail page. Removed from Bucket 2. **Community rank is fully done.**
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -1387,13 +1387,9 @@ in Bucket 4, rather than being done piecemeal now.
    — not yet applied to live Supabase or re-confirmed: apply that migration, then confirm a **brand
    new** eligible user's Top Episodes section stays genuinely empty until "Rank Top Episodes" is
    actually clicked.
-18. **Community rank, built and merged 2026-07-23 (`85d59e1`, `02007a1`)** — not yet applied to live
-   Supabase or hands-on checked. Needs: apply `supabase/migrations/20260723030000_community_rank.sql`
-   to live Supabase (if it errors, paste the error back rather than retrying — this SQL was hand-
-   verified but never run against a real Postgres instance, see History), then confirm hands-on: an
-   episode that 2+ public-visibility users have comparatively ranked shows "Community: X.X (n people)"
-   on its episode detail page (`/shows/[showId]/episodes/[episodeId]`); an episode nobody public has
-   ranked shows "Not enough community data yet" instead.
+18. ~~**Community rank, built and merged 2026-07-23 (`85d59e1`, `02007a1`)**~~ — migration applied
+   cleanly (the never-run-against-real-Postgres caveat didn't bite), **hands-on confirmed working**.
+   Removed from Bucket 2.
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
 (empty for now — every question posed 2026-07-17 is resolved: remove-show/re-ranking's scope, the
