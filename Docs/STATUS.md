@@ -1084,6 +1084,40 @@ silently "fix" the migration if it finds a mismatch. Classified as reusing alrea
 surface with no new write paths — implementer + PM review, not a full independent-reviewer pipeline
 (same reasoning as the season-poster/episode-page-credits class of work earlier in the project).
 
+**Same session, continued.** Implementer landed cleanly on its own branch
+(`worktree-agent-a0de0aa68879c3876`, commit `02007a1`) — 446/446 tests, clean typecheck/lint/build,
+self-reported — but its own report flagged a real process incident worth recording precisely: it
+initially used the wrong absolute path across every tool call and edited files directly in the main
+checkout on `main` instead of its assigned worktree, caught this itself via `git status` showing "On
+branch main," then self-corrected — copied its changes into the actual worktree, reverted the
+accidental edits on `main` (confirmed only the PM's own pre-existing uncommitted `STATUS.md`/migration
+changes remained), and redid its verification genuinely inside the isolated worktree afterward.
+Distinct from every previously-logged `isolation: "worktree"` variant in this project's Deviations
+log: those were all harness-level (a verified-real worktree's cwd silently drifting mid-run, or an
+agent never committing) — this was the agent's own tool-call mistake, self-caught and self-corrected,
+not a recurrence of the upstream bug. **Verified independently rather than trusted**: `git status`/
+`git diff --stat` on `main` confirmed it was genuinely clean of any stray changes (only the PM's own
+already-known-about uncommitted files), and the migration file inside the worktree diffed identical
+(`diff`, no output) to the PM's own original. PM then reviewed the actual diff directly (the new
+`communityRank.ts`/`.test.ts`, the page's rendering change) — clean, well-reasoned, matches this
+codebase's conventions (fail-open try/catch mirroring the existing TMDB credits pattern,
+correct `numeric`-as-string coercion, a single unambiguous `null` return over a `sampleSize: 0`
+footgun) — confirmed the implementer's own hand-traced formula sanity-check (single-episode show,
+8-episode show at positions 1 and 8) independently by re-deriving the same cases, no discrepancy.
+Independently reran the full check suite in the worktree (tsc/lint clean, 446/446, build succeeded).
+One real caveat, flagged rather than silently assumed away: **neither the implementer nor the PM has
+run this SQL against a real Postgres instance** (this project has no local Supabase instance — Bucket
+4 item 24) — the formula and structure were hand-verified logically, not executed, so if there's a
+genuine SQL syntax issue it'll only surface when Kayvan actually applies the migration; a clean syntax
+error there is a safe failure mode (paste it back rather than retry), not a silent-wrong-data risk.
+Committed the migration + docs on `main` first (`85d59e1`), merged (`--no-ff`, main had moved since
+the branch was cut), reran the full suite a second time on merged `main` (clean) before pushing.
+Worktree and branches cleaned up. **Community rank is now built and merged.** Still needs: the
+migration (`supabase/migrations/20260723030000_community_rank.sql`) applied to live Supabase, then a
+hands-on check — an episode with rank_position set for 2+ public users should show "Community: X.X (n
+people)"; an episode nobody public has ranked should show "Not enough community data yet" — see
+Bucket 2.
+
 ## Punch List (ranked — read this section first for "what's actually next")
 
 Every open item gets triaged into exactly one bucket the moment it surfaces, per
@@ -1353,6 +1387,13 @@ in Bucket 4, rather than being done piecemeal now.
    — not yet applied to live Supabase or re-confirmed: apply that migration, then confirm a **brand
    new** eligible user's Top Episodes section stays genuinely empty until "Rank Top Episodes" is
    actually clicked.
+18. **Community rank, built and merged 2026-07-23 (`85d59e1`, `02007a1`)** — not yet applied to live
+   Supabase or hands-on checked. Needs: apply `supabase/migrations/20260723030000_community_rank.sql`
+   to live Supabase (if it errors, paste the error back rather than retrying — this SQL was hand-
+   verified but never run against a real Postgres instance, see History), then confirm hands-on: an
+   episode that 2+ public-visibility users have comparatively ranked shows "Community: X.X (n people)"
+   on its episode detail page (`/shows/[showId]/episodes/[episodeId]`); an episode nobody public has
+   ranked shows "Not enough community data yet" instead.
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
 (empty for now — every question posed 2026-07-17 is resolved: remove-show/re-ranking's scope, the
