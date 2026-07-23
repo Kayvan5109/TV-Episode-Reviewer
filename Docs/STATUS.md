@@ -924,9 +924,57 @@ sends successfully, then walked through the rest of the Bucket 2 item 16 checkli
 everything working: legacy-account username claim, private-profile identity display, Accept/Deny, the
 post-accept "Following" state, and the survives-going-private fix. **Bucket 2 item 16 is now fully
 closed** — Tier B's follow system (Phase 1 + the private-profile/follow-request extension) is
-completely built, reviewed, and hands-on verified end to end. Not yet committed — see the migration
-fix's own Deviations entry, still open for a next-session second look despite the feature itself now
-confirmed working functionally.
+completely built, reviewed, and hands-on verified end to end. Committed and pushed (`9edf0ef`) — see
+the migration fix's own Deviations entry, still open for a next-session second look despite the
+feature itself now confirmed working functionally.
+
+**Same session, continued — at 6% usage, Kayvan asked to keep going on Tier B with a new, specific
+ask: a real account page** (shows list, top episodes, follower/following counts, profile picture,
+username, a collections area — publicly viewable, much like `/dashboard` but read-only), explicitly
+giving the PM free reign on design/scope with iterative feedback rather than a full upfront design
+Q&A. This directly resolves Bucket 4 item 23 ("accepted followers of a private profile should
+eventually see more") and reverses All Stars Mode's original "no account page" descope
+(2026-07-19) — Top Episodes now gets a real public-facing home after all, just later than first
+planned.
+**This is a genuinely new class of exposure for this app**: every private table before this has been
+either fully private (`user_id = auth.uid()` only) or identity-only cross-user (the safe-projection
+functions) — this is the first time actual *ranking* data crosses the private/public boundary.
+Grounded the design directly in code before writing anything (read every relevant migration —
+`episode_rankings`/`episode_comparisons`/`user_shows` RLS from the initial schema, `all_star_rankings`
+— plus `getShowRankingDisplay`/`getAllStarDisplay`'s actual implementations, `dashboard/page.tsx`,
+`u/[username]/page.tsx`, `settings/actions.ts`, `profileIdentity.ts`) rather than design from the
+summary in this file alone. Two real findings from that read directly shaped the plan: (1)
+`getShowRankingDisplay`/`getAllStarDisplay` are **not pure reads** — both write as a side effect
+(folding cold-start episodes, auto-placing pool entrants) — correct for viewing your own dashboard,
+wrong for a viewer, so they can't be reused for this and a genuinely separate read-only path is
+needed instead; (2) both also explicitly refuse a caller-supplied user id by design (`requireUserId`
+always derives from the session) — a deliberate existing security boundary not to be touched or
+weakened.
+**Wrote the schema/RLS migration directly** (not left to an implementer), given the stakes and this
+session's own earlier lesson: `supabase/migrations/20260723010000_account_page_visibility.sql` adds
+`user_profiles.avatar_url`, a public `avatars` Storage bucket with per-user-path upload RLS, widens
+the two safe-projection identity functions to include `avatar_url`, and adds new SELECT policies on
+`user_shows`/`episode_rankings`/`all_star_rankings` (public-or-accepted-follower, on top of the
+existing own-row policies). Each new check is written to specifically avoid the exact bug class from
+earlier today's follow-request fix (a policy querying a table under a condition that hides the very
+row it's checking) — the "public" arm only ever reads a `user_profiles` row that's genuinely public
+(visible under that table's own existing policy), and the "followed" arm only ever reads the caller's
+own `follows` row (always visible to them regardless of the target's current visibility), never a
+private profile row directly. Not yet applied to live Supabase — see Bucket 2.
+**Scope calls made solo, not asked back given the free reign**: Collections gets a static placeholder
+section only ("coming soon") — the real feature needs its own schema and is this app's first
+unauthenticated route, deliberately still queued as its own separate Tier B piece, not folded in
+here. No link from another user's account page into their individual `/shows/[showId]` page — that
+page is built entirely around being the signed-in owner's own management surface and isn't scoped for
+a viewer; out of scope for this build.
+Dispatched one implementer (`isolation: "worktree"`) for the full app-layer build against the
+already-written migration (avatar upload on `/settings`, two new read-only display modules —
+`ranking-session/accountView.ts`, `all-star-session/accountView.ts` — and the rebuilt `/u/[username]`
+page) — bundled into one dispatch, matching this project's precedent for cohesive multi-piece Tier B
+features (Phase 1, the follow-request extension), rather than split further. Classified
+correctness-critical (new cross-user data exposure, new file-upload security surface) — will get a
+full independent-reviewer pass, explicitly instructed to give the new RLS policies the most scrutiny
+of anything in the diff, before merging. Not yet built — in progress.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -1185,6 +1233,15 @@ in Bucket 4, rather than being done piecemeal now.
    request, Accept and Deny both working, the accepted requester showing "Following" afterward, and an
    existing follower correctly staying visible in "Following" after the target goes private. Removed
    from Bucket 2.
+17. **Account page, migration written 2026-07-23, build in progress** — needs
+   `supabase/migrations/20260723010000_account_page_visibility.sql` applied to live Supabase (adds
+   `user_profiles.avatar_url`, the `avatars` Storage bucket, widens the safe-projection identity RPCs,
+   adds cross-user SELECT policies on `user_shows`/`episode_rankings`/`all_star_rankings`), then once
+   the implementer + independent-reviewer pass lands: hands-on check avatar upload on `/settings`,
+   confirm your own account page shows your shows/top episodes/collections placeholder correctly, and
+   — the real point of this feature — confirm a **second** account (or a follower relationship) can
+   see another user's shows/top episodes when public or followed, and correctly cannot when private
+   and not followed.
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
 (empty for now — every question posed 2026-07-17 is resolved: remove-show/re-ranking's scope, the
