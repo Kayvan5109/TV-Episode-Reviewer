@@ -65,6 +65,7 @@ interface FakeAllStarComparisonRow {
 interface FakeAllStarProgressRow {
   user_id: string;
   has_completed_once: boolean;
+  has_started: boolean;
   updated_at: string;
 }
 
@@ -283,22 +284,37 @@ describe('eligibility threshold', () => {
 });
 
 describe('placement -- first entrant into an empty pool needs no comparison', () => {
-  it('auto-places the very first entrant with zero questions, then asks a real question for the second', async () => {
+  it('does not auto-place anything from a purely passive getAllStarDisplay call before the user has ever engaged', async () => {
     seedFourEligibleShows();
+
+    // Eligible, but `hasStarted` is still false (brand new user, never visited the ranking flow) --
+    // `getAllStarDisplay` must not run placement at all, even though the free first entrant would
+    // otherwise resolve with zero questions. See `20260723020000_all_star_has_started.sql`.
+    const display = await getAllStarDisplay();
+    expect(display.eligible).toBe(true);
+    if (!display.eligible) return;
+    expect(display.done).toBe(false);
+    expect(display.ranked).toEqual([]);
+    expect(display.pendingCount).toBe(4);
+    expect(fake.allStarRankings).toHaveLength(0);
+  });
+
+  it('auto-places the very first entrant with zero questions once the user actually starts, then asks a real question for the second', async () => {
+    seedFourEligibleShows();
+
+    // The first entrant (show-a's a1, first in user_shows order) needed no comparison at all --
+    // it's already placed the moment the user genuinely enters the ranking flow. The second
+    // (show-b's b1) needs a real question against it.
+    await expect(getNextAllStarStep()).resolves.toEqual({ type: 'compare', subject: 'b1', reference: 'a1' });
 
     const display = await getAllStarDisplay();
     expect(display.eligible).toBe(true);
     if (!display.eligible) return;
-
-    // The first entrant (show-a's a1, first in user_shows order) needed no comparison at all --
-    // it's already placed. The second (show-b's b1) needs a real question against it.
     expect(display.done).toBe(false);
     expect(display.ranked).toEqual([
       { episodeId: 'a1', showId: 'show-a', rank: 1, score: scoreForPosition(1, 1), isPlaceholder: false },
     ]);
     expect(display.pendingCount).toBe(3);
-
-    await expect(getNextAllStarStep()).resolves.toEqual({ type: 'compare', subject: 'b1', reference: 'a1' });
   });
 });
 
@@ -476,11 +492,12 @@ describe('resetAllStarRanking', () => {
 describe('hasCompletedOnce', () => {
   it('stays false through the entire first pass, including the trivial auto-placed first entrant', async () => {
     seedFourEligibleShows();
+    // Enter the ranking flow -- marks `hasStarted`, and the very first entrant (a1) auto-places
+    // with zero comparisons as a side effect. `display.ranked` is already non-empty afterward, but
+    // `hasCompletedOnce` must still read false, since it's a durable, per-user "ever fully completed
+    // a pass" flag, not derived from `ranked`/`staleShowIds`.
+    await getNextAllStarStep();
 
-    // The very first entrant (a1) auto-places with zero comparisons as a side effect of this very
-    // call -- `display.ranked` is already non-empty, but `hasCompletedOnce` must still read false,
-    // since this is a durable, per-user "ever fully completed a pass" flag, not derived from
-    // `ranked`/`staleShowIds`.
     let display = await getAllStarDisplay();
     expect(display.eligible).toBe(true);
     if (!display.eligible) return;
@@ -543,6 +560,54 @@ describe('hasCompletedOnce', () => {
     // Post-reset, the first entrant auto-places again with zero comparisons, same as the very
     // first pass ever -- but hasCompletedOnce must stay true throughout.
     expect(display.hasCompletedOnce).toBe(true);
+  });
+});
+
+describe('hasStarted', () => {
+  it('leaves the pool empty and persists nothing across repeated passive getAllStarDisplay calls, until getNextAllStarStep is actually called', async () => {
+    seedFourEligibleShows();
+
+    // Multiple purely passive reads (e.g. repeated dashboard/account-page loads) must not place
+    // anything -- not just the first call.
+    await getAllStarDisplay();
+    await getAllStarDisplay();
+    const display = await getAllStarDisplay();
+    expect(display.eligible).toBe(true);
+    if (!display.eligible) return;
+    expect(display.ranked).toEqual([]);
+    expect(display.pendingCount).toBe(4);
+    expect(fake.allStarRankings).toHaveLength(0);
+    expect(fake.allStarProgress.find((r) => r.user_id === 'user-1')?.has_started).toBeFalsy();
+  });
+
+  it('marks has_started durably on the first real visit to the ranking flow, and every subsequent passive display call reflects the real state from then on', async () => {
+    seedFourEligibleShows();
+
+    await getNextAllStarStep();
+    expect(fake.allStarProgress.find((r) => r.user_id === 'user-1')?.has_started).toBe(true);
+
+    // Now that the user has started, passive display calls resume full derivation -- the
+    // free-first-entrant placement from the call above is visible.
+    const display = await getAllStarDisplay();
+    expect(display.eligible).toBe(true);
+    if (!display.eligible) return;
+    expect(display.ranked).toHaveLength(1);
+  });
+
+  it('is never reset by resetAllStarRanking -- a manual reset does not mean the user has never engaged before', async () => {
+    seedFourEligibleShows();
+    await getNextAllStarStep();
+
+    await resetAllStarRanking();
+
+    expect(fake.allStarProgress.find((r) => r.user_id === 'user-1')?.has_started).toBe(true);
+    // Passive display resumes full derivation immediately (no re-gating post-reset) -- the first
+    // entrant auto-places again with zero comparisons, same as `hasCompletedOnce`'s own post-reset
+    // test above.
+    const display = await getAllStarDisplay();
+    expect(display.eligible).toBe(true);
+    if (!display.eligible) return;
+    expect(display.ranked).toHaveLength(1);
   });
 });
 
@@ -634,6 +699,9 @@ describe('display-only placeholder augmentation for stale entries', () => {
       row('show-r6', 'r6', 6),
       row('show-r4', 'r4', 4)
     );
+    // Rows exist because this user has obviously already engaged with the flow before -- seed
+    // `hasStarted` directly rather than replaying the whole history through `getNextAllStarStep`.
+    fake.allStarProgress.push({ user_id: 'user-1', has_completed_once: false, has_started: true, updated_at: '2026-01-01T00:00:00.000Z' });
 
     const display = await getAllStarDisplay();
     expect(display.eligible).toBe(true);

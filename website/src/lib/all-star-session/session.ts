@@ -345,6 +345,39 @@ async function markAllStarProgressCompleted(supabase: SupabaseSessionClient, use
 }
 
 /**
+ * Reads this user's durable "has ever visited the Top Episodes ranking flow" flag
+ * (`all_star_progress.has_started`) -- see `20260723020000_all_star_has_started.sql`'s header for
+ * the bug this exists to fix (placing the free first pool entrant needs zero comparator calls, so
+ * `getAllStarDisplay` used to auto-place and persist it the instant a newly-eligible user merely
+ * *loaded* the dashboard or account page, before ever clicking "Rank Top Episodes"). No row at all
+ * (brand new user) means "never started," i.e. `false` -- same style as `loadHasCompletedOnce`.
+ */
+async function loadHasStarted(supabase: SupabaseSessionClient, userId: string): Promise<boolean> {
+  const { data, error } = await supabase.from('all_star_progress').select('has_started').eq('user_id', userId);
+  if (error) {
+    throw new Error(`Failed to load all-star progress: ${error.message}`);
+  }
+  const rows = (data ?? []) as { has_started: boolean }[];
+  return rows[0]?.has_started ?? false;
+}
+
+/**
+ * Latches `all_star_progress.has_started` to `true` for this user -- called from `getNextAllStarStep`,
+ * the `/top-episodes/rank` route's entry point, so it's set the moment the user genuinely engages
+ * with the feature (whether or not that first call happens to resolve any placements). Idempotent
+ * upsert, cheap to call on every visit. Deliberately never called from `resetAllStarRanking` -- same
+ * posture as `has_completed_once`, a manual reset doesn't mean the user has never engaged before.
+ */
+async function markAllStarStarted(supabase: SupabaseSessionClient, userId: string): Promise<void> {
+  const { error } = await supabase
+    .from('all_star_progress')
+    .upsert({ user_id: userId, has_started: true, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+  if (error) {
+    throw new Error(`Failed to persist all-star progress: ${error.message}`);
+  }
+}
+
+/**
  * Drives every pending entrant through comparative placement, one at a time, via a replay
  * comparator (`makeReplayComparator`, reused unmodified from `@/lib/ranking-session/comparator`).
  * Loops rather than stopping after the first entrant — same reasoning as
@@ -506,6 +539,15 @@ function buildDisplayRanked(
  * writes `all_star_rankings` rows) while the section isn't even shown would mutate state the user
  * has no way to see or act on yet. Reconciliation (inside `loadAllStarPool`) still always runs
  * regardless of eligibility, since it's pure cleanup, not new placement.
+ *
+ * Also skips `deriveNextAllStarStep` while `!hasStarted` (`all_star_progress.has_started`, see
+ * `20260723020000_all_star_has_started.sql`) -- even once eligible, this function is called by
+ * purely passive display paths (`/dashboard`, `/u/[username]`'s account page), and placing the free
+ * first entrant into an empty pool takes zero comparator calls, so calling `deriveNextAllStarStep`
+ * unconditionally used to persist that placement the instant a newly-eligible user merely loaded one
+ * of those pages, before ever clicking "Rank Top Episodes" (Kayvan, 2026-07-23: "This should be
+ * empty until i rank my top episodes"). `getNextAllStarStep` (the actual ranking route's entry
+ * point) marks `hasStarted` true and is unaffected by this gate.
  */
 export async function getAllStarDisplay(): Promise<AllStarDisplay> {
   const supabase = await createSupabaseServerClient();
@@ -514,10 +556,22 @@ export async function getAllStarDisplay(): Promise<AllStarDisplay> {
   // affected by any auto-placement `deriveNextAllStarStep` below is about to do. See
   // `loadHasCompletedOnce`'s doc comment.
   const hasCompletedOnce = await loadHasCompletedOnce(supabase, userId);
+  const hasStarted = await loadHasStarted(supabase, userId);
   const loaded = await loadAllStarPool(supabase, userId);
 
   if (loaded.livePool.size < ELIGIBILITY_THRESHOLD) {
     return { eligible: false, hasCompletedOnce };
+  }
+
+  if (!hasStarted) {
+    return {
+      eligible: true,
+      hasCompletedOnce,
+      done: false,
+      ranked: [],
+      pendingCount: loaded.pendingShowIds.length,
+      staleShowIds: loaded.staleShowIds,
+    };
   }
 
   const { step, ranked } = await deriveNextAllStarStep(supabase, userId, loaded);
@@ -564,10 +618,16 @@ export async function getAllStarDisplay(): Promise<AllStarDisplay> {
  * `ELIGIBILITY_THRESHOLD` -- it's a lower-level primitive the `/top-episodes/rank` route calls
  * directly, and that route is only ever linked to from the dashboard once the section is already
  * showing, so eligibility has already been satisfied by the time this runs in practice.
+ *
+ * Marks `all_star_progress.has_started` before deriving anything -- this is the one genuine entry
+ * point into the ranking flow (the user navigated here, whether via the dashboard's link or
+ * directly), so it's the right place to flip the flag `getAllStarDisplay`'s passive display path
+ * gates on. See `20260723020000_all_star_has_started.sql` and `markAllStarStarted`'s doc comment.
  */
 export async function getNextAllStarStep(): Promise<NextAllStarStep> {
   const supabase = await createSupabaseServerClient();
   const userId = await requireUserId(supabase);
+  await markAllStarStarted(supabase, userId);
   const loaded = await loadAllStarPool(supabase, userId);
   const { step } = await deriveNextAllStarStep(supabase, userId, loaded);
   return step;

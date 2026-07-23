@@ -1019,6 +1019,51 @@ real hands-on check — critically, from a **second account** (or an accepted-fo
 confirming another user's shows/top episodes actually render when public/followed and are correctly
 withheld when private and not followed — see Bucket 2.
 
+**Same session, continued.** Kayvan applied the migration and hands-on tested with a real second
+account (4 ranked shows) — 3 of 4 checks confirmed working cleanly: "Rank Top Episodes" behaves
+correctly and updates on a #1 change (with the right prompt); a public profile correctly shows
+avatar/username/follower-following counts/shows-with-#1/top-episodes; the same works correctly for a
+private-but-followed profile. One real, confirmed issue: **a newly-eligible user's first-ranked
+show's #1 episode was already showing in "Top Episodes" before they'd ever clicked "Rank Top
+Episodes."** Investigated and confirmed this is **not a new bug from today's account-page build** —
+it's a previously-accepted mechanism from the original All Stars Mode build (2026-07-19/21):
+`placeEpisodeComparatively` against an empty pool needs zero comparator calls, so
+`getAllStarDisplay()` was auto-placing and persisting that free first entrant as a side effect of
+merely being *called* (dashboard load, now also the account page) — `20260721000000_all_star_
+progress.sql`'s own header even documents this exact mechanism, but that migration only fixed the
+resulting button-label symptom ("Update" showing on a first-ever visit), not the underlying
+pre-population itself. `TopEpisodesSection.tsx`'s own doc comment confirms this was a deliberate,
+documented call at the time ("the ranked list, if any entries exist yet from the zero-comparison
+auto-placement above, still renders alongside it"). Kayvan's fresh-eyes feedback is a legitimate
+reversal of that call, not a new bug — treated as such rather than silently redesigned.
+**Fixed directly** (small, mechanical, mirrors an existing identical pattern in the same file — not
+dispatched): a new durable per-user flag, `all_star_progress.has_started`
+(`20260723020000_all_star_has_started.sql`), set only by `getNextAllStarStep` (the actual
+`/top-episodes/rank` entry point — the one genuine "the user engaged" signal). `getAllStarDisplay`
+(the passive path `/dashboard` and `/u/[username]` both call) now skips `deriveNextAllStarStep`
+entirely while `!hasStarted`, returning a genuinely empty `ranked: []` instead of silently
+persisting the free placement. Once a user visits the ranking flow for real, `hasStarted` latches
+permanently true (never reset by `resetAllStarRanking`, same posture as `hasCompletedOnce`) and
+`getAllStarDisplay` resumes its normal full-derive behavior from then on. Verified the fix is safe
+against the existing upsert pattern before writing it: `markAllStarProgressCompleted`'s existing
+upsert only sets `has_completed_once`/`updated_at`, and Postgres's `ON CONFLICT DO UPDATE` (what
+Supabase's `.upsert()` compiles to) only touches columns actually present in the payload, so it
+can't clobber `has_started` on conflict, and vice versa — confirmed this matches the existing test
+double's own merge-not-overwrite upsert semantics too before relying on it.
+Updated the existing test suite to match the new, intended contract rather than leave it encoding
+the reversed behavior: three existing tests that called `getAllStarDisplay()` directly (with no
+prior engagement) and expected the free-first-entrant placement to already be visible were rewritten
+to call `getNextAllStarStep()` first, or seed `has_started` directly when a test's premise requires
+already-existing `all_star_rankings` rows without replaying the whole history. Added a new dedicated
+`hasStarted` test block (repeated passive calls stay empty and persist nothing; the flag latches
+durably on first real engagement and every subsequent passive call reflects real state; a manual
+reset doesn't clear it). 441/441 tests (4 new), clean typecheck/lint/build. Committed directly to
+`main` (`all-star-session/session.ts`/`.test.ts` + the new migration) — classified as a small,
+mechanical, well-precedented fix (not correctness-critical in the security sense), matching this
+project's own prior judgment call for similarly-scoped fixes (e.g. the 2026-07-22 session's Bucket 1
+item 2 ordering fix) rather than a full implementer+reviewer dispatch.
+Not yet applied to live Supabase or hands-on re-confirmed — see Bucket 2.
+
 ## Punch List (ranked — read this section first for "what's actually next")
 
 Every open item gets triaged into exactly one bucket the moment it surfaces, per
@@ -1277,16 +1322,17 @@ in Bucket 4, rather than being done piecemeal now.
    existing follower correctly staying visible in "Following" after the target goes private. Removed
    from Bucket 2.
 17. **Account page, built, independently reviewed, and merged 2026-07-23 (`48b1677`, `4d59e1e`)** —
-   not yet applied to live Supabase or hands-on checked. Needs: apply
-   `supabase/migrations/20260723010000_account_page_visibility.sql` to live Supabase (adds
-   `user_profiles.avatar_url`, the `avatars` Storage bucket, widens the safe-projection identity RPCs,
-   adds cross-user SELECT policies on `user_shows`/`episode_rankings`/`all_star_rankings`), then
-   confirm hands-on: (a) avatar upload on `/settings` (PNG/JPEG/WEBP, rejects an oversized or wrong-
-   type file); (b) your own account page (`/u/[your-username]`) shows your avatar, shows list, top
-   episodes, and the "No collections yet." placeholder correctly; (c) — the real point of this feature
-   — from a **second** account (or via an accepted-follower relationship), confirm another user's
-   shows/top episodes actually render when their profile is public or you follow them, and are
-   correctly withheld (private-account message only, no shows/episodes) when private and not followed.
+   migration applied 2026-07-23; hands-on confirmed with a real second (4-show) account: "Rank Top
+   Episodes" works and updates correctly on a #1 change (with the right prompt), and — the real point
+   of the feature — both a public profile and a private-but-followed profile correctly show
+   avatar/username/follower-following counts/shows-with-#1/top-episodes to another user. Not yet
+   checked: avatar upload's file-type/size rejection on `/settings`, and the "No collections yet."
+   placeholder rendering correctly.
+   One real issue found (a pre-existing All Stars Mode behavior this build's fresh testing surfaced,
+   not a new bug — see History) — **fixed same session** (`20260723020000_all_star_has_started.sql`)
+   — not yet applied to live Supabase or re-confirmed: apply that migration, then confirm a **brand
+   new** eligible user's Top Episodes section stays genuinely empty until "Rank Top Episodes" is
+   actually clicked.
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
 (empty for now — every question posed 2026-07-17 is resolved: remove-show/re-ranking's scope, the
