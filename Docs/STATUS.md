@@ -1064,6 +1064,26 @@ project's own prior judgment call for similarly-scoped fixes (e.g. the 2026-07-2
 item 2 ordering fix) rather than a full implementer+reviewer dispatch.
 Not yet applied to live Supabase or hands-on re-confirmed — see Bucket 2.
 
+**Same session, continued — at 37% usage, asked what's next.** Presented finishing the remaining
+account-page checks vs. picking up the next Tier B phase; Kayvan chose community rank specifically
+(not the full "community rank + Discover" bundle — Discover stays a separate, not-yet-scheduled
+piece per `AppSpec.md`'s own "built entirely on the same aggregate infrastructure" framing).
+Wrote the SQL migration directly (`20260723030000_community_rank.sql`), same posture as today's
+earlier migrations: `community_rank_for_episode(episode_id)`, a `security invoker` function (not
+`security definer` — deliberately, since it never needs to see anything the caller couldn't already
+see) that averages the derived score across every public user who's comparatively placed the episode,
+scoped per-show per-user for the score formula's "N," replicating `@/lib/ranking/score.ts`'s
+`scoreForPosition`/`spread` exactly in SQL. Notably needs **no new RLS policy at all** — it relies
+entirely on the "public owner" SELECT policy the account-page migration already added to
+`episode_rankings` earlier this same session, so the aggregate only ever touches rows already visible
+to any authenticated caller. Cold-start-bucket-only placements excluded, matching `AppSpec.md`'s
+already-documented v1 simplification. Dispatched one implementer for the app layer (a new read-only
+lib function, rendering "Community rank" alongside "your rank" on the episode detail page) — instructed
+to hand-trace the SQL formula against `score.ts` before writing anything, and to flag rather than
+silently "fix" the migration if it finds a mismatch. Classified as reusing already-reviewed exposure
+surface with no new write paths — implementer + PM review, not a full independent-reviewer pipeline
+(same reasoning as the season-poster/episode-page-credits class of work earlier in the project).
+
 ## Punch List (ranked — read this section first for "what's actually next")
 
 Every open item gets triaged into exactly one bucket the moment it surfaces, per
