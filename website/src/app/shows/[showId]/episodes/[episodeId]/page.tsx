@@ -4,7 +4,11 @@ import { notFound, redirect } from 'next/navigation';
 
 import { createSupabaseServerClient } from '@/lib/supabase/serverSession';
 import { AppHeader } from '@/components/AppHeader';
-import { getEpisodeComparisonRecord, getShowRankingDisplay } from '@/lib/ranking-session';
+import {
+  getCommunityRankForEpisode,
+  getEpisodeComparisonRecord,
+  getShowRankingDisplay,
+} from '@/lib/ranking-session';
 import type { EpisodeComparisonRecord } from '@/lib/ranking-session';
 import { isSeasonFinale } from '@/lib/shows/seasonFinale';
 import { tmdbFetch } from '@/lib/tmdb/client';
@@ -113,6 +117,14 @@ function formatAirDate(dateString: string): string {
  * is appended to the "Return to ranking" link too, for exactly the same round-trip-preservation
  * reason `mode` already is — this is the season-scoped counterpart of the gap that `mode` fixed for
  * whole-show rank-all (see `Docs/STATUS.md`).
+ *
+ * Also renders "community rank" (`getCommunityRankForEpisode`, `@/lib/ranking-session`) alongside
+ * "your rank" — the average derived score for this episode across every public user who has it
+ * comparatively placed (see `supabase/migrations/20260723030000_community_rank.sql` and
+ * `Docs/AppSpec.md`'s "Community rank" section). Rendered regardless of whether the signed-in user
+ * has ranked this episode themselves (community rank is about the community, not "your rank"
+ * existing), and fails open on an RPC error the same way the TMDB credits fetch below does — a
+ * community-rank hiccup shouldn't take down the whole episode page.
  */
 export default async function EpisodeDetailPage({
   params,
@@ -189,6 +201,19 @@ export default async function EpisodeDetailPage({
     rankingDisplay && !rankingDisplay.done
       ? rankingDisplay.coldStartPending.find((entry) => entry.episodeId === episodeId)
       : undefined;
+
+  // Community rank is independent of "your rank" -- fetched regardless of whether this user has
+  // ranked the episode. Fails open (null) on an RPC error, same convention the TMDB credits fetch
+  // below uses: this is enrichment, not core page functionality, so a hiccup here shouldn't 500 the
+  // whole page.
+  let communityRank: { averageScore: number; sampleSize: number } | null = null;
+  if (episode) {
+    try {
+      communityRank = await getCommunityRankForEpisode(episode.id);
+    } catch {
+      communityRank = null;
+    }
+  }
 
   // Live, uncached, server-only fetch — no DB column, no persistence. Fail-open: any error (TMDB
   // down, missing token, unexpected 404) just means no credits section renders, same convention
@@ -289,6 +314,14 @@ export default async function EpisodeDetailPage({
                   </Link>
                 )}
               </div>
+
+              <p className="text-sm text-black/60 dark:text-white/60">
+                {communityRank
+                  ? `Community: ${communityRank.averageScore.toFixed(1)} (${communityRank.sampleSize} ${
+                      communityRank.sampleSize === 1 ? 'person' : 'people'
+                    })`
+                  : 'Not enough community data yet'}
+              </p>
 
               {episode.air_date && (
                 <p className="text-sm text-black/60 dark:text-white/60">
