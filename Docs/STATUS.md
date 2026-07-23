@@ -1118,6 +1118,31 @@ Worktree and branches cleaned up. **Community rank is now built and merged.**
 caveat didn't bite, it applied cleanly on the first try — and hands-on confirmed community rank
 working correctly on the episode detail page. Removed from Bucket 2. **Community rank is fully done.**
 
+**Same session, continued.** Kayvan asked for a real information-architecture change (not a new Tier
+B feature): merge `/dashboard` and `/settings` into one "My Profile" page — avatar/username/email up
+top, follower/following counts (newly clickable, linking to real list pages that don't exist yet),
+the existing public/private visibility toggle, then the existing shows list and Top Episodes section
+unchanged. Asked clarifying questions before building, per Kayvan's own explicit request rather than
+guessing: (1) how deep "the option to add an email if no email exists" should go, given
+`user_profiles`'s own schema comment already flagged this as a real future Supabase Auth mutation
+(changing `auth.users.email`, needing its own confirmation-email flow) roughly comparable in
+complexity to the original signup build — **Kayvan chose to defer it**, logged as a new Bucket 4 item
+rather than half-built now; (2) whether "search for shows" should stay the existing link or become
+inline — **Kayvan chose to keep it as-is**.
+Grounded the rest directly in code before dispatching (read both full pages plus every supporting
+component/action/test file, and grepped every `/dashboard`/`/settings` reference in the app — 25 files
+touch `/dashboard`, only 2 actually link to `/settings` specifically) — confirmed **no new database
+schema or RLS policy is needed anywhere in this task**: the new followers/following list pages reuse
+`follows`' own existing "you can read rows where you're a party" SELECT policy and the existing
+safe-projection identity lookup (`lookupProfileIdentitiesByUserIds`) the dashboard's "Following"
+section already uses today. Decided (not asked, low-risk/reversible): keep `/dashboard` as the URL
+rather than a new route (avoids touching the 25 files that already reference it); `/settings` becomes
+a server-side `redirect('/dashboard')`, not deleted outright; remove the dashboard's existing "Logged
+in as {email} / Log out" row entirely (redundant once the new profile header shows email directly,
+and `AppHeader`'s persistent sign-out link is unaffected). Classified as pure reorganization + two new
+read-only pages, no new correctness-critical surface (no schema/RLS at all) — implementer + direct PM
+review, not a full independent-reviewer pipeline, dispatched now.
+
 ## Punch List (ranked — read this section first for "what's actually next")
 
 Every open item gets triaged into exactly one bucket the moment it surfaces, per
@@ -1632,6 +1657,15 @@ see Bucket 4.)
     `<img src>`, React-escaped, no script execution) — not a real vulnerability, just looser than it
     needs to be. If ever tightened: validate the URL is under the app's own `avatars` bucket, prefixed
     with the caller's own `user_id`.
+26. **"Add an email" for synthetic-email-only accounts** — deferred 2026-07-23 at Kayvan's explicit
+    choice, during the "My Profile" page merge (see History). A real feature, not a stopgap: needs a
+    genuine Supabase Auth email-change flow (a new-email form, `supabase.auth.updateUser({ email })`
+    triggering Supabase's own confirmation email to the new address, and a new callback route —
+    `/auth/confirm` today only handles the `type=signup` case, not `type=email_change` — that confirms
+    the change and syncs `user_profiles.auth_email`/`has_real_email` to match). Roughly comparable in
+    complexity/risk to the original username+password signup build — deserves its own grounded design
+    pass when picked up, not a quick bolt-on. "My Profile" shows "No email on file" with no
+    interactive control in the meantime, for any account with `has_real_email: false`.
 
 **Bucket 5 — Rework flagged for a later phase, not being worked now:**
 (empty for now)
