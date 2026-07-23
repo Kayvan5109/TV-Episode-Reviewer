@@ -7,11 +7,11 @@ import { claimUsername, type ClaimUsernameState } from './actions';
 const initialState: ClaimUsernameState = undefined;
 
 /**
- * Shown on `/settings` instead of the edit form when the signed-in user has no `user_profiles` row
- * yet (a legacy, pre-username account -- see `claimUsername` in `./actions.ts` for the full story).
- * On success, the parent Server Component re-fetches (via `claimUsername`'s `revalidatePath` plus
- * this form's own action-triggered refresh) and swaps this out for the normal edit form once the row
- * exists -- no client-side redirect needed.
+ * Shown on `/dashboard` instead of the profile header/edit form when the signed-in user has no
+ * `user_profiles` row yet (a legacy, pre-username account -- see `claimUsername` in `./actions.ts`
+ * for the full story). On success, the parent Server Component re-fetches (via `claimUsername`'s
+ * `revalidatePath` plus this form's own action-triggered refresh) and swaps this out for the normal
+ * profile header/edit form once the row exists -- no client-side redirect needed.
  */
 export function ClaimUsernameForm() {
   const [state, formAction, pending] = useActionState(claimUsername, initialState);

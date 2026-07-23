@@ -26,10 +26,7 @@ export function AppHeader() {
           Search Shows
         </Link>
         <Link href="/dashboard" className="text-sm underline underline-offset-2">
-          Dashboard
-        </Link>
-        <Link href="/settings" className="text-sm underline underline-offset-2">
-          Settings
+          My Profile
         </Link>
         <form action={signOut}>
           <button type="submit" className="cursor-pointer text-sm underline underline-offset-2">
