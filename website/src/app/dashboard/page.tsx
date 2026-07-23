@@ -260,20 +260,14 @@ export default async function DashboardPage() {
           {!profileError && ownProfile && (
             <>
               <div className="flex items-center gap-3">
-                {ownProfile.avatar_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- external Supabase Storage CDN image.
-                  <img
-                    src={ownProfile.avatar_url}
-                    alt=""
-                    width={64}
-                    height={64}
-                    className="h-16 w-16 rounded-full object-cover"
-                  />
-                ) : (
-                  <span className="flex h-16 w-16 items-center justify-center rounded-full bg-black/10 text-xl font-medium dark:bg-white/10">
-                    {ownProfile.username.charAt(0).toUpperCase()}
-                  </span>
-                )}
+                {/* The avatar image + upload control live in one place, not duplicated: this *is*
+                    the profile header's avatar, not a separate static display alongside a second
+                    editable one further down the page. */}
+                <AvatarUploadForm
+                  userId={user.id}
+                  username={ownProfile.username}
+                  initialAvatarUrl={ownProfile.avatar_url}
+                />
                 <div className="flex flex-col gap-1">
                   <p className="font-medium">{ownProfile.display_name ?? ownProfile.username}</p>
                   <p className="text-sm text-black/60 dark:text-white/60">@{ownProfile.username}</p>
@@ -295,11 +289,6 @@ export default async function DashboardPage() {
                 </Link>
               </div>
 
-              <AvatarUploadForm
-                userId={user.id}
-                username={ownProfile.username}
-                initialAvatarUrl={ownProfile.avatar_url}
-              />
               <SettingsForm
                 displayName={ownProfile.display_name}
                 rankingsVisibility={ownProfile.rankings_visibility}
