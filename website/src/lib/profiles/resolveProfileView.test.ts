@@ -7,6 +7,7 @@ const publicRow: ProfileRow = {
   username: 'them',
   display_name: 'Them',
   rankings_visibility: 'public',
+  avatar_url: null,
 };
 
 const privateRow: ProfileRow = {
@@ -14,6 +15,7 @@ const privateRow: ProfileRow = {
   username: 'them',
   display_name: 'Them',
   rankings_visibility: 'private',
+  avatar_url: null,
 };
 
 describe('resolveProfileView', () => {

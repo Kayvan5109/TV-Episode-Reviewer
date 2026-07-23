@@ -20,7 +20,13 @@ describe('lookupProfileIdentityByUsername', () => {
   });
 
   it('returns the single row when the RPC finds a profile (public or private -- the whole point of this function)', async () => {
-    const row = { user_id: 'them', username: 'them', display_name: 'Them', rankings_visibility: 'private' as const };
+    const row = {
+      user_id: 'them',
+      username: 'them',
+      display_name: 'Them',
+      rankings_visibility: 'private' as const,
+      avatar_url: 'https://example.com/avatars/them/avatar-1.png',
+    };
     rpc.mockResolvedValue({ data: [row], error: null });
 
     const result = await lookupProfileIdentityByUsername('them');
@@ -58,8 +64,14 @@ describe('lookupProfileIdentitiesByUserIds', () => {
 
   it('returns every row the RPC finds, including private profiles (the fix for the vanishing-Following-entry bug)', async () => {
     const rows = [
-      { user_id: 'a', username: 'alice', display_name: null, rankings_visibility: 'public' as const },
-      { user_id: 'b', username: 'bob', display_name: 'Bob', rankings_visibility: 'private' as const },
+      { user_id: 'a', username: 'alice', display_name: null, rankings_visibility: 'public' as const, avatar_url: null },
+      {
+        user_id: 'b',
+        username: 'bob',
+        display_name: 'Bob',
+        rankings_visibility: 'private' as const,
+        avatar_url: 'https://example.com/avatars/b/avatar-1.png',
+      },
     ];
     rpc.mockResolvedValue({ data: rows, error: null });
 

@@ -13,6 +13,10 @@
  * "private and not yours," by construction, back when the caller queried `user_profiles` directly
  * under its own public-or-your-own-row SELECT policy -- that policy is unchanged, but this page no
  * longer uses it for the profile-being-viewed lookup, precisely so private profiles stop 404ing.)
+ *
+ * **Widened 2026-07-23** (account page build): `ProfileRow` now carries `avatar_url` too, mirroring
+ * `ProfileIdentity`'s own widening in the same migration -- the account page needs it to render the
+ * viewed profile's avatar.
  */
 
 export interface ProfileRow {
@@ -20,6 +24,7 @@ export interface ProfileRow {
   username: string;
   display_name: string | null;
   rankings_visibility: 'private' | 'public';
+  avatar_url: string | null;
 }
 
 export type ProfileView =

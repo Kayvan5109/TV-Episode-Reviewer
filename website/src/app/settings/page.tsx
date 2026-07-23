@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { AppHeader } from '@/components/AppHeader';
 import { createSupabaseServerClient } from '@/lib/supabase/serverSession';
 
+import { AvatarUploadForm } from './AvatarUploadForm';
 import { ClaimUsernameForm } from './ClaimUsernameForm';
 import { SettingsForm } from './SettingsForm';
 
@@ -20,6 +21,7 @@ interface ProfileRow {
   username: string;
   display_name: string | null;
   rankings_visibility: 'private' | 'public';
+  avatar_url: string | null;
 }
 
 /**
@@ -52,7 +54,7 @@ export default async function SettingsPage() {
 
   const { data: profileData, error } = await supabase
     .from('user_profiles')
-    .select('username, display_name, rankings_visibility')
+    .select('username, display_name, rankings_visibility, avatar_url')
     .eq('user_id', user.id)
     .maybeSingle();
 
@@ -88,6 +90,11 @@ export default async function SettingsPage() {
                   </>
                 )}
               </p>
+              <AvatarUploadForm
+                userId={user.id}
+                username={profile.username}
+                initialAvatarUrl={profile.avatar_url}
+              />
               <SettingsForm
                 displayName={profile.display_name}
                 rankingsVisibility={profile.rankings_visibility}
