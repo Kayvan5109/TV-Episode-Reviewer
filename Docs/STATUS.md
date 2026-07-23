@@ -1143,6 +1143,24 @@ and `AppHeader`'s persistent sign-out link is unaffected). Classified as pure re
 read-only pages, no new correctness-critical surface (no schema/RLS at all) — implementer + direct PM
 review, not a full independent-reviewer pipeline, dispatched now.
 
+**Same session, continued.** Implementer landed cleanly on its own branch
+(`worktree-agent-a847d88b1c3899faf`, commit `333d49e`) — 446/446 tests, clean typecheck/lint/build,
+`main` confirmed untouched. Kept the dashboard's existing inline "Following" list rather than
+removing it (reasoned in its own report: "Follow requests" needs to live somewhere on the page
+regardless, and losing the at-a-glance list would mean an extra click for something visible today) —
+a sensible call, left as-is. Confirmed `/settings` compiles as a genuine static 307 redirect, not
+just a file that exists.
+PM reviewed the full diff directly before merging (not on the implementer's report alone) — found one
+real UX defect: the new profile header rendered a static avatar image, and `AvatarUploadForm`
+(moved further down the page) rendered its *own* avatar preview + upload control again, so the same
+picture showed twice. Fixed directly on the implementer's own branch (small, contained, no
+schema/RLS): the header now renders `AvatarUploadForm` itself as the one editable avatar, instead of
+a separate static duplicate. Independently reran the full check suite after the fix (tsc/lint clean,
+446/446, build clean, route list confirmed `/dashboard/followers`/`/dashboard/following` as new
+dynamic routes and `/settings` as the redirect). Committed the docs on `main` first (`ff59ab2`),
+merged (`--no-ff`), reran the full suite a second time on merged `main` (clean) before pushing.
+**"My Profile" is now built, reviewed, and merged.** Not yet hands-on checked — see Bucket 2.
+
 ## Punch List (ranked — read this section first for "what's actually next")
 
 Every open item gets triaged into exactly one bucket the moment it surfaces, per
@@ -1415,6 +1433,14 @@ in Bucket 4, rather than being done piecemeal now.
 18. ~~**Community rank, built and merged 2026-07-23 (`85d59e1`, `02007a1`)**~~ — migration applied
    cleanly (the never-run-against-real-Postgres caveat didn't bite), **hands-on confirmed working**.
    Removed from Bucket 2.
+19. **"My Profile" (the `/dashboard` + `/settings` merge), built, PM-reviewed, and merged 2026-07-23**
+   — no migration needed (no new schema/RLS). Needs a hands-on check: avatar upload from the new
+   header position (should show once, live-updating, not twice); username/email/"No email on file"
+   display correctly; follower/following counts link to real, correctly-populated list pages;
+   visibility toggle and display-name edit still work exactly as they did on the old `/settings`;
+   `/settings` itself redirects to `/dashboard` rather than 404ing; the nav's "My Profile" link and
+   removed "Settings" link look right; shows list, Following list, Follow requests, and Top Episodes
+   all still work exactly as before the merge.
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
 (empty for now — every question posed 2026-07-17 is resolved: remove-show/re-ranking's scope, the
