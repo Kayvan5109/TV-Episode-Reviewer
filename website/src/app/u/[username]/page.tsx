@@ -180,7 +180,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
           </div>
 
           {isOwnProfile ? (
-            <Link href="/settings" className="text-sm underline underline-offset-2">
+            <Link href="/dashboard" className="text-sm underline underline-offset-2">
               Edit your profile
             </Link>
           ) : isFollowing || profile.rankings_visibility === 'public' ? (

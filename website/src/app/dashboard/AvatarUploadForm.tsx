@@ -23,11 +23,13 @@ interface AvatarUploadFormProps {
 }
 
 /**
- * Avatar upload control on `/settings`. Uploads directly to the public `avatars` Storage bucket via
- * the browser Supabase client (`@/lib/supabase/client`) -- not through a Server Action, since a
- * Server Action would have to receive the whole file over the wire a second time for no benefit; the
- * browser talking to Supabase Storage directly is the standard pattern here, and object-level RLS on
- * `storage.objects` (restricted to a `{auth.uid()}/...` path prefix -- see
+ * Avatar upload control on `/dashboard` (moved here from `/settings` when the two pages were merged
+ * into one "My Profile" page -- see Docs/STATUS.md's dated entry for that merge). Uploads directly
+ * to the public `avatars` Storage bucket via the browser Supabase client (`@/lib/supabase/client`)
+ * -- not through a Server Action, since a Server Action would have to receive the whole file over
+ * the wire a second time for no benefit; the browser talking to Supabase Storage directly is the
+ * standard pattern here, and object-level RLS on `storage.objects` (restricted to a
+ * `{auth.uid()}/...` path prefix -- see
  * `supabase/migrations/20260723010000_account_page_visibility.sql`) is what actually keeps this safe,
  * not anything client-side.
  *

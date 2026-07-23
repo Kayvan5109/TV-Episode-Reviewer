@@ -9,21 +9,37 @@ import { lookupProfileIdentitiesByUserIds } from '@/lib/profiles/profileIdentity
 import { getShowRankingDisplay, topEpisodeOf } from '@/lib/ranking-session';
 import { ensureShowSynced } from '@/lib/shows/refreshShow';
 
-import { logout } from './actions';
+import { AvatarUploadForm } from './AvatarUploadForm';
+import { ClaimUsernameForm } from './ClaimUsernameForm';
 import { IncomingFollowRequestActions } from './IncomingFollowRequestActions';
+import { SettingsForm } from './SettingsForm';
 import { TopEpisodesSection } from './TopEpisodesSection';
 
 export const metadata: Metadata = {
-  title: 'Dashboard — Episode Ranker',
+  title: 'My Profile — Episode Ranker',
 };
 
 // This page reads the caller's session on every request (via `createSupabaseServerClient`) and
-// must never be served from a static/prerendered cache — one user's "logged in as" placeholder
-// must never be shown to another. `force-dynamic` also sidesteps a build-time footgun: without it,
+// must never be served from a static/prerendered cache — one user's profile data must never be
+// shown to another. `force-dynamic` also sidesteps a build-time footgun: without it,
 // `next build`'s static-generation pass would try to render this page with no request present,
 // throwing our own "env vars missing"/"no session" errors as build failures instead of leaving the
 // page to render per-request.
 export const dynamic = 'force-dynamic';
+
+interface OwnProfileRow {
+  username: string;
+  display_name: string | null;
+  rankings_visibility: 'private' | 'public';
+  avatar_url: string | null;
+  auth_email: string | null;
+  has_real_email: boolean;
+}
+
+interface FollowCountsRow {
+  follower_count: number;
+  following_count: number;
+}
 
 interface MyShowRow {
   show_id: string;
@@ -43,9 +59,11 @@ interface FollowingProfile {
 }
 
 /**
- * Authenticated landing page: "my shows" (see `user_shows` — the design decision for tracking
- * "shows I've added", documented in `supabase/migrations/20260715010000_user_shows.sql`) plus a
- * link to search for a new one. The actual ranking flow is piece 2b's work, built on top of this.
+ * "My Profile" — the merged `/dashboard` + `/settings` page (see Docs/STATUS.md's dated entry for
+ * this merge: `/dashboard` keeps its URL since 25+ files already reference it; `/settings` becomes a
+ * plain server-side redirect here, `./../settings/page.tsx`). Combines what used to be two separate
+ * pages: profile identity/settings (avatar, display name, visibility, username claiming) plus "my
+ * shows"/"following"/"follow requests"/"Top Episodes", all under one authenticated landing page.
  *
  * This page does its own authoritative session check (via `getUser()`, which revalidates against
  * Supabase Auth) rather than relying solely on `src/proxy.ts`'s optimistic cookie check — Next.js's
@@ -61,17 +79,27 @@ export default async function DashboardPage() {
     redirect('/login');
   }
 
-  // Own-row avatar lookup (Docs/STATUS.md, 2026-07-23 account page build) -- purely a small display
-  // addition next to "Logged in as", not a security-relevant read: `user_profiles`' own SELECT
-  // policy already lets a user read their own row unconditionally. `maybeSingle()` since a legacy,
-  // pre-`user_profiles` account (see `settings/page.tsx`'s `ClaimUsernameForm` doc comment) has no
-  // row at all -- absent, not an error, and just falls back to no avatar/placeholder below.
-  const { data: ownProfileData } = await supabase
+  // Own-row profile read: single query covering everything the profile header, visibility form, and
+  // email display need (`user_profiles`' own SELECT policy already lets a user read their own row
+  // unconditionally). `maybeSingle()` since a legacy, pre-`user_profiles` account (see
+  // `ClaimUsernameForm`'s doc comment) has no row at all -- absent, not an error, and renders
+  // `ClaimUsernameForm` instead of the profile header/visibility form below.
+  const { data: ownProfileData, error: profileError } = await supabase
     .from('user_profiles')
-    .select('avatar_url, username')
+    .select('username, display_name, rankings_visibility, avatar_url, auth_email, has_real_email')
     .eq('user_id', user.id)
     .maybeSingle();
-  const ownProfile = ownProfileData as { avatar_url: string | null; username: string } | null;
+
+  const ownProfile = ownProfileData as OwnProfileRow | null;
+
+  // Follower/following counts for the signed-in user's own profile, via the same SECURITY DEFINER
+  // `follow_counts` RPC `/u/[username]` already uses -- only meaningful once a `user_profiles` row
+  // exists (the counts link to the header block below, which is itself gated on `ownProfile`).
+  let followCounts: FollowCountsRow = { follower_count: 0, following_count: 0 };
+  if (ownProfile) {
+    const { data: countsRows } = await supabase.rpc('follow_counts', { target_user_id: user.id });
+    followCounts = (countsRows as FollowCountsRow[] | null)?.[0] ?? followCounts;
+  }
 
   // RLS already scopes `user_shows` to this user's own rows (see the migration's policies); the
   // explicit `.eq` below is defense-in-depth, not the security boundary — `user.id` comes from the
@@ -91,16 +119,14 @@ export default async function DashboardPage() {
   // queries rather than one embedded join: `follows.followee_id` and `user_profiles.user_id` both
   // reference `auth.users`, not each other directly, so there's no FK path between the two tables
   // for Postgrest to auto-embed through -- same batched-lookup shape this page already uses for
-  // `topEpisodeIds`/`allStarEpisodeIds` above.
+  // `topEpisodeIds`/`allStarEpisodeIds` below.
   //
-  // **Revised 2026-07-22** (fixes the display bug from Docs/STATUS.md's "Kayvan's hands-on testing
-  // of Phase 1" History entry): previously resolved via a direct `user_profiles` query, which the
-  // widened-but-still-public-or-you SELECT policy silently dropped once a followee went private --
-  // the entry just vanished from this list, even though the underlying `follows` row (the actual
-  // relationship) was never deleted. Now goes through `lookupProfileIdentitiesByUserIds`
-  // (`@/lib/profiles/profileIdentity`), the SECURITY DEFINER safe-projection RPC that resolves ANY
-  // existing user_id -- so a followed-then-gone-private user still appears here, with whatever
-  // identity info is safe to show (username at minimum), instead of silently disappearing.
+  // Kept alongside the new `/dashboard/following` page (a fuller followee list with avatars) rather
+  // than removed: this section is the long-standing home for the "Follow requests" section right
+  // below it (a private profile's incoming requests need to live somewhere on this page regardless),
+  // and losing the at-a-glance list here would mean every dashboard visit needs an extra click over
+  // to `/dashboard/following` just to see who you follow. The new followers/following pages exist for
+  // the *counts'* click-through target (parity with `/u/[username]`), not to replace this.
   const { data: followingData } = await supabase.from('follows').select('followee_id').eq('follower_id', user.id);
   const followeeIds = ((followingData ?? []) as { followee_id: string }[]).map((row) => row.followee_id);
   const followingProfiles: FollowingProfile[] = await lookupProfileIdentitiesByUserIds(followeeIds);
@@ -220,39 +246,71 @@ export default async function DashboardPage() {
     <>
       <AppHeader />
       <div className="flex flex-1 flex-col items-center gap-8 p-8">
-        <div className="flex w-full max-w-2xl items-center justify-between">
-          <div className="flex items-center gap-3">
-            {ownProfile?.avatar_url ? (
-              // eslint-disable-next-line @next/next/no-img-element -- external Supabase Storage CDN image.
-              <img
-                src={ownProfile.avatar_url}
-                alt=""
-                width={40}
-                height={40}
-                className="h-10 w-10 rounded-full object-cover"
-              />
-            ) : (
-              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/10 text-sm font-medium dark:bg-white/10">
-                {(ownProfile?.username ?? user.email ?? '?').charAt(0).toUpperCase()}
-              </span>
-            )}
-            <p className="text-lg">
-              Logged in as <span className="font-medium">{user.email}</span>
+        <div className="flex w-full max-w-sm flex-col gap-4">
+          <h1 className="text-xl font-semibold">My Profile</h1>
+
+          {profileError && (
+            <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+              Couldn&apos;t load your profile: {profileError.message}
             </p>
-          </div>
-          <form action={logout}>
-            <button
-              type="submit"
-              className="rounded border border-black/20 px-4 py-2 dark:border-white/30"
-            >
-              Log out
-            </button>
-          </form>
+          )}
+
+          {!profileError && !ownProfile && <ClaimUsernameForm />}
+
+          {!profileError && ownProfile && (
+            <>
+              <div className="flex items-center gap-3">
+                {ownProfile.avatar_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- external Supabase Storage CDN image.
+                  <img
+                    src={ownProfile.avatar_url}
+                    alt=""
+                    width={64}
+                    height={64}
+                    className="h-16 w-16 rounded-full object-cover"
+                  />
+                ) : (
+                  <span className="flex h-16 w-16 items-center justify-center rounded-full bg-black/10 text-xl font-medium dark:bg-white/10">
+                    {ownProfile.username.charAt(0).toUpperCase()}
+                  </span>
+                )}
+                <div className="flex flex-col gap-1">
+                  <p className="font-medium">{ownProfile.display_name ?? ownProfile.username}</p>
+                  <p className="text-sm text-black/60 dark:text-white/60">@{ownProfile.username}</p>
+                  {ownProfile.has_real_email && ownProfile.auth_email ? (
+                    <p className="text-sm text-black/60 dark:text-white/60">{ownProfile.auth_email}</p>
+                  ) : (
+                    <p className="text-sm text-black/60 dark:text-white/60">No email on file</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex gap-4 text-sm">
+                <Link href="/dashboard/followers" className="underline underline-offset-2">
+                  <span className="font-medium">{followCounts.follower_count}</span>{' '}
+                  {followCounts.follower_count === 1 ? 'follower' : 'followers'}
+                </Link>
+                <Link href="/dashboard/following" className="underline underline-offset-2">
+                  <span className="font-medium">{followCounts.following_count}</span> following
+                </Link>
+              </div>
+
+              <AvatarUploadForm
+                userId={user.id}
+                username={ownProfile.username}
+                initialAvatarUrl={ownProfile.avatar_url}
+              />
+              <SettingsForm
+                displayName={ownProfile.display_name}
+                rankingsVisibility={ownProfile.rankings_visibility}
+              />
+            </>
+          )}
         </div>
 
         <div className="flex w-full max-w-2xl flex-col gap-4">
           <div className="flex items-center justify-between">
-            <h1 className="text-xl font-semibold">My shows</h1>
+            <h2 className="text-xl font-semibold">My shows</h2>
             <Link
               href="/shows/search"
               className="rounded bg-black px-4 py-2 text-sm text-white dark:bg-white dark:text-black"
