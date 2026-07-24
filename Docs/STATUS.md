@@ -1214,12 +1214,106 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence:**
-(empty as of session close, 2026-07-23. Everything built this session — the follow-request RLS fix,
-the account page, the All Stars "has_started" fix, community rank, and the "My Profile" page merge —
-is fully built and merged; see History for the full account of each. Bucket 2 below has two
-genuinely open items — see item 17's carried-forward unconfirmed pieces and the un-asked-about
-`has_started` migration specifically. No next build decision has been made — see this file's own
-session-close entry in History for what's actually left to pick from.)
+
+**Logged 2026-07-23, new session — a batch of 8 ideas Kayvan brought, explicitly marked high
+priority and explicitly asked to be logged (not built yet this session).** Grounded each against the
+actual current code before writing it down, per this project's usual discipline — not just restated
+from memory. Numbered in the order Kayvan gave them, not by size/risk.
+
+1. **"Re-rank season" button** next to a season's "Complete" badge on the show page
+   (`EpisodeListWithFilters.tsx`) — same blue-bordered style as the existing "Rank season"/"Rank all"
+   buttons (`border-blue-600`). Ranks that season over again, in **random** order. Confirmed by
+   reading the code: today's "Rank season" link (`seasonRankAllTarget`) only renders when a season
+   has an unranked episode at all — once "Complete," there is currently **no way to redo a season**;
+   this is a genuinely new mechanism, not a relabel of something that exists. **Open design question,
+   not yet resolved**: what exactly does "re-rank" wipe? `episode_comparisons` rows aren't
+   season-scoped in the schema — a tie-break reference for one of this season's episodes could
+   legitimately point at an episode from a *different* season of the same show. Wiping only this
+   season's `episode_rankings` rows while leaving cross-season comparison history intact vs. a
+   fuller wipe are both defensible, but genuinely different in effect; needs a real decision before
+   building, likely via a new Postgres RPC scoped to one season's episode ids (mirroring
+   `delete_show_ranking_data`'s existing shape, not a plain client-side delete).
+2. **"Rank all" (whole-show) defaults to random order; "Rank season" stays chronological** — the
+   deliberate "in-order" path for anyone who wants it, per Kayvan's own framing. Confirmed via
+   `lib/ranking/rankAllOrder.ts`: today, both whole-show "Rank all" *and* season-scoped "Rank season"
+   use the same `orderOldestFirst` (chronological) — this is a real behavior split, not just a
+   rename. Needs a new `orderRandomly`-style function alongside the existing one, wired so only
+   whole-show mode picks it. **Open implementation detail, not yet decided**: does "random" mean
+   shuffled once per "Rank all" session (a stable order for that pass) or reshuffled on every
+   request/reload? Affects whether the order needs to be persisted anywhere or can stay purely
+   client-request-derived.
+3. **Show "Top Episodes" below the 4-show eligibility threshold**, with the message "Unlock your top
+   episode list by entering comparison mode for 4 or more shows!" — this **reverses a previously
+   explicit, documented decision**: `TopEpisodesSection.tsx`'s own doc comment currently says "no
+   teaser, no '3 more to go', keep it simple for v1," per the original All Stars Mode UX spec.
+   Flagging the reversal explicitly rather than silently overwriting it, per this project's own
+   convention. Small, contained change (`!display.eligible` currently renders `null`; would render
+   this message instead). **Related open question, not yet asked**: should another user's account
+   page (`/u/[username]`) show the same "not unlocked yet" message when viewing someone below the
+   threshold, or just show nothing as it does today? Not decided.
+4. **Clicking a show from someone else's profile should go to that show's page** — a deliberate
+   scoping decision from *this same session's* account-page build currently blocks this outright
+   (`/u/[username]`'s Shows section renders plain `<li>`s, not links, specifically because
+   `/shows/[showId]` "assumes it's the owner's own show" — Remove show, Rank all, Rank season, etc.).
+   Reversing this needs a genuine dual-mode (or new, separate) page — see item 5, which this is
+   directly coupled to.
+5. **A way to show a follower's/followed user's full episode rankings** — the real feature items 4
+   needs to land on: today `/u/[username]` only shows a show's progress % and #1 episode (via
+   `getAccountShows`), never the full ranked list. Good news found while grounding this: **no new
+   RLS policy is needed** — the account-page migration's "public owner or accepted follower" SELECT
+   policy on `episode_rankings` (added earlier this session) already covers exactly this read. What's
+   actually needed: a new read-only sibling function (mirroring `accountView.ts`'s existing pattern —
+   never reusing `getShowRankingDisplay`/`getRankedEpisodeOrder`, which explicitly refuse a
+   caller-supplied user id by design) that loads a *specific* show's full ranked order for a
+   `targetUserId`, plus a page/mode to render it read-only (no Remove show, no Rank buttons, no
+   edit affordances) — likely adapting `/shows/[showId]/rankings`'s existing per-episode list
+   rendering rather than building new UI from scratch. **Not yet decided**: a genuinely new route, or
+   a viewer-mode branch inside the existing `/shows/[showId]` page/routes (which would also need to
+   decide whether `/shows/[showId]/stats` and the episode detail page follow the same treatment —
+   not asked about, not assumed).
+6. **Profile search** — two distinct pieces: (a) direct username/profile search (a typeahead or
+   search box resolving to `/u/[username]`, likely mirroring `ShowSearchForm.tsx`'s live-search UI
+   pattern but querying `user_profiles` instead of TMDB); (b) a browse-all-public-profiles board,
+   sorted by follower count. **Real design/security note for (a)**: any `ILIKE`-based username
+   search must escape `%`/`_` the same way `login`/`forgot-password`/`signup` already do
+   (`escapeIlikePattern`, `lib/auth/username.ts`) — this exact class of bug was found and fixed
+   earlier this project's history (an unescaped `%` let a username *fragment* match via wildcard).
+   **Real performance/design note for (b)**: follower count isn't a stored column — `follow_counts`
+   is a per-user RPC call today, not a queryable/sortable field. Sorting *every* public profile by
+   follower count needs either a new aggregate query/view, or accepting a real N+1 cost — needs a
+   real decision, not a naive port of the per-profile RPC to a list view. This item overlaps
+   conceptually with the still-not-built Tier B "Discover" page (Bucket 4) — that one is
+   show-oriented (trending shows, disagreements), this one is people-oriented; related but distinct,
+   not the same feature.
+7. **Remove the "followers" section from "My Profile" — followers can already be found by clicking
+   the count.** Checked the actual current page before logging this: there is **no inline "Followers"
+   list section** on `/dashboard` today — only an inline **"Following"** list (people you follow),
+   kept during this session's page-merge build specifically because "Follow requests" needed a home
+   nearby. Logging this as "remove the inline 'Following' list section" since that's the only section
+   this could refer to, but flagging the name mismatch explicitly rather than silently guessing —
+   confirm before building in case something else was meant.
+8. **Stats page reorg**: remove the win/loss matrix section entirely; move the season timeline to be
+   the second section (right after the tier list); make comparison history collapsible, collapsed by
+   default; log an "export comparison history" feature for later (format — CSV/JSON/other — not yet
+   specified). Grounded against the actual current section order
+   (`shows/[showId]/stats/page.tsx`): today it's Tier list → Season-quality heatmap → Gatekeeper
+   episode → Win/loss matrix → Comparison history → Season timeline; the new order would be Tier list
+   → Season timeline → Season-quality heatmap → Gatekeeper episode → Comparison history (collapsed).
+   **Implementation note for whoever builds this**: `comparisonHistoryByEpisode` (which the
+   comparison-history section actually renders) is *computed from* `buildComparisonMatrix`'s output —
+   removing the matrix's visible `<section>` must not remove the underlying `buildComparisonMatrix`
+   call feeding comparison history, only its own rendered table. The page has zero client-side JS
+   today (a deliberate, documented choice); a native `<details>`/`<summary>` element gets
+   "collapsible, collapsed by default" with no new client component needed, matching that existing
+   pattern — the natural implementation, not yet built. This is the smallest/most mechanical item in
+   this batch — no real open design question once "remove/reorder/collapse" is confirmed as exactly
+   what's wanted.
+
+Not yet scoped into implementer dispatches or sequenced against each other — this is the logged
+queue, not a build plan. Items 4/5 are clearly the largest and most architecturally significant (a
+second correctness-critical cross-user data surface, on the order of the account page itself); items
+3, 7, and 8 are small/mechanical once confirmed; items 1, 2, and 6 each have at least one genuinely
+open question flagged above that should be resolved with Kayvan before dispatching, not guessed at.
 
 **"Tier A" — a small batch pulled from an external design review, decided 2026-07-17, now the
 front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
@@ -1755,6 +1849,11 @@ see Bucket 4.)
     wired into the ranking-session write path. Streaks ("ranked something every day for N days") need
     no new schema, fully derivable from existing timestamps. New surface: a small section (dashboard
     or its own `/achievements` page) plus a streak indicator.
+29. **Export comparison history** — logged 2026-07-23, Kayvan's idea, raised alongside the stats page
+    reorg (Bucket 1 item 8). A way to export a show's (or account-wide?) comparison history — exact
+    scope (per-show vs. everything; format — CSV/JSON/other) not yet specified, flagged rather than
+    guessed at. Natural data source is the same `episode_comparisons` rows the stats page's
+    comparison-history section and win/loss matrix already read.
 
 **Bucket 5 — Rework flagged for a later phase, not being worked now:**
 (empty for now)
