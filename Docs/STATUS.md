@@ -1225,32 +1225,45 @@ from memory. Numbered in the order Kayvan gave them, not by size/risk.
    buttons (`border-blue-600`). Ranks that season over again, in **random** order. Confirmed by
    reading the code: today's "Rank season" link (`seasonRankAllTarget`) only renders when a season
    has an unranked episode at all — once "Complete," there is currently **no way to redo a season**;
-   this is a genuinely new mechanism, not a relabel of something that exists. **Open design question,
-   not yet resolved**: what exactly does "re-rank" wipe? `episode_comparisons` rows aren't
-   season-scoped in the schema — a tie-break reference for one of this season's episodes could
-   legitimately point at an episode from a *different* season of the same show. Wiping only this
-   season's `episode_rankings` rows while leaving cross-season comparison history intact vs. a
-   fuller wipe are both defensible, but genuinely different in effect; needs a real decision before
-   building, likely via a new Postgres RPC scoped to one season's episode ids (mirroring
-   `delete_show_ranking_data`'s existing shape, not a plain client-side delete).
+   this is a genuinely new mechanism, not a relabel of something that exists.
+   **Resolved 2026-07-23**: wipes this season's `episode_rankings` rows *and* every
+   `episode_comparisons` row touching one of its episodes, even against a different season of the
+   same show — via a new Postgres RPC scoped to one season's episode ids (mirroring
+   `delete_show_ranking_data`'s existing shape, not a plain client-side delete; the URL-length lesson
+   from Bucket 1's own history still applies). Kayvan's real ask, worked through together: if
+   re-ranking Season 2 affects a Season 1 episode's position, that should auto-recalculate — resolved
+   as **already covered by this design, no separate mechanism needed**: this app has one shared
+   ranked list per show (season is a display grouping, not a separate list), so re-inserting Season
+   2's wiped episodes via the existing "Rank season" flow (now in random order) uses the same
+   binary-insertion algorithm that places any episode, asking fresh questions against whatever's
+   currently ranked — including Season 1. The existing `persistRankedPositions` already does a full
+   rewrite of every episode's `rank_position` on any insertion, not just the new episode's, so Season
+   1 positions shift automatically as a side effect, and since scores are always derived fresh from
+   position (never stored), displayed scores update for free. Wiping the *cross-season* comparisons
+   specifically is what makes this actually work — without it, a stale comparison could let the
+   replay comparator answer instantly instead of asking a fresh question, silently defeating the
+   whole point of "auto-recalculate."
 2. **"Rank all" (whole-show) defaults to random order; "Rank season" stays chronological** — the
    deliberate "in-order" path for anyone who wants it, per Kayvan's own framing. Confirmed via
    `lib/ranking/rankAllOrder.ts`: today, both whole-show "Rank all" *and* season-scoped "Rank season"
    use the same `orderOldestFirst` (chronological) — this is a real behavior split, not just a
    rename. Needs a new `orderRandomly`-style function alongside the existing one, wired so only
-   whole-show mode picks it. **Open implementation detail, not yet decided**: does "random" mean
-   shuffled once per "Rank all" session (a stable order for that pass) or reshuffled on every
-   request/reload? Affects whether the order needs to be persisted anywhere or can stay purely
-   client-request-derived.
+   whole-show mode picks it. **Resolved 2026-07-23**: reshuffles fresh on every request/reload, not
+   held stable for one session — matches how ordering already works today (recomputed from the
+   current unranked set at every step, no persisted session state) and needs no new schema. Accepted
+   tradeoff: reloading mid-"Rank all" may reorder what's left in the queue; nothing breaks, every
+   episode still gets ranked either way.
 3. **Show "Top Episodes" below the 4-show eligibility threshold**, with the message "Unlock your top
    episode list by entering comparison mode for 4 or more shows!" — this **reverses a previously
    explicit, documented decision**: `TopEpisodesSection.tsx`'s own doc comment currently says "no
    teaser, no '3 more to go', keep it simple for v1," per the original All Stars Mode UX spec.
    Flagging the reversal explicitly rather than silently overwriting it, per this project's own
    convention. Small, contained change (`!display.eligible` currently renders `null`; would render
-   this message instead). **Related open question, not yet asked**: should another user's account
-   page (`/u/[username]`) show the same "not unlocked yet" message when viewing someone below the
-   threshold, or just show nothing as it does today? Not decided.
+   this message instead) — **on the owner's own view only** (My Profile's Top Episodes section).
+   **Resolved 2026-07-23**: another user's account page (`/u/[username]`) stays exactly as it is
+   today (shows nothing below the threshold) — the "Unlock *your*..." copy is motivational, aimed at
+   the account owner; showing it about someone else would read like calling out their progress to a
+   viewer.
 4. **Clicking a show from someone else's profile should go to that show's page** — a deliberate
    scoping decision from *this same session's* account-page build currently blocks this outright
    (`/u/[username]`'s Shows section renders plain `<li>`s, not links, specifically because
@@ -1289,9 +1302,8 @@ from memory. Numbered in the order Kayvan gave them, not by size/risk.
    the count.** Checked the actual current page before logging this: there is **no inline "Followers"
    list section** on `/dashboard` today — only an inline **"Following"** list (people you follow),
    kept during this session's page-merge build specifically because "Follow requests" needed a home
-   nearby. Logging this as "remove the inline 'Following' list section" since that's the only section
-   this could refer to, but flagging the name mismatch explicitly rather than silently guessing —
-   confirm before building in case something else was meant.
+   nearby. **Resolved 2026-07-23, confirmed with Kayvan**: remove that inline "Following" list section
+   — its own click-through page (`/dashboard/following`, built this session) already covers it.
 8. **Stats page reorg**: remove the win/loss matrix section entirely; move the season timeline to be
    the second section (right after the tier list); make comparison history collapsible, collapsed by
    default; log an "export comparison history" feature for later (format — CSV/JSON/other — not yet
@@ -1309,11 +1321,20 @@ from memory. Numbered in the order Kayvan gave them, not by size/risk.
    this batch — no real open design question once "remove/reorder/collapse" is confirmed as exactly
    what's wanted.
 
+**Same session, continued — all product-level open questions resolved with Kayvan.** Items 1, 2, 3,
+and 7 are now fully specified (see each item above) — items 1 and 2 needed real back-and-forth
+(re-rank season's wipe scope turned out to already deliver Kayvan's actual ask, cross-season
+auto-recalculation, once the reasoning was walked through together; worth reading item 1's full
+resolution before building it, not just the one-line summary). Items 4/5's route-structure question
+and item 6's aggregate-query approach remain open, but deliberately — those are implementation-level
+calls the PM can make when actually building, not product decisions Kayvan needs to weigh in on.
+
 Not yet scoped into implementer dispatches or sequenced against each other — this is the logged
 queue, not a build plan. Items 4/5 are clearly the largest and most architecturally significant (a
 second correctness-critical cross-user data surface, on the order of the account page itself); items
-3, 7, and 8 are small/mechanical once confirmed; items 1, 2, and 6 each have at least one genuinely
-open question flagged above that should be resolved with Kayvan before dispatching, not guessed at.
+1, 2, 3, and 7 are now fully specified and ready to dispatch as-is; item 8 was already small/
+mechanical with no real open question; item 6 has one deliberately-still-open implementation detail
+(follower-count sorting) to settle at build time, not a blocker to starting.
 
 **"Tier A" — a small batch pulled from an external design review, decided 2026-07-17, now the
 front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
