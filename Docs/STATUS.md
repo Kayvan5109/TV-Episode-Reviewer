@@ -1159,7 +1159,53 @@ a separate static duplicate. Independently reran the full check suite after the 
 446/446, build clean, route list confirmed `/dashboard/followers`/`/dashboard/following` as new
 dynamic routes and `/settings` as the redirect). Committed the docs on `main` first (`ff59ab2`),
 merged (`--no-ff`), reran the full suite a second time on merged `main` (clean) before pushing.
-**"My Profile" is now built, reviewed, and merged.** Not yet hands-on checked — see Bucket 2.
+**"My Profile" is now built, reviewed, and merged.** Kayvan hands-on confirmed it working ("All looks
+good") — removed from Bucket 2.
+
+**Session ended here at Kayvan's request, "prep for next handoff."** Everything above is merged to
+`main` and pushed to `origin` (`35a17bc` at close) — `git status`/`git log` confirmed clean, local
+matches remote exactly, no worktrees or background agents left running.
+
+**What happened, in order**: opened per procedure, presented current state, Kayvan chose to hands-on
+check the follow-requests feature first — which immediately surfaced a real, previously-unflagged RLS
+bug (a policy checking "is this row private" by querying a table that hides private rows from anyone
+but their owner, so the check could never see what it was checking and silently always failed).
+Diagnosed and fixed solo (small, mechanically-verifiable, logged as a Deviation for a second look
+rather than independently reviewed), Kayvan confirmed the whole follow-request checklist working
+after. With usage still low, Kayvan asked to keep building: the account page (the first time this app
+has ever exposed one user's real ranking data — not just identity — to another; PM wrote the RLS/
+schema directly given the day's earlier lesson, implementer built the app layer, independent reviewer
+gave the new policies the most scrutiny of anything this session, PM re-verified before merging).
+Kayvan's hands-on test of that found a real bug in a *different*, pre-existing feature (All Stars
+Mode silently auto-placing a user's first Top Episode before they'd ever engaged) — correctly
+identified as a legitimate reversal of an old, deliberate design call, not a new regression, and fixed
+directly. Then, at Kayvan's specific choice, community rank (an aggregate needing zero new RLS at all,
+since it fully reuses the account page's own "public owner" policy from earlier the same session) —
+implementer + PM review, formula hand-verified against `score.ts` twice independently. Then a real
+information-architecture change: merging `/dashboard` and `/settings` into one "My Profile" page plus
+two new followers/following list pages — Kayvan asked clarifying questions to be answered first
+(deferred "add an email" as its own future task given its real Auth-mutation complexity; kept show
+search as a plain link rather than going inline), grounded in a full read of both existing pages
+before dispatching, and PM caught a real UX bug (a duplicate avatar) in review before merging. Ended
+with a full backlog inventory at Kayvan's request, surfacing two ideas (Personal Stats & Recap,
+Achievements & Streaks) that had a full design in `AppSpec.md` but had never actually been promoted
+into a tracked `STATUS.md` Bucket 4 line — and one real doc inconsistency (Bucket 4 item 23, "accepted
+followers should see more," which the account page had already resolved without the doc being
+updated to say so).
+
+**What's actually left, concretely**: two real open items in Bucket 2 — item 17's carried-forward
+unconfirmed pieces (avatar upload validation, the collections placeholder — now living on `/dashboard`
+after the page merge, not `/settings`) and, more importantly, **whether the `has_started` migration
+(`20260723020000_all_star_has_started.sql`) actually got applied to live Supabase** — this was never
+explicitly confirmed; the conversation moved on to community rank before circling back. Check this
+specifically before assuming it's live. Two Deviations Awaiting Review from earlier remain open (the
+solo follow-request RLS fix, and the long-standing intermittent worktree-isolation bug — this session
+added one more data point to the latter: an implementer's own tool calls landed on the wrong path by
+mistake, self-caught via `git status` and self-corrected, a genuinely different failure mode from
+every previously-logged harness-level variant). No next build decision has been made — Bucket 4 has a
+full, freshly-inventoried backlog (Import, episode tagging, Personal Stats & Recap, Achievements &
+Streaks, the remaining Tier B phases — Discover/taste similarity/collections — plus several small
+hardening items) to pick from whenever picked back up.
 
 ## Punch List (ranked — read this section first for "what's actually next")
 
@@ -1168,10 +1214,12 @@ Every open item gets triaged into exactly one bucket the moment it surfaces, per
 unless it's small or genuinely blocking.
 
 **Bucket 1 — Blocking / next in sequence:**
-(empty as of session close, 2026-07-22. Username+password signup and Tier B Phase 1 + the follow-
-requests extension are all fully built, independently reviewed, and merged — see History for the
-full account of each. Nothing is currently blocking; Bucket 2 below has the pending hands-on checks,
-and picking the next Tier B phase is the next real build decision, not yet made.)
+(empty as of session close, 2026-07-23. Everything built this session — the follow-request RLS fix,
+the account page, the All Stars "has_started" fix, community rank, and the "My Profile" page merge —
+is fully built and merged; see History for the full account of each. Bucket 2 below has two
+genuinely open items — see item 17's carried-forward unconfirmed pieces and the un-asked-about
+`has_started` migration specifically. No next build decision has been made — see this file's own
+session-close entry in History for what's actually left to pick from.)
 
 **"Tier A" — a small batch pulled from an external design review, decided 2026-07-17, now the
 front of the queue** (see `AppSpec.md`'s "External Design Review — Triage" and
@@ -1422,25 +1470,23 @@ in Bucket 4, rather than being done piecemeal now.
    migration applied 2026-07-23; hands-on confirmed with a real second (4-show) account: "Rank Top
    Episodes" works and updates correctly on a #1 change (with the right prompt), and — the real point
    of the feature — both a public profile and a private-but-followed profile correctly show
-   avatar/username/follower-following counts/shows-with-#1/top-episodes to another user. Not yet
-   checked: avatar upload's file-type/size rejection on `/settings`, and the "No collections yet."
-   placeholder rendering correctly.
+   avatar/username/follower-following counts/shows-with-#1/top-episodes to another user. **Still
+   genuinely open, not yet confirmed** (carried forward across several since-completed session
+   detours — verify these are still accurate, don't assume): avatar upload's file-type/size rejection
+   (control now lives on `/dashboard`'s "My Profile" header, not `/settings` — see the 2026-07-23
+   page-merge entry) and the "No collections yet." placeholder rendering correctly.
    One real issue found (a pre-existing All Stars Mode behavior this build's fresh testing surfaced,
    not a new bug — see History) — **fixed same session** (`20260723020000_all_star_has_started.sql`)
-   — not yet applied to live Supabase or re-confirmed: apply that migration, then confirm a **brand
-   new** eligible user's Top Episodes section stays genuinely empty until "Rank Top Episodes" is
-   actually clicked.
+   — **Kayvan was never explicitly asked to confirm this migration got applied to live Supabase**
+   (the conversation moved on to community rank before circling back) — check this specifically next
+   session before assuming it's live: apply it if not already applied, then confirm a **brand new**
+   eligible user's Top Episodes section stays genuinely empty until "Rank Top Episodes" is actually
+   clicked.
 18. ~~**Community rank, built and merged 2026-07-23 (`85d59e1`, `02007a1`)**~~ — migration applied
    cleanly (the never-run-against-real-Postgres caveat didn't bite), **hands-on confirmed working**.
    Removed from Bucket 2.
-19. **"My Profile" (the `/dashboard` + `/settings` merge), built, PM-reviewed, and merged 2026-07-23**
-   — no migration needed (no new schema/RLS). Needs a hands-on check: avatar upload from the new
-   header position (should show once, live-updating, not twice); username/email/"No email on file"
-   display correctly; follower/following counts link to real, correctly-populated list pages;
-   visibility toggle and display-name edit still work exactly as they did on the old `/settings`;
-   `/settings` itself redirects to `/dashboard` rather than 404ing; the nav's "My Profile" link and
-   removed "Settings" link look right; shows list, Following list, Follow requests, and Top Episodes
-   all still work exactly as before the merge.
+19. ~~**"My Profile" (the `/dashboard` + `/settings` merge), built, PM-reviewed, and merged
+   2026-07-23**~~ — **hands-on confirmed working** (Kayvan: "All looks good"). Removed from Bucket 2.
 
 **Bucket 3 — Design decisions needing human input (don't block code):**
 (empty for now — every question posed 2026-07-17 is resolved: remove-show/re-ranking's scope, the
@@ -1692,6 +1738,23 @@ see Bucket 4.)
     complexity/risk to the original username+password signup build — deserves its own grounded design
     pass when picked up, not a quick bolt-on. "My Profile" shows "No email on file" with no
     interactive control in the meantime, for any account with `has_real_email: false`.
+27. **Personal Stats & Recap page** — confirmed real, fully designed in `AppSpec.md` since
+    2026-07-17 (its own "Personal Stats & Recap" section), but never actually promoted into a tracked
+    `STATUS.md` Bucket 4 line until now (caught 2026-07-23 while compiling a full backlog inventory
+    at Kayvan's request). A live, always-current cross-show recap — total episodes ranked/shows
+    started/shows completed, highest-rated episode account-wide, "most contested episode" (highest
+    comparison count), a favorite show, a ranking-activity calendar. **No new tables needed at all**
+    — every stat is a read over `episode_rankings`/`episode_comparisons`/`user_shows`, already
+    timestamped and scoped by existing RLS. One new route, `/stats` or similar.
+28. **Achievements & Streaks** — same situation as item 27: confirmed real, fully designed in
+    `AppSpec.md` since 2026-07-17, never promoted into a tracked Bucket 4 line until now. Deliberately
+    scoped small (no XP/levels/profile unlocks — those depend on Tier B actually having an audience).
+    v1 set: first ranking, 10/100/1,000 total comparisons, first show completed, 5 shows completed.
+    One new table (`user_achievements`: `user_id`, `achievement_id`, `unlocked_at`) — definitions are
+    plain code constants, checked lazily at read time (e.g. on dashboard load), deliberately not
+    wired into the ranking-session write path. Streaks ("ranked something every day for N days") need
+    no new schema, fully derivable from existing timestamps. New surface: a small section (dashboard
+    or its own `/achievements` page) plus a streak indicator.
 
 **Bucket 5 — Rework flagged for a later phase, not being worked now:**
 (empty for now)
